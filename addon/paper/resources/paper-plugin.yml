@@ -1,0 +1,14 @@
+name: Monolab
+# Filled from seAddonVersion in gradle.properties at build time. Don't write it by hand.
+version: '${version}'
+main: com.github.chicodev11.monolab.addon.MonolabPlugin
+# **Written as 1.21.** Paper refuses to load plugins whose api-version is newer than the
+# server. With 26.2 it wouldn't even start on 1.21.x servers. Writing it lower is fine —
+# every API this jar uses exists in 1.21.
+api-version: '1.21'
+# Runs on Folia too, because repeating work uses the region scheduler.
+# Without this line Folia blocks the plugin.
+folia-supported: true
+description: Writes server state to the server folder for the Monolab app's monitor, map and console autocomplete.
+authors:
+  - Monolab

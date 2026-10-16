@@ -1,0 +1,26 @@
+[package]
+name = "monolab-pumpkin"
+# The addon version (`ADDON_VERSION` in `events.rs`) lives in `VERSION` in `src/lib.rs`.
+# This number is the crate's own and never shows on screen.
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# **Must match the server release.** The WIT ABI changes between releases, so on a
+# server of another release it won't load at all. Which release it targets is written
+# in `targets.json`, and the app installs by that table.
+pumpkin-plugin-api = "0.1.0-dev+26.2-26.45"
+serde_json = "1"
+tracing = "0.1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+
+[workspace]
