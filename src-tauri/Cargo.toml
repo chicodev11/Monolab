@@ -1,0 +1,70 @@
+[package]
+name = "monolab"
+version = "1.0.0"
+description = "Minecraft server management desktop application"
+authors = ["chicodev11"]
+license = "GPL-3.0-or-later"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "monolab_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+ammonia = "4"
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json"] }
+specta-typescript = "=0.0.12"
+tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
+zip = "2.4.2"
+sysinfo = "0.33"
+reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "json", "multipart", "query", "rustls"] }
+sha2 = "0.10.9"
+sha1 = "0.10.6"
+md-5 = "0.10.6"
+tauri-plugin-dialog = "2.7.2"
+fastnbt = "2.6.3"
+flate2 = "1.1.9"
+image = "0.25.10"
+base64 = "0.23.1"
+tauri-plugin-updater = "2.10.1"
+tauri-plugin-process = "2.3.1"
+tauri-plugin-notification = "2.3.3"
+argon2 = "0.6.0"
+include_dir = "0.7.4"
+shell-words = "1.1"
+regex = "1.13"
+getrandom = "0.4"
+toml_edit = "0.25"
+russh = { version = "0.63.3", default-features = false, features = ["ring", "rsa", "flate2"] }
+russh-sftp = "3.0.0"
+tokio = { version = "1.53.1", features = ["rt", "time", "net", "io-util", "sync", "macros"] }
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-native-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
+rustls-platform-verifier = "0.7"
+futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
+
+# Line tables only: full debug info made PDBs big enough to hit LNK1318.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.release]
+opt-level = 2
+codegen-units = 256
+lto = false
+incremental = true
+strip = true
+
