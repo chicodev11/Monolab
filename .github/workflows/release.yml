@@ -24,6 +24,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          shared-key: release
+          save-if: false
       - run: npm ci
       - uses: tauri-apps/tauri-action@v0
         env:
