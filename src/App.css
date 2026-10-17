@@ -6763,6 +6763,8 @@ input[type="number"]::-webkit-inner-spin-button {
   flex: none;
 }
 
+.update-actions { display: flex; gap: 8px; margin-top: 10px; }
+.update-toast .update-actions .update-now { flex: 1; width: auto; margin-top: 0; }
 .update-toast .task-head strong {
   overflow: visible;
   white-space: normal;

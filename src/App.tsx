@@ -72,7 +72,7 @@ import { offerDownload, pickFiles, pickRawFiles, uploadRaw } from "./lib/pickFil
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 
-const CHANGELOG_URL = "https://chicodev11.github.io/Monolab/changelog.html";
+const CHANGELOG_URL = "https://chicodev11.github.io/Monolab/changelog";
 import {
   isPermissionGranted,
   requestPermission,
@@ -11591,11 +11591,6 @@ function App() {
                         ? tr("Download complete. Restarting the app.")
                         : tr("Click to update now.")}
                 </small>
-                {updateState.stage === "found" && (
-                  <button className="link-button" onClick={() => void openExternal(CHANGELOG_URL)}>
-                    {tr("What's new")}
-                  </button>
-                )}
               </div>
               {updateState.stage === "found" && (
                 <button
@@ -11607,11 +11602,16 @@ function App() {
               )}
             </div>
             {updateState.stage === "found" ? (
-              <button
-                className="button primary update-now"
-                onClick={() => void installUpdate()}
-              >
-                {tr("Update now")}</button>
+              <div className="update-actions">
+                <button className="button secondary" onClick={() => void openExternal(CHANGELOG_URL)}>
+                  {tr("What's new")}
+                </button>
+                <button
+                  className="button primary update-now"
+                  onClick={() => void installUpdate()}
+                >
+                  {tr("Update now")}</button>
+              </div>
             ) : (
               <div
                 className={`task-bar ${updateState.stage === "ready" ? "" : "waiting"} ${updateState.percent === 100 ? "full" : ""}`}

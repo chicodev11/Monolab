@@ -17,7 +17,8 @@
     "changed": [
       "The agent signs in inside the app only and no longer borrows the Claude or Codex sign-in on this computer. Sign in once in the Agent tab.",
       "Panel servers show Disconnected instead of Stopped when the panel can't be reached.",
-      "Hand-uploaded mods on panel servers show their real name and version."
+      "Hand-uploaded mods on panel servers show their real name and version.",
+      "The What's new button in the update notice sits next to Update now."
     ],
     "fixed": [
       "Codex chat failed when the Codex app was set to a model the command line can't use, and couldn't use the app's tools.",

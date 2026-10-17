@@ -59,5 +59,6 @@
   "Hand-uploaded mods on panel servers show their real name and version.": "패널 서버에 직접 올린 모드도 진짜 이름과 버전이 보여요.",
   "Codex chat failed when the Codex app was set to a model the command line can't use, and couldn't use the app's tools.": "Codex 앱에 명령줄이 못 쓰는 모델이 설정돼 있으면 Codex 대화가 실패하고, 앱 도구도 못 쓰던 문제를 고쳤어요.",
   "The settings search bar covered dialogs opened from Server settings.": "서버 설정에서 연 창을 설정 찾기 칸이 가리던 문제를 고쳤어요.",
-  "Reports which chunks are loaded and which are force-loaded, every 5 seconds.": "어느 청크가 로드되고 강제 로드됐는지 5초마다 알려 줘요."
+  "Reports which chunks are loaded and which are force-loaded, every 5 seconds.": "어느 청크가 로드되고 강제 로드됐는지 5초마다 알려 줘요.",
+  "The What's new button in the update notice sits next to Update now.": "업데이트 알림의 바뀐 점 보기 단추가 지금 업데이트 옆으로 갔어요."
 }
