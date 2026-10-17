@@ -44,5 +44,20 @@
   "{0} days ago": "{0}일 전",
   "1 day ago": "1일 전",
   "Agent": "에이전트",
-  "Monolab first release.": "Monolab의 첫 릴리스예요."
+  "Monolab first release.": "Monolab의 첫 릴리스예요.",
+  "Loaded chunks on the world map — blue for loaded, orange for force-loaded (needs addon 25).": "월드 지도에 로드된 청크를 표시해요 — 파랑은 로드, 주황은 강제 로드예요 (애드온 25 필요).",
+  "Chunk cleanup in the Worlds tab: removes chunks players barely stayed in to make worlds smaller, with a backup first.": "월드 칸의 청크 정리: 사람이 거의 머물지 않은 청크를 지워 월드 용량을 줄여요. 먼저 백업해요.",
+  "Run history in the Logs tab: starts, stops and crashes with exit code and uptime.": "로그 칸의 실행 기록: 켜짐·정지·크래시를 종료 코드와 켜져 있던 시간과 함께 보여 줘요.",
+  "SSH servers can restart themselves after a crash, even while the app is closed.": "SSH 서버도 크래시 뒤 스스로 다시 켜져요. 앱이 꺼져 있어도 돼요.",
+  "Save the world map as a PNG, and click the map to add a bookmark.": "월드 지도를 PNG로 저장하고, 지도를 눌러 북마크를 만들 수 있어요.",
+  "Compare a server's start settings, server.properties and mods with another server.": "서버의 시작 설정·server.properties·모드를 다른 서버와 비교해요.",
+  "Update warnings when a new mod version needs a mod you don't have or clashes with one you have.": "새 모드 버전에 없는 모드가 필요하거나 깔린 모드와 충돌하면 업데이트 창에서 알려 줘요.",
+  "Keep only the newest scheduled backups (Settings).": "정기 백업을 최신 몇 개만 남길 수 있어요 (설정).",
+  "Quick-start cards in the agent chat, and the agent can install or update the Monolab addon.": "에이전트 대화에 빠른 시작 카드가 생겼고, 에이전트가 Monolab 애드온을 설치·업데이트할 수 있어요.",
+  "The agent signs in inside the app only and no longer borrows the Claude or Codex sign-in on this computer. Sign in once in the Agent tab.": "에이전트 로그인은 이제 앱 안에서만 해요. 컴퓨터의 Claude·Codex 로그인을 빌려 쓰지 않아요. 에이전트 칸에서 한 번 로그인해 주세요.",
+  "Panel servers show Disconnected instead of Stopped when the panel can't be reached.": "패널에 닿지 못하면 패널 서버를 정지됨 대신 연결 끊김으로 보여 줘요.",
+  "Hand-uploaded mods on panel servers show their real name and version.": "패널 서버에 직접 올린 모드도 진짜 이름과 버전이 보여요.",
+  "Codex chat failed when the Codex app was set to a model the command line can't use, and couldn't use the app's tools.": "Codex 앱에 명령줄이 못 쓰는 모델이 설정돼 있으면 Codex 대화가 실패하고, 앱 도구도 못 쓰던 문제를 고쳤어요.",
+  "The settings search bar covered dialogs opened from Server settings.": "서버 설정에서 연 창을 설정 찾기 칸이 가리던 문제를 고쳤어요.",
+  "Reports which chunks are loaded and which are force-loaded, every 5 seconds.": "어느 청크가 로드되고 강제 로드됐는지 5초마다 알려 줘요."
 }

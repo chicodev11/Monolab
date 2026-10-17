@@ -1,6 +1,39 @@
 [
   {
     "kind": "app",
+    "version": "1.0.1",
+    "date": "2026-10-18",
+    "added": [
+      "Loaded chunks on the world map — blue for loaded, orange for force-loaded (needs addon 25).",
+      "Chunk cleanup in the Worlds tab: removes chunks players barely stayed in to make worlds smaller, with a backup first.",
+      "Run history in the Logs tab: starts, stops and crashes with exit code and uptime.",
+      "SSH servers can restart themselves after a crash, even while the app is closed.",
+      "Save the world map as a PNG, and click the map to add a bookmark.",
+      "Compare a server's start settings, server.properties and mods with another server.",
+      "Update warnings when a new mod version needs a mod you don't have or clashes with one you have.",
+      "Keep only the newest scheduled backups (Settings).",
+      "Quick-start cards in the agent chat, and the agent can install or update the Monolab addon."
+    ],
+    "changed": [
+      "The agent signs in inside the app only and no longer borrows the Claude or Codex sign-in on this computer. Sign in once in the Agent tab.",
+      "Panel servers show Disconnected instead of Stopped when the panel can't be reached.",
+      "Hand-uploaded mods on panel servers show their real name and version."
+    ],
+    "fixed": [
+      "Codex chat failed when the Codex app was set to a model the command line can't use, and couldn't use the app's tools.",
+      "The settings search bar covered dialogs opened from Server settings."
+    ]
+  },
+  {
+    "kind": "addon",
+    "version": "25",
+    "date": "2026-10-18",
+    "added": [
+      "Reports which chunks are loaded and which are force-loaded, every 5 seconds."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.0.0",
     "date": "2026-10-16",
     "added": [
