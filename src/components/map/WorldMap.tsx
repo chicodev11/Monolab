@@ -19,12 +19,16 @@ export function WorldMap({
   fetchTile,
   start,
   cave,
+  onExport,
+  chunks,
 }: {
   pins: MapPin[];
   onPick?: (x: number, z: number) => void;
   fetchTile: TileFetch;
   start: { x: number; z: number; level: number };
   cave?: { on: boolean; toggle: () => void } | null;
+  onExport?: (png: string) => void;
+  chunks?: { on: boolean; toggle: () => void; loaded: number[]; forced: number[]; known: boolean } | null;
 }) {
   const drawn = useSmoothPins(pins, true);
   const box = useRef<HTMLDivElement>(null);
@@ -130,6 +134,80 @@ export function WorldMap({
     const timer = window.setInterval(() => pump.current(), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  const overlay = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = overlay.current;
+    if (!canvas) return;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.round(size.w * ratio);
+    canvas.height = Math.round(size.h * ratio);
+    const pen = canvas.getContext("2d");
+    if (!pen) return;
+    pen.setTransform(ratio, 0, 0, ratio, 0, 0);
+    pen.clearRect(0, 0, size.w, size.h);
+    if (!chunks?.on) return;
+    const cell = 16 / bpp;
+    const paint = (list: number[], fill: string, line: string) => {
+      pen.fillStyle = fill;
+      pen.strokeStyle = line;
+      pen.lineWidth = 1;
+      for (let at = 0; at + 1 < list.length; at += 2) {
+        const left = (list[at] * 16 - corner.x) / bpp;
+        const top = (list[at + 1] * 16 - corner.z) / bpp;
+        if (left + cell < 0 || top + cell < 0 || left > size.w || top > size.h) continue;
+        pen.fillRect(left, top, cell, cell);
+        if (cell >= 6) pen.strokeRect(left + 0.5, top + 0.5, cell - 1, cell - 1);
+      }
+    };
+    paint(chunks.loaded, "rgba(80, 200, 255, 0.28)", "rgba(80, 200, 255, 0.55)");
+    paint(chunks.forced, "rgba(255, 170, 40, 0.45)", "rgba(255, 170, 40, 0.85)");
+  }, [chunks, corner.x, corner.z, bpp, size.w, size.h]);
+
+  const [exporting, setExporting] = useState(false);
+  const exportView = async () => {
+    if (!onExport || exporting || size.w < 16) return;
+    setExporting(true);
+    try {
+      const scale = 2 ** level;
+      const span = TILE * scale;
+      const left = corner.x;
+      const top = corner.z;
+      const width = Math.round((size.w * bpp) / scale);
+      const height = Math.round((size.h * bpp) / scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const pen = canvas.getContext("2d");
+      if (!pen) return;
+      pen.imageSmoothingEnabled = false;
+      const jobs: Promise<void>[] = [];
+      for (let ty = Math.floor(top / span); ty <= Math.floor((top + height * scale) / span); ty += 1) {
+        for (let tx = Math.floor(left / span); tx <= Math.floor((left + width * scale) / span); tx += 1) {
+          jobs.push(
+            fetchRef.current(level, tx, ty, night).then(
+              (url) =>
+                new Promise<void>((done) => {
+                  const picture = new Image();
+                  picture.onload = () => {
+                    pen.drawImage(picture, (tx * span - left) / scale, (ty * span - top) / scale, TILE, TILE);
+                    done();
+                  };
+                  picture.onerror = () => done();
+                  picture.src = url.startsWith("partial:") ? url.slice("partial:".length) : url;
+                }),
+              () => undefined,
+            ),
+          );
+        }
+      }
+      await Promise.all(jobs);
+      const url = canvas.toDataURL("image/png");
+      onExport(url.slice(url.indexOf(",") + 1));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const toWorld = (clientX: number, clientY: number) => {
     const rect = box.current?.getBoundingClientRect();
@@ -259,6 +337,7 @@ export function WorldMap({
             }}
           />
         ))}
+        <canvas ref={overlay} className="map-chunks" style={{ width: `${size.w}px`, height: `${size.h}px` }} />
         <div className="map-pins">
           {drawn.map((pin) => {
             const spot = toScreen(pin.x, pin.z);
@@ -316,7 +395,7 @@ export function WorldMap({
 
       <div className="map-bar">
         <span className="map-where">
-          {where ? `X ${where.x}   Z ${where.z}` : tr("Hover over the map")}
+          {where ? `X ${where.x}   Z ${where.z}` : tr("Click the map to add a bookmark")}
         </span>
         <button
           className={`button ghost small map-night ${night ? "on" : ""}`}
@@ -335,6 +414,34 @@ export function WorldMap({
           >
             <Icon name="layers" />
             {tr("Caves")}
+          </button>
+        )}
+        {chunks && (
+          <button
+            className={`button ghost small map-night ${chunks.on ? "on" : ""}`}
+            aria-pressed={chunks.on}
+            data-tip={
+              chunks.known
+                ? tr("Blue: loaded chunks · orange: force-loaded chunks")
+                : tr("Loaded chunks in this dimension. This server type can't tell which ones are force-loaded.")
+            }
+            onClick={chunks.toggle}
+          >
+            <Icon name="grid" />
+            {chunks.on
+              ? tr("{0, plural, one {# loaded chunk} other {# loaded chunks}}", [(chunks.loaded.length + chunks.forced.length) / 2])
+              : tr("Loaded chunks")}
+          </button>
+        )}
+        {onExport && (
+          <button
+            className="button ghost small map-night"
+            data-tip={tr("Saves what you see as a PNG")}
+            disabled={exporting}
+            onClick={() => void exportView()}
+          >
+            <Icon name="image" />
+            {exporting ? tr("Saving…") : tr("Save PNG")}
           </button>
         )}
         <span className="map-note">

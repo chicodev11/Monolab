@@ -38,6 +38,38 @@ public final class MonolabMod {
     private ScheduledExecutorService flusher;
     private int ticks;
     private MapRender map;
+    private final ChunkWatch chunks = new ChunkWatch();
+
+    @SubscribeEvent
+    public void onChunkLoad(net.neoforged.neoforge.event.level.ChunkEvent.Load event) {
+        if (event.getLevel() instanceof ServerLevel level) {
+            net.minecraft.world.level.ChunkPos pos = event.getChunk().getPos();
+            chunks.load(worldName(level.getServer(), Bridge.dimensionId(level)), pos.getMinBlockX() >> 4, pos.getMinBlockZ() >> 4);
+        }
+    }
+
+    @SubscribeEvent
+    public void onChunkUnload(net.neoforged.neoforge.event.level.ChunkEvent.Unload event) {
+        if (event.getLevel() instanceof ServerLevel level) {
+            net.minecraft.world.level.ChunkPos pos = event.getChunk().getPos();
+            chunks.unload(worldName(level.getServer(), Bridge.dimensionId(level)), pos.getMinBlockX() >> 4, pos.getMinBlockZ() >> 4);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.Collection<Long> forcedOf(ServerLevel level) {
+        for (String name : new String[] {"getForceLoadedChunks", "getForcedChunks"}) {
+            try {
+                Object got = ServerLevel.class.getMethod(name).invoke(level);
+                if (got instanceof java.util.Collection<?> set) {
+                    return (java.util.Collection<Long>) set;
+                }
+            } catch (ReflectiveOperationException | RuntimeException missing) {
+                // Older and newer versions name this differently; try the other name.
+            }
+        }
+        return java.util.List.of();
+    }
 
     @SubscribeEvent
     public void onStarted(ServerStartedEvent event) {
@@ -182,6 +214,13 @@ public final class MonolabMod {
         long maxMib = runtime.maxMemory() / (1024 * 1024);
 
         EntityTally tally = tallyEntities(server);
+        if (chunks.due()) {
+            java.util.Map<String, ServerLevel> byName = new java.util.HashMap<>();
+            for (ServerLevel level : server.getAllLevels()) {
+                byName.put(worldName(server, Bridge.dimensionId(level)), level);
+            }
+            log.setLoaded(chunks.json(name -> byName.containsKey(name) ? forcedOf(byName.get(name)) : null));
+        }
 
         StringBuilder people = new StringBuilder("[");
         boolean head = true;

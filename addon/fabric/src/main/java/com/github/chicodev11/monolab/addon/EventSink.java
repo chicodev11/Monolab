@@ -105,6 +105,12 @@ final class EventSink {
                 .end());
     }
 
+    void loaded(String json) {
+        if (log != null) {
+            log.setLoaded(json);
+        }
+    }
+
     void perf(double mspt, int players, long chunks, long entities) {
         add(new Json()
                 .put("at", System.currentTimeMillis())

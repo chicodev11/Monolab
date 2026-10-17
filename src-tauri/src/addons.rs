@@ -35,6 +35,27 @@ pub struct AddonUpdate {
     pub new_file_name: String,
     pub download_url: String,
     pub sha512: String,
+    pub issues: Vec<UpdateIssue>,
+}
+
+#[derive(Clone, Debug, Serialize, specta::Type, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateIssue {
+    pub kind: String,
+    pub project: String,
+}
+
+fn dependency_issues(version: &serde_json::Value, installed: &HashSet<String>) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for one in version.get("dependencies").and_then(|value| value.as_array()).into_iter().flatten() {
+        let Some(project) = one.get("project_id").and_then(|value| value.as_str()) else { continue };
+        match one.get("dependency_type").and_then(|value| value.as_str()) {
+            Some("required") if !installed.contains(project) => out.push(("missing".to_string(), project.to_string())),
+            Some("incompatible") if installed.contains(project) => out.push(("incompatible".to_string(), project.to_string())),
+            _ => {}
+        }
+    }
+    out
 }
 
 #[derive(Clone, Debug, Serialize, specta::Type)]
@@ -104,9 +125,9 @@ struct Descriptors {
     plugin_yml: Option<(&'static str, String)>,
 }
 
-fn read_descriptors(zip: &mut ZipArchive<fs::File>) -> Descriptors {
+fn read_descriptors<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>) -> Descriptors {
     let mut found = Descriptors::default();
-    let pull = |zip: &mut ZipArchive<fs::File>, name: &str| -> Option<String> {
+    let pull = |zip: &mut ZipArchive<R>, name: &str| -> Option<String> {
         let mut entry = zip.by_name(name).ok()?;
         let mut text = String::new();
         entry.read_to_string(&mut text).ok()?;
@@ -322,6 +343,15 @@ pub fn jar_identity(path: &Path) -> (String, String, String) {
     };
     let found = read_descriptors(&mut zip);
     identity_from(&found, &fallback)
+}
+
+pub fn identity_of_bytes(bytes: &[u8], fallback: &str) -> Option<(String, String, String)> {
+    let mut zip = ZipArchive::new(std::io::Cursor::new(bytes)).ok()?;
+    let found = read_descriptors(&mut zip);
+    if found.fabric.is_none() && found.forge.is_none() && found.plugin_yml.is_none() {
+        return None;
+    }
+    Some(identity_from(&found, fallback))
 }
 
 fn mod_from_toml(text: &str) -> Option<(String, String, String)> {
@@ -585,7 +615,9 @@ pub fn find_updates(
     let Some(map) = value.as_object() else {
         return Ok(Vec::new());
     };
+    let installed: HashSet<String> = known.iter().filter_map(|addon| addon.project_id.clone()).collect();
     let mut updates = Vec::new();
+    let mut raw_issues: Vec<Vec<(String, String)>> = Vec::new();
     for addon in known {
         let Some(latest) = map.get(&addon.sha512) else {
             continue;
@@ -611,7 +643,31 @@ pub fn find_updates(
             new_file_name: file.0,
             download_url: file.1,
             sha512: file.2,
+            issues: Vec::new(),
         });
+        raw_issues.push(dependency_issues(latest, &installed));
+    }
+    let ids: Vec<String> = raw_issues.iter().flatten().map(|one| one.1.clone()).collect::<HashSet<_>>().into_iter().collect();
+    let mut titles: HashMap<String, String> = HashMap::new();
+    if !ids.is_empty() {
+        if let Ok(found) = client
+            .get("https://api.modrinth.com/v2/projects")
+            .query(&[("ids", serde_json::to_string(&ids).unwrap_or_default())])
+            .send()
+            .and_then(|answer| answer.json::<serde_json::Value>())
+        {
+            for one in found.as_array().into_iter().flatten() {
+                if let (Some(id), Some(title)) = (one.get("id").and_then(|v| v.as_str()), one.get("title").and_then(|v| v.as_str())) {
+                    titles.insert(id.to_string(), title.to_string());
+                }
+            }
+        }
+    }
+    for (update, list) in updates.iter_mut().zip(raw_issues) {
+        update.issues = list
+            .into_iter()
+            .map(|(kind, id)| UpdateIssue { kind, project: titles.get(&id).cloned().unwrap_or(id) })
+            .collect();
     }
     Ok(updates)
 }
@@ -818,7 +874,22 @@ pub fn download_url_for(sha512: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{find_conflicts, mod_from_toml, primary_file, InstalledAddon};
+    use super::{dependency_issues, find_conflicts, mod_from_toml, primary_file, InstalledAddon};
+
+    #[test]
+    fn warns_about_missing_and_clashing_dependencies() {
+        let version = serde_json::json!({ "dependencies": [
+            { "project_id": "api", "dependency_type": "required" },
+            { "project_id": "lib", "dependency_type": "required" },
+            { "project_id": "bad", "dependency_type": "incompatible" },
+            { "project_id": "opt", "dependency_type": "optional" },
+        ]});
+        let installed = ["lib", "bad"].into_iter().map(String::from).collect();
+        assert_eq!(
+            dependency_issues(&version, &installed),
+            vec![("missing".to_string(), "api".to_string()), ("incompatible".to_string(), "bad".to_string())]
+        );
+    }
 
     fn addon(file: &str, id: &str, project: Option<&str>) -> InstalledAddon {
         InstalledAddon {
@@ -956,5 +1027,19 @@ version: 26.3-6.0.8
         assert!(id.starts_with("ident-"), "{id}");
         assert!(version.is_empty());
         let _ = fs::remove_file(one);
+    }
+
+    #[test]
+    fn reads_a_jar_held_in_memory() {
+        let path = jar("bytes", "plugin.yml", "name: OurGuild
+version: 2.0
+");
+        let bytes = fs::read(&path).unwrap();
+        let _ = fs::remove_file(path);
+        assert_eq!(
+            identity_of_bytes(&bytes, "x"),
+            Some(("OurGuild".into(), "OurGuild".into(), "2.0".into()))
+        );
+        assert_eq!(identity_of_bytes(b"not a zip", "x"), None);
     }
 }

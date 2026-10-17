@@ -19,6 +19,7 @@ final class EventLog {
     private final BiConsumer<String, Throwable> onTrouble;
     private final Queue<String> pending = new ConcurrentLinkedQueue<>();
     private final AtomicReference<String> pendingLive = new AtomicReference<>();
+    private final AtomicReference<String> pendingLoaded = new AtomicReference<>();
 
     private LocalDate sweptOn;
 
@@ -37,8 +38,13 @@ final class EventLog {
         pendingLive.set(json);
     }
 
+    void setLoaded(String json) {
+        pendingLoaded.set(json);
+    }
+
     void flush() {
         writeLive();
+        writeNow(pendingLoaded, "loaded.json");
         LocalDate today = LocalDate.now();
         append("events-" + today + ".jsonl");
         sweep(today);
@@ -99,17 +105,21 @@ final class EventLog {
     }
 
     private void writeLive() {
-        String json = pendingLive.getAndSet(null);
+        writeNow(pendingLive, "live.json");
+    }
+
+    private void writeNow(AtomicReference<String> pending, String name) {
+        String json = pending.getAndSet(null);
         if (json == null) {
             return;
         }
         try {
             Files.createDirectories(folder);
-            Path temporary = folder.resolve("live.json.tmp");
+            Path temporary = folder.resolve(name + ".tmp");
             Files.writeString(temporary, json, StandardCharsets.UTF_8);
             Files.move(
                     temporary,
-                    folder.resolve("live.json"),
+                    folder.resolve(name),
                     StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException error) {
             onTrouble.accept("Couldn't write the current state.", error);

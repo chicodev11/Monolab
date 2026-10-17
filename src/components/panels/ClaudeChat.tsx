@@ -22,6 +22,29 @@ function remember(key: string, value: string) {
     localStorage.setItem(key, value);
   } catch {}
 }
+const STARTERS: { icon: "puzzle" | "alert" | "gauge" | "sliders"; title: string; prompt: string }[] = [
+  {
+    icon: "puzzle",
+    title: "Make a plugin",
+    prompt: "I want a custom plugin (or mod) for this server. Ask me what it should do, then build it, add it to the server and tell me how to test it.",
+  },
+  {
+    icon: "alert",
+    title: "Find why it crashed",
+    prompt: "Read the latest crash reports and logs for this server, find the cause and tell me how to fix it. Don't change anything until I agree.",
+  },
+  {
+    icon: "gauge",
+    title: "Find the lag",
+    prompt: "Check the lag diagnosis, recent logs and settings for this server and tell me what is making it slow and what to change.",
+  },
+  {
+    icon: "sliders",
+    title: "Tune the settings",
+    prompt: "Review server.properties, the start options and the installed mods for this server and suggest settings that make it run better. Explain each change before making it.",
+  },
+];
+
 const DRAFT_KEY = "monolab-claude-draft:";
 type Draft = { text: string; attached: string[] };
 const draftPictures = new Map<string, Picture[]>();
@@ -583,6 +606,21 @@ export function ClaudeChat({
             <Icon name="sparkles" />
             <strong>{tr("Chat with the {0} agent", [server.name])}</strong>
             <p className="muted">{engine === "codex" ? tr("It can read and edit server files, check logs and build plugins for you. It works without asking, within the scope you pick below.") : tr("Reads and edits server files, checks logs and creates plugins. Asks here before changing files or running commands.")}</p>
+            <div className="chat-starters">
+              {STARTERS.map((one) => (
+                <button
+                  key={one.title}
+                  className="chat-starter"
+                  onClick={() => {
+                    setDraft(tr(one.prompt));
+                    requestAnimationFrame(() => input.current?.focus());
+                  }}
+                >
+                  <Icon name={one.icon} />
+                  <span>{tr(one.title)}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {model.items.map((item) => {

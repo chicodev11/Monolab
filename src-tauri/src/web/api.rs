@@ -48,6 +48,8 @@ const READS: &[&str] = &[
     "get_servers_root",
     "list_trash_instances",
     "read_live",
+    "read_loaded_chunks",
+    "list_runs",
     "diagnose_lag",
     "addon_status",
     "read_server_properties",

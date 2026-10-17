@@ -98,6 +98,12 @@ export function UpdateDialog({
             <Icon name="close" />
           </button>
         </header>
+        {rows.some((row) => row.update.issues?.length) && (
+          <p className="upd-issue-note">
+            <Icon name="alert" />
+            {tr("Some updates need mods you don't have, or clash with mods you have. Check the notes below before updating.")}
+          </p>
+        )}
         <div className="upd-row upd-colhead">
           <input type="checkbox" checked={allOn} aria-label={tr("Select all")} onChange={() => setChecked(allOn ? new Set() : new Set(rows.map((row) => row.update.fileName)))} />
           <span>{tr("Name")}</span>
@@ -142,6 +148,14 @@ export function UpdateDialog({
                     </button>
                   </span>
                 </div>
+                {(row.update.issues ?? []).map((issue) => (
+                  <p key={issue.kind + issue.project} className={`upd-issue ${issue.kind}`}>
+                    <Icon name="alert" />
+                    {issue.kind === "missing"
+                      ? tr("The new version needs {0}, which isn't installed.", [issue.project])
+                      : tr("The new version doesn't work with {0}, which is installed.", [issue.project])}
+                  </p>
+                ))}
                 {open === key && pick && (
                   <div className="upd-log">
                     {pick.changelogHtml ? (

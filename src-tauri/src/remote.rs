@@ -954,6 +954,7 @@ pub async fn start(
     folder: &str,
     id: &str,
     command: &str,
+    restart: bool,
 ) -> Result<(), String> {
     let conn = connect(app, host_id).await?;
     let holder = holder_of(&conn).await?;
@@ -962,7 +963,7 @@ pub async fn start(
         return Err("This server is already running.".into());
     }
     let _ = conn.run(&format!("rm -f {}", quote(&launch_log(id)))).await;
-    conn.run(&holder.start(&name, folder, &launch_wrapper(id, command)))
+    conn.run(&holder.start(&name, folder, &launch_wrapper(id, command, restart)))
         .await?
         .ok()?;
     Ok(())
@@ -1276,11 +1277,25 @@ pub fn launch_log(id: &str) -> String {
     format!("/tmp/monolab-{}.log", Holder::session(id))
 }
 
-pub fn launch_wrapper(id: &str, command: &str) -> String {
-    let inner = format!(
-        "{{ {command}\n}} 2> >(tee {} >&2); code=$?; wait $!; exit $code",
-        quote(&launch_log(id))
-    );
+const RESTART_LOOP: &str = r#"tries=()
+while :; do
+{ @COMMAND@
+} 2> >(tee -a @LOG@ >&2); code=$?; wait $!
+tail -n 400 logs/latest.log 2>/dev/null | grep -q 'Stopping the server' && exit $code
+now=$(date +%s); kept=(); for t in "${tries[@]}"; do [ $((now - t)) -lt 600 ] && kept+=("$t"); done; tries=("${kept[@]}")
+if [ ${#tries[@]} -ge 3 ]; then echo '[Monolab] Crashed three times within 10 minutes. Not restarting.'; exit $code; fi
+tries+=("$now")
+echo "[Monolab] The server stopped unexpectedly (exit $code). Restarting in 5 seconds (${#tries[@]}/3)."
+sleep 5
+done"#;
+
+pub fn launch_wrapper(id: &str, command: &str, restart: bool) -> String {
+    let log = quote(&launch_log(id));
+    let inner = if restart {
+        RESTART_LOOP.replace("@LOG@", &log).replace("@COMMAND@", command)
+    } else {
+        format!("{{ {command}\n}} 2> >(tee {log} >&2); code=$?; wait $!; exit $code")
+    };
     format!("bash -lc {}", quote(&inner))
 }
 
@@ -2867,7 +2882,7 @@ mod tests {
 
     #[test]
     fn launches_through_a_login_shell() {
-        let line = launch_wrapper("abc.1", "cd x && java -jar 'my server.jar' nogui");
+        let line = launch_wrapper("abc.1", "cd x && java -jar 'my server.jar' nogui", false);
         assert!(line.starts_with("bash -lc '"), "{line}");
         assert!(line.contains("/tmp/monolab-se-abc-1.log"), "{line}");
         assert!(!line.contains("exec "), "{line}");

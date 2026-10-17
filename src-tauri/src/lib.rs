@@ -35,10 +35,12 @@ mod nbt;
 mod net;
 mod playit;
 mod rcon;
+mod runlog;
 mod remote;
 mod sniff;
 mod spark;
 mod tasks;
+mod trim;
 mod textures;
 mod tunnel;
 mod web;
@@ -497,6 +499,7 @@ struct AppState {
     remote_kick: Arc<tokio::sync::Notify>,
     panel_live: Arc<Mutex<HashMap<String, panel_live::PanelLive>>>,
     panel_checked: Arc<Mutex<HashSet<String>>>,
+    panel_unreachable: Arc<Mutex<HashSet<String>>>,
     panel_sockets: Arc<Mutex<HashSet<String>>>,
     panel_backlog: Arc<Mutex<HashSet<String>>>,
     panel_kick: Arc<tokio::sync::Notify>,
@@ -851,6 +854,8 @@ struct AppSettings {
     open_console_on_start: bool,
     default_memory_mib: u32,
     keep_backup_days: u32,
+    #[serde(default)]
+    keep_auto_backups: u32,
     console_line_limit: u32,
     #[serde(default)]
     backup_root: String,
@@ -880,6 +885,7 @@ impl Default for AppSettings {
             open_console_on_start: true,
             default_memory_mib: 4096,
             keep_backup_days: 30,
+            keep_auto_backups: 0,
             console_line_limit: 2000,
             backup_root: String::new(),
             backup_worlds_only: false,
@@ -936,6 +942,7 @@ fn set_app_settings(app: AppHandle, settings: AppSettings) -> Result<AppSettings
     let settings = AppSettings {
         default_memory_mib: settings.default_memory_mib.clamp(512, 64 * 1024),
         keep_backup_days: settings.keep_backup_days.min(3650),
+        keep_auto_backups: settings.keep_auto_backups.min(1000),
         console_line_limit: settings.console_line_limit.clamp(200, 20_000),
         web_accounts: read_app_settings(&app).web_accounts,
         ..settings
@@ -1208,8 +1215,8 @@ fn backup_for_task(app: &AppHandle, state: &AppState, id: &str) -> Result<String
 
     let made = made?;
     record_audit(app, id, "Server", "Scheduled backup", &made.file_name);
-    let keep = set.keep_backup_days;
-    off_runtime(move || backups::sweep(&vault, keep));
+    let (keep, count) = (set.keep_backup_days, set.keep_auto_backups);
+    off_runtime(move || backups::sweep(&vault, keep, count));
     Ok(if running {
         format!("Paused saving and backed up: {}", made.file_name)
     } else {
@@ -1274,6 +1281,22 @@ fn backup_root(app: &AppHandle) -> Option<PathBuf> {
     let set = read_app_settings(app).backup_root;
     let path = PathBuf::from(set.trim());
     (path.is_dir()).then_some(path)
+}
+
+pub(crate) fn note_run(app: &AppHandle, id: &str, kind: &str, detail: &str) {
+    if let Ok(folder) = instance_data_dir(app, id) {
+        runlog::record(&folder, kind, detail);
+    }
+}
+
+fn ran_minutes(process: &ManagedProcess) -> u64 {
+    process.started_at.elapsed().map(|one| one.as_secs() / 60).unwrap_or(0)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn list_runs(app: AppHandle, id: String) -> Result<Vec<runlog::RunEntry>, String> {
+    Ok(runlog::list(&instance_data_dir(&app, &id)?))
 }
 
 fn instance_data_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
@@ -1408,8 +1431,9 @@ async fn create_backup(
     let made =
         off_runtime(|| backups::create(Path::new(&instance.path), &note, &vault, false))?;
     record_audit(&app, &id, "Server", "Backup", &made.file_name);
-    let keep = read_app_settings(&app).keep_backup_days;
-    off_runtime(move || backups::sweep(&vault, keep));
+    let set = read_app_settings(&app);
+    let (keep, count) = (set.keep_backup_days, set.keep_auto_backups);
+    off_runtime(move || backups::sweep(&vault, keep, count));
     Ok(made)
 }
 
@@ -1809,6 +1833,8 @@ pub(crate) fn web_invoke(
         "get_servers_root" => ok(get_servers_root(app.clone())?),
         "list_trash_instances" => ok(list_trash_instances(app.clone())?),
         "read_live" => ok(tauri::async_runtime::block_on(read_live(app.clone(), arg(body, "id")?))?),
+        "list_runs" => ok(list_runs(app.clone(), arg(body, "id")?)?),
+        "read_loaded_chunks" => ok(tauri::async_runtime::block_on(read_loaded_chunks(app.clone(), arg(body, "id")?))?),
         "diagnose_lag" => ok(tauri::async_runtime::block_on(diagnose_lag(app.clone(), app.state(), arg(body, "id")?))?),
         "addon_status" => ok(tauri::async_runtime::block_on(addon_status(app.clone(), app.state(), arg(body, "id")?))?),
         "read_server_properties" => ok(tauri::async_runtime::block_on(read_server_properties(app.clone(), arg(body, "id")?))?),
@@ -4364,6 +4390,8 @@ fn instance_view(instance: ServerInstance, state: &AppState) -> InstanceView {
         let live = state.panel_live.lock().expect("panel state poisoned").get(&instance.id).cloned();
         let checking = live.is_none()
             && !state.panel_checked.lock().expect("panel state poisoned").contains(&instance.id);
+        let unreachable = live.is_none()
+            && state.panel_unreachable.lock().expect("panel state poisoned").contains(&instance.id);
         let now = live.as_ref().map(|one| one.stats.state.as_str()).unwrap_or("offline");
         let status = match now {
             "running" | "starting" => "running",
@@ -4378,7 +4406,7 @@ fn instance_view(instance: ServerInstance, state: &AppState) -> InstanceView {
             crash_reason: None,
             ready: now == "running",
             checking,
-            unreachable: false,
+            unreachable,
             status: status.into(),
             instance,
         };
@@ -5724,6 +5752,7 @@ fn watch_process(
             Ok(Some(exit)) => {
                 let stop_requested = process.stop_requested_at.is_some();
                 let crashed_now = !stop_requested || (process.stop_from_log && process.crash_seen);
+                let ran = ran_minutes(process);
                 processes.remove(&server_id);
                 if crashed_now {
                     crashed
@@ -5731,7 +5760,9 @@ fn watch_process(
                         .expect("crash state poisoned")
                         .insert(server_id.clone(), format!("exit code {:?}", exit.code()));
                     let _ = announce(&app, &server_id, "Crash", "The server process crashed.");
+                    note_run(&app, &server_id, "crash", &format!("exit code {} · ran {} min", exit.code().map_or("?".into(), |code| code.to_string()), ran));
                 } else {
+                    note_run(&app, &server_id, "stop", &format!("Ran {} min", ran));
                     crashed
                         .lock()
                         .expect("crash state poisoned")
@@ -5754,6 +5785,7 @@ fn watch_process(
                     .insert(server_id.clone(), error.to_string());
                 drop(processes);
                 let _ = announce(&app, &server_id, "Crash", "Could not check the server process.");
+                note_run(&app, &server_id, "crash", &error.to_string());
                 let _ = app.emit(
                     "server-status",
                     serde_json::json!({ "serverId": server_id, "status": "crashed" }),
@@ -6025,6 +6057,7 @@ fn restart_after_crash(app: &AppHandle, server_id: &str) {
                 let note = format!("Restarted after a crash ({tries}/{MOST}).");
                 let _ = announce(&app, &id, "Crash", &note);
                 record_audit(&app, &id, "Server", "Auto-restart after crash", &note);
+                note_run(&app, &id, "restart", &note);
             }
             Err(reason) if reason.contains("already running") => {}
             Err(reason) => {
@@ -6306,6 +6339,7 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
         "Server process started.",
     );
     mark_last_run(&app, &instance.id);
+    note_run(&app, &server_id, "start", "");
     watch_process(app, state.processes.clone(), state.crashed.clone(), server_id);
     Ok(())
 }
@@ -6370,6 +6404,7 @@ async fn restart_remote(
             ));
         }
         remote::send_line(app, &host, &id, "stop", Some(live.session.clone())).await?;
+        runlog::asked_to_stop(&id);
         record_audit(app, &id, "Server", "Restart via SSH", "Stops, then starts again.");
         let _ = app.emit(
             "server-status",
@@ -6471,7 +6506,7 @@ async fn start_remote(
         }
     }
     apply_pending_remote(app, instance).await;
-    remote::start(app, &instance.remote_host, &instance.path, &id, &line).await?;
+    remote::start(app, &instance.remote_host, &instance.path, &id, &line, instance.crash_restart).await?;
     state
         .remote_starting
         .lock()
@@ -6649,6 +6684,9 @@ async fn panel_power(app: &AppHandle, state: &AppState, id: &str, signal: &str) 
         }
     }
     api.power(&target, signal).await?;
+    if signal != "start" {
+        runlog::asked_to_stop(id);
+    }
     let what = match signal {
         "start" => "Start via panel",
         "stop" => "Stop via panel",
@@ -6677,6 +6715,7 @@ async fn stop_instance_as(app: AppHandle, state: &AppState, id: String) -> Resul
     }
     if let Some(instance) = remote_instance(&app, &id)? {
         remote::send_line(&app, &instance.remote_host, &id, "stop", session_of(state, &id)).await?;
+        runlog::asked_to_stop(&id);
         record_audit(&app, &id, "Server", "Stop via SSH", "Sent stop to the console.");
         return Ok(());
     }
@@ -6702,6 +6741,7 @@ async fn force_stop_instance(
             .filter(|name| !name.is_empty());
         let pid = live.as_ref().map(|one| one.pid).unwrap_or(0);
         remote::force_stop(&app, &instance.remote_host, &id, session, pid).await?;
+        runlog::asked_to_stop(&id);
         state.remote_running.lock().expect("remote state poisoned").remove(&id);
         state.remote_starting.lock().expect("remote state poisoned").remove(&id);
         record_audit(
@@ -8048,7 +8088,7 @@ async fn render_map_tile(
                 .insert(key, one.clone());
             one
         };
-        let map = worldmap::render_view(&mut fetch, &palette, tx * span, ty * span, TILE, TILE, bpp, night, worldmap::void_color(&realm_name))?;
+        let map = worldmap::render_view(&mut fetch, &palette, tx * span, ty * span, TILE, TILE, bpp, night, worldmap::void_color(&realm_name), realm_name.ends_with("-cave"))?;
         use base64::Engine;
         let url = format!(
             "data:image/png;base64,{}",
@@ -8272,6 +8312,39 @@ async fn read_live(app: AppHandle, id: String) -> Result<Option<events::LiveStat
     Ok(live)
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct LoadedWorld {
+    world: String,
+    chunks: Vec<i32>,
+    forced: Vec<i32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct LoadedChunks {
+    at: f64,
+    worlds: Vec<LoadedWorld>,
+}
+
+fn loaded_from_text(text: &str) -> Option<LoadedChunks> {
+    let found: LoadedChunks = serde_json::from_str(text).ok()?;
+    let age = unix_now() as f64 * 1000.0 - found.at;
+    (age < 30_000.0).then_some(found)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn read_loaded_chunks(app: AppHandle, id: String) -> Result<Option<LoadedChunks>, String> {
+    let instance = instance_by_id(&app, &id)?;
+    if is_far(&instance) {
+        let at = format!("{}/loaded.json", remote_addon_data_dir(&instance));
+        return Ok(far_read(&app, &instance, &at).await.ok().and_then(|text| loaded_from_text(&text)));
+    }
+    let file = events::event_folder(Path::new(&instance.path)).join("loaded.json");
+    Ok(fs::read_to_string(file).ok().and_then(|text| loaded_from_text(&text)))
+}
+
 async fn read_live_inner(app: &AppHandle, id: &str) -> Result<Option<events::LiveState>, String> {
     let app = app.clone();
     let instance = instance_by_id(&app, id)?;
@@ -8444,6 +8517,7 @@ fn start_remote_watcher(app: AppHandle) {
         let mut answered: HashMap<String, std::time::Instant> = HashMap::new();
         let kick = app.state::<AppState>().remote_kick.clone();
         let mut first = true;
+        let mut rounds: u64 = 0;
         loop {
             if !first {
                 tokio::select! {
@@ -8512,6 +8586,23 @@ fn start_remote_watcher(app: AppHandle) {
                     }
                 }
                 starting.retain(|id, _| alive.contains_key(id));
+                if rounds > 0 {
+                    for one in instances.iter().filter(|one| !one.remote_host.is_empty() && !blind.contains(&one.remote_host)) {
+                        let was = have.contains_key(&one.id);
+                        let now = alive.contains_key(&one.id);
+                        let reachable = !state.remote_unreachable.lock().expect("remote state poisoned").contains(&one.remote_host);
+                        if was && !now && reachable {
+                            if runlog::take_asked(&one.id) {
+                                note_run(&app, &one.id, "stop", "");
+                            } else {
+                                note_run(&app, &one.id, "crash", "Stopped without a stop request (crash or stopped outside the app)");
+                            }
+                        } else if !was && now {
+                            note_run(&app, &one.id, "start", "");
+                        }
+                    }
+                }
+                rounds += 1;
                 *have = alive.clone();
             }
             for one in instances.iter().filter(|one| alive.contains_key(&one.id)) {
@@ -12762,6 +12853,184 @@ async fn read_world_settings(
     nbt::read_level_data(&path)
 }
 
+#[derive(Clone, Debug, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct TrimReport {
+    regions: u32,
+    chunks: u32,
+    removed: u32,
+    bytes_before: f64,
+    bytes_after: f64,
+    applied: bool,
+    backup: String,
+}
+
+fn trim_candidates(level: &str, realm: &str) -> Vec<String> {
+    match realm {
+        "nether" => vec![
+            format!("{level}/dimensions/minecraft/the_nether"),
+            format!("{level}/DIM-1"),
+            format!("{level}_nether/DIM-1"),
+        ],
+        "end" => vec![
+            format!("{level}/dimensions/minecraft/the_end"),
+            format!("{level}/DIM1"),
+            format!("{level}_the_end/DIM1"),
+        ],
+        _ => vec![format!("{level}/dimensions/minecraft/overworld"), level.to_string()],
+    }
+}
+
+async fn trim_list(app: &AppHandle, instance: &ServerInstance, relative: &str) -> Vec<(String, u64)> {
+    if is_far(instance) {
+        return far_list(app, instance, relative)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|one| !one.directory)
+            .map(|one| (one.name, one.size_bytes))
+            .collect();
+    }
+    fs::read_dir(Path::new(&instance.path).join(relative))
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|one| one.file_type().is_ok_and(|kind| kind.is_file()))
+                .map(|one| (one.file_name().to_string_lossy().to_string(), one.metadata().map(|meta| meta.len()).unwrap_or(0)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+async fn trim_read(app: &AppHandle, instance: &ServerInstance, relative: &str) -> Option<Vec<u8>> {
+    if is_far(instance) {
+        return far_read_bytes(app, instance, relative, 256 * 1024 * 1024).await.ok();
+    }
+    fs::read(Path::new(&instance.path).join(relative)).ok()
+}
+
+async fn trim_write(app: &AppHandle, instance: &ServerInstance, relative: &str, bytes: Option<Vec<u8>>) -> Result<(), String> {
+    if is_far(instance) {
+        let body = bytes.unwrap_or_else(|| vec![0u8; 8192]);
+        return remote::upload(app, &instance.remote_host, &instance.path, relative, &body).await;
+    }
+    let path = Path::new(&instance.path).join(relative);
+    match bytes {
+        Some(body) => {
+            let temp = path.with_extension("mca.trimming");
+            fs::write(&temp, body).map_err(|error| format!("Could not write {relative}: {error}"))?;
+            fs::rename(&temp, &path).map_err(|error| format!("Could not replace {relative}: {error}"))
+        }
+        None => fs::remove_file(&path).map_err(|error| format!("Could not delete {relative}: {error}")),
+    }
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+#[allow(clippy::too_many_arguments)]
+async fn trim_chunks(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    realm: String,
+    max_minutes: u32,
+    keep_radius: u32,
+    apply: bool,
+) -> Result<TrimReport, String> {
+    let instance = instance_by_id(&app, &id)?;
+    if !instance.panel_host.is_empty() {
+        return Err("Chunk cleanup isn't available for panel servers yet.".into());
+    }
+    let level = if is_far(&instance) {
+        far_read(&app, &instance, "server.properties")
+            .await
+            .ok()
+            .and_then(|text| text.lines().find_map(|line| line.trim().strip_prefix("level-name=")).map(|value| value.trim().to_string()))
+            .filter(|value| !value.is_empty() && !value.contains(['/', '\\', ':']))
+            .unwrap_or_else(|| "world".into())
+    } else {
+        level_name_of(&instance)
+    };
+    let spawn = if is_far(&instance) {
+        nbt::read_level_data(&pull_remote_world(&app, &instance, &level).await?)?.spawn
+    } else {
+        nbt::read_level_data(&Path::new(&instance.path).join(&level).join("level.dat"))?.spawn
+    };
+    let mut folder = None;
+    for candidate in trim_candidates(&level, &realm) {
+        let regions = trim_list(&app, &instance, &format!("{candidate}/region")).await;
+        if regions.iter().any(|(name, _)| trim::region_coords(name).is_some()) {
+            folder = Some((candidate, regions));
+            break;
+        }
+    }
+    let Some((folder, regions)) = folder else {
+        return Err("This dimension has no region files yet.".into());
+    };
+    let regions: Vec<(String, u64)> = regions.into_iter().filter(|(name, _)| trim::region_coords(name).is_some()).collect();
+    let rule = trim::Rule {
+        max_minutes,
+        spawn: (spawn[0].div_euclid(16), spawn[2].div_euclid(16)),
+        keep_radius: keep_radius.min(512) as i32,
+    };
+    let mut backup = String::new();
+    if apply {
+        if is_far(&instance) {
+            ensure_remote_stopped(&app, state.inner(), &instance).await?;
+            backup = remote_backup(&app, &instance, "before-chunk-trim").await?;
+        } else {
+            ensure_stopped(state.inner(), &id)?;
+            let vault = backup_folder(&app, &instance)?;
+            let server = PathBuf::from(&instance.path);
+            backup = tauri::async_runtime::spawn_blocking(move || backups::create(&server, "Before chunk trim", &vault, true))
+                .await
+                .map_err(|error| error.to_string())??
+                .file_name;
+        }
+        record_audit(&app, &id, "Server", "Chunk cleanup", &format!("{folder} · {backup}"));
+    }
+    let mut report = TrimReport { regions: regions.len() as u32, chunks: 0, removed: 0, bytes_before: 0.0, bytes_after: 0.0, applied: apply, backup };
+    let total = regions.len();
+    for (done, (name, _)) in regions.into_iter().enumerate() {
+        let _ = app.emit("trim-progress", serde_json::json!({ "serverId": id, "done": done, "total": total }));
+        let (rx, rz) = trim::region_coords(&name).unwrap_or((0, 0));
+        let relative = format!("{folder}/region/{name}");
+        let Some(bytes) = trim_read(&app, &instance, &relative).await else { continue };
+        let before = bytes.len();
+        let (plan, smaller) = tauri::async_runtime::spawn_blocking(move || {
+            let plan = trim::plan(&bytes, rx, rz, &rule);
+            let smaller = if plan.removed.is_empty() { Some(bytes) } else { trim::strip(&bytes, &plan.removed) };
+            (plan, smaller)
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+        report.chunks += plan.total as u32;
+        report.removed += plan.removed.len() as u32;
+        report.bytes_before += before as f64;
+        report.bytes_after += smaller.as_ref().map_or(0, Vec::len) as f64;
+        if !apply || plan.removed.is_empty() {
+            continue;
+        }
+        trim_write(&app, &instance, &relative, smaller).await?;
+        for side in ["entities", "poi"] {
+            let other = format!("{folder}/{side}/{name}");
+            let Some(extra) = trim_read(&app, &instance, &other).await else { continue };
+            let removed = plan.removed.clone();
+            let cut = tauri::async_runtime::spawn_blocking(move || trim::strip(&extra, &removed))
+                .await
+                .map_err(|error| error.to_string())?;
+            trim_write(&app, &instance, &other, cut).await?;
+        }
+    }
+    let _ = app.emit("trim-progress", serde_json::json!({ "serverId": id, "done": total, "total": total }));
+    if apply {
+        let cache = app.state::<AppState>();
+        cache.map_cells.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clear();
+        cache.map_tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clear();
+    }
+    Ok(report)
+}
+
 const WORLD_SIDE_FILES: [&str; 2] = [
     "dimensions/minecraft/overworld/data/minecraft/game_rules.dat",
     "dimensions/minecraft/overworld/data/minecraft/world_gen_settings.dat",
@@ -13235,12 +13504,22 @@ async fn remote_addon_list(app: &AppHandle, instance: &ServerInstance) -> Vec<ad
                 let record = installs
                     .iter()
                     .find(|each| each.filename.as_deref() == Some(plain.as_str()) && each.source == "modrinth");
+                let facts = panel_jar_facts()
+                    .lock()
+                    .expect("jar facts poisoned")
+                    .get(&format!("{}/{folder}/{plain}", target.ident))
+                    .filter(|(size, modified, _)| *size == one.size_bytes && *modified == one.modified_at)
+                    .map(|(_, _, facts)| facts.clone());
                 list.push(addons::InstalledAddon {
                     display_name: record
                         .and_then(|each| each.project_title.clone())
+                        .or_else(|| facts.as_ref().map(|(_, name, _)| name.clone()))
                         .unwrap_or_else(|| plain.trim_end_matches(".jar").to_string()),
-                    mod_id: String::new(),
-                    version: record.and_then(|each| each.version_name.clone()).unwrap_or_default(),
+                    mod_id: facts.as_ref().map(|(id, _, _)| id.clone()).unwrap_or_default(),
+                    version: record
+                        .and_then(|each| each.version_name.clone())
+                        .or_else(|| facts.as_ref().map(|(_, _, version)| version.clone()))
+                        .unwrap_or_default(),
                     enabled: one.name.ends_with(".jar"),
                     file_name: one.name,
                     sha512: String::new(),
@@ -13281,6 +13560,13 @@ async fn remote_addon_list(app: &AppHandle, instance: &ServerInstance) -> Vec<ad
     list
 }
 
+type JarFactsCache = Mutex<HashMap<String, (u64, u64, (String, String, String))>>;
+
+fn panel_jar_facts() -> &'static JarFactsCache {
+    static FACTS: std::sync::OnceLock<JarFactsCache> = std::sync::OnceLock::new();
+    FACTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 async fn panel_backfill_market(api: &panel::Api, target: &panel::Target) {
     use sha2::{Digest, Sha512};
     static UNKNOWN: std::sync::OnceLock<Mutex<HashSet<String>>> = std::sync::OnceLock::new();
@@ -13300,6 +13586,12 @@ async fn panel_backfill_market(api: &panel::Api, target: &panel::Target) {
             let Ok(bytes) = api.read_bytes(target, &format!("{folder}/{}", one.name), 100 * 1024 * 1024).await else { continue };
             let hash: String = Sha512::digest(&bytes).iter().map(|byte| format!("{byte:02x}")).collect();
             unknown.lock().expect("market poisoned").insert(key);
+            if let Some(facts) = addons::identity_of_bytes(&bytes, plain.trim_end_matches(".jar")) {
+                panel_jar_facts()
+                    .lock()
+                    .expect("jar facts poisoned")
+                    .insert(format!("{}/{folder}/{plain}", target.ident), (one.size_bytes, one.modified_at, facts));
+            }
             pending.push((kind.to_string(), plain, hash));
         }
     }
@@ -14284,6 +14576,23 @@ fn write_mrpack(app: &AppHandle, instance: &ServerInstance, destination: &Path, 
 
 #[tauri::command(async)]
 #[specta::specta]
+fn save_map_png(target: String, png: String) -> Result<(), String> {
+    use base64::Engine;
+    let destination = PathBuf::from(target.trim());
+    if destination.extension().is_none_or(|ext| !ext.eq_ignore_ascii_case("png")) {
+        return Err("The file name must end with .png.".into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(png.trim())
+        .map_err(|_| "The picture data is damaged.".to_string())?;
+    if !bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        return Err("The picture data is damaged.".into());
+    }
+    fs::write(&destination, bytes).map_err(|error| format!("Could not save the picture: {error}"))
+}
+
+#[tauri::command(async)]
+#[specta::specta]
 fn export_settings(app: AppHandle, target: String) -> Result<usize, String> {
     let destination = PathBuf::from(target.trim());
     if destination.extension().is_none_or(|ext| ext != "json") {
@@ -14563,6 +14872,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             list_event_days,
             perf_history,
             read_live,
+            read_loaded_chunks,
+            list_runs,
+            trim_chunks,
             diagnose_lag,
             get_server_ping,
             list_players,
@@ -14616,6 +14928,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             export_mrpack,
             export_mrpack_download,
             export_settings,
+            save_map_png,
             import_settings,
             list_panel_hosts,
             save_panel_host,
@@ -14770,6 +15083,7 @@ pub fn run() {
             remote_kick: Arc::new(tokio::sync::Notify::new()),
             panel_live: Arc::new(Mutex::new(HashMap::new())),
             panel_checked: Arc::new(Mutex::new(HashSet::new())),
+            panel_unreachable: Arc::new(Mutex::new(HashSet::new())),
             panel_sockets: Arc::new(Mutex::new(HashSet::new())),
             panel_backlog: Arc::new(Mutex::new(HashSet::new())),
             panel_kick: Arc::new(tokio::sync::Notify::new()),
@@ -14797,10 +15111,10 @@ pub fn run() {
             start_panel_sync(app.handle().clone());
             let handle = app.handle().clone();
             std::thread::spawn(move || {
-                let keep = read_app_settings(&handle).keep_backup_days;
+                let set = read_app_settings(&handle);
                 for instance in load_instances(&handle).unwrap_or_default() {
                     if let Ok(vault) = backup_folder(&handle, &instance) {
-                        backups::sweep(&vault, keep);
+                        backups::sweep(&vault, set.keep_backup_days, set.keep_auto_backups);
                     }
                 }
             });

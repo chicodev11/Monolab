@@ -11,6 +11,8 @@ import type {
   CoreBuild as GenCoreBuild,
   AddonStatus as GenAddonStatus,
   LiveState_Serialize as GenLiveState,
+  LoadedChunks,
+  RunEntry,
   ServerLogEvent as GenLog,
   ParsedLogEntry as GenParsedLog,
   PropertyInfo as GenProperty,
@@ -103,6 +105,8 @@ const WorldMap = lazy(() =>
 import { DragScroll } from "./components/ui/DragScroll";
 import { DependencyDialog } from "./components/dialogs/DependencyDialog";
 import { VersionDialog, type AddonVersion } from "./components/dialogs/VersionDialog";
+import { CompareDialog } from "./components/dialogs/CompareDialog";
+import { TrimDialog } from "./components/dialogs/TrimDialog";
 import { UpdateDialog, type UpdateChoice, type UpdateRow } from "./components/dialogs/UpdateDialog";
 import { format, language, languageCodes, languageNames, setLanguage, t, tr, trBack, wordsFor } from "./lib/i18n";
 import { logStore } from "./lib/logStore";
@@ -495,7 +499,7 @@ function inRealm(world: string | null | undefined, realm: string): boolean {
   const name = world ?? "";
   if (name.endsWith("_nether")) return realm === "nether";
   if (name.endsWith("_the_end")) return realm === "end";
-  if (name.includes(":")) return false;
+  if (name.includes(":")) return realm === name.toLowerCase().replace(/[:/]/g, ".");
   return realm === "overworld";
 }
 
@@ -642,6 +646,8 @@ function App() {
   const [playerSpots, setPlayerSpots] = useState<PlayerSpot[]>([]);
   const [mapRealm, setMapRealm] = useState("overworld");
   const [mapCave, setMapCave] = useState<boolean | null>(null);
+  const [mapChunksOn, setMapChunksOn] = useState(false);
+  const [loadedChunks, setLoadedChunks] = useState<LoadedChunks | null>(null);
   const [mapBusy, setMapBusy] = useState(false);
   const [updatePlan, setUpdatePlan] = useState<UpdateRow[] | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
@@ -814,6 +820,7 @@ function App() {
     openConsoleOnStart: true,
     defaultMemoryMib: 4096,
     keepBackupDays: 30,
+    keepAutoBackups: 0,
     consoleLineLimit: 2000,
     backupRoot: "",
     backupWorldsOnly: false,
@@ -925,6 +932,9 @@ function App() {
     () => localStorage.getItem("monolab-desktop-alerts") === "enabled",
   );
   const [logView, setLogView] = useState("read");
+  const [runs, setRuns] = useState<RunEntry[] | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [trimOpen, setTrimOpen] = useState(false);
   const [logQuery, setLogQuery] = useState("");
   const logLevel = "All";
   const [command, setCommand] = useState("");
@@ -1578,6 +1588,41 @@ function App() {
     const timer = window.setInterval(() => void loadPlayit(), playitPeriod);
     return () => window.clearInterval(timer);
   }, [webReady, page, tool, playitPeriod]);
+  const chunkPeriod = period(5_000, attention);
+  const chunkServer = mapOpen ? selected?.id ?? null : null;
+  useEffect(() => {
+    if (webReady !== true || !chunkServer) {
+      setLoadedChunks(null);
+      return;
+    }
+    const pull = () =>
+      void commands.readLoadedChunks(chunkServer).then(setLoadedChunks, () => setLoadedChunks(null));
+    pull();
+    if (!mapChunksOn || chunkPeriod === null) return;
+    const timer = window.setInterval(pull, chunkPeriod);
+    return () => window.clearInterval(timer);
+  }, [webReady, chunkServer, mapChunksOn, chunkPeriod]);
+  const mapChunks = useMemo(() => {
+    if (!loadedChunks || !selected) return null;
+    const loaded: number[] = [];
+    const forced: number[] = [];
+    for (const one of loadedChunks.worlds) {
+      if (!inRealm(one.world, mapRealm)) continue;
+      loaded.push(...one.chunks);
+      forced.push(...one.forced);
+    }
+    return { loaded, forced, known: selected.core !== "Fabric" };
+  }, [loadedChunks, mapRealm, selected]);
+  const runServer = selected?.id ?? null;
+  useEffect(() => {
+    if (webReady !== true || tool !== "logs" || logView !== "runs" || !runServer) return;
+    const id = runServer;
+    setRuns(null);
+    const pull = () => void commands.listRuns(id).then(setRuns, () => setRuns([]));
+    pull();
+    const timer = window.setInterval(pull, 10_000);
+    return () => window.clearInterval(timer);
+  }, [webReady, tool, logView, runServer]);
   const busyPeriod = period(1_500, attention);
   useEffect(() => {
     const busy = instances.some(
@@ -4339,6 +4384,43 @@ function App() {
       void loadBookmarks();
     }
   }
+  async function saveMapPng(png: string) {
+    if (!selected) return;
+    const name = `${selected.name}-${mapRealm}.png`;
+    if (onWeb) {
+      offerDownload(name, png, "image/png");
+      return;
+    }
+    const target = await save({
+      title: tr("Save PNG"),
+      defaultPath: name,
+      filters: [{ name: "PNG", extensions: ["png"] }],
+    });
+    if (typeof target !== "string") return;
+    await call(() => commands.saveMapPng(target, png), tr("Saved the map as a picture."));
+  }
+  async function bookmarkSpot(x: number, z: number) {
+    if (!selected) return;
+    const name = (
+      await askText(tr("Bookmark X {0}, Z {1}", [x, z]), tr("Name"), "", tr("Save"))
+    )?.trim();
+    if (!name) return;
+    const ok = await call(
+      () =>
+        commands.saveBookmark({
+          id: null,
+          serverId: selected.id,
+          name,
+          dimension: mapRealm,
+          x,
+          y: 64,
+          z,
+          note: "",
+        }),
+      tr("Saved {0}.", [name]),
+    );
+    if (ok) void loadBookmarks();
+  }
   async function removeBookmark(mark: Bookmark) {
     if (
       !(await confirmAction(
@@ -5675,6 +5757,7 @@ function App() {
           { id: "read", label: tr("Logs") },
           { id: "events", label: tr("Summary") },
           { id: "crash", label: crashReports.length ? tr("Crashes {0}", [crashReports.length]) : tr("Crashes") },
+          { id: "runs", label: tr("Run history") },
           { id: "audit", label: tr("App log") },
         ].map((one) => (
           <button
@@ -6276,11 +6359,15 @@ function App() {
                 <span />
               </label>
             </div>
-            {!selected.remoteHost && !selected.panelHost && (
+            {!selected.panelHost && (
               <div className="setting-row">
                 <div>
                   <strong>{tr("Restart on crash")}</strong>
-                  <small>{tr("Restarts after an unexpected shutdown, excluding the Stop button or stop command. Up to 3 times in 10 minutes.")}</small>
+                  <small>
+                    {selected.remoteHost
+                      ? tr("The SSH server restarts it by itself, even while the app is closed. Up to 3 times in 10 minutes. Applies from the next start.")
+                      : tr("Restarts after an unexpected shutdown, excluding the Stop button or stop command. Up to 3 times in 10 minutes.")}
+                  </small>
                 </div>
                 <label className="switch">
                   <input
@@ -6473,6 +6560,10 @@ function App() {
               </button>
             )}
           </label>
+          <button className="button ghost small props-compare" onClick={() => setCompareOpen(true)}>
+            <Icon name="sliders" />
+            {tr("Compare with another server")}
+          </button>
           {properties.length === 0 && (
             <p className="muted tool-empty">
               {isNative(selected.core)
@@ -7105,7 +7196,9 @@ function App() {
                     })),
                 ] as MapPin[]
               }
-              onPick={(x, z) => setNotice(`X ${x}, Z ${z}`)}
+              onPick={(x, z) => void bookmarkSpot(x, z)}
+              onExport={(png) => void saveMapPng(png)}
+              chunks={mapChunks && { ...mapChunks, on: mapChunksOn, toggle: () => setMapChunksOn((was) => !was) }}
               cave={mapCave === null ? null : { on: mapCave, toggle: () => setMapCave((was) => !was) }}
             />
             </Suspense>
@@ -7144,6 +7237,12 @@ function App() {
           <div className="tool-top">
             <p>
               {tr("Detected world and dimension folders.")}</p>
+            {!selected.panelHost && worlds.length > 0 && (
+              <button className="button ghost" onClick={() => setTrimOpen(true)}>
+                <Icon name="grid" />
+                {tr("Clean up chunks")}
+              </button>
+            )}
             <button
               className="button secondary"
               onClick={() => void loadTool("worlds")}
@@ -7256,6 +7355,38 @@ function App() {
               <p className="alert-empty">{tr("No audit entries for this server yet.")}</p>
             )}
           </section>
+            </div>
+          )}
+          {logView === "runs" && (
+            <div className="log-view">
+              {runs === null ? (
+                <p className="muted tool-empty">{tr("Loading…")}</p>
+              ) : runs.length === 0 ? (
+                <EmptyState
+                  icon="clock"
+                  title={tr("No run history yet")}
+                  hint={tr("Starts, stops and crashes are recorded here from now on. SSH and panel servers are recorded while the app is open.")}
+                />
+              ) : (
+                <div className="run-list">
+                  {runs.map((one, index) => {
+                    const look = {
+                      start: { label: tr("Started"), tone: "ok" },
+                      stop: { label: tr("Stopped"), tone: "muted" },
+                      crash: { label: tr("Crashed"), tone: "danger" },
+                      restart: { label: tr("Restarted"), tone: "warn" },
+                    }[one.kind] ?? { label: one.kind, tone: "muted" };
+                    return (
+                      <article key={`${one.at}-${index}`} className={`run-${look.tone}`}>
+                        <span className="run-mark" />
+                        <strong>{look.label}</strong>
+                        <p>{trBack(one.detail)}</p>
+                        <time data-tip={date(one.at)}>{relativeTime(one.at)}</time>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
           {logView === "crash" && (
@@ -7883,6 +8014,25 @@ function App() {
             </div>
           )}
         </div>
+      )}
+      {trimOpen && selected && (
+        <TrimDialog
+          server={selected}
+          realms={["overworld", "nether", "end"].filter((one) => worlds.some((world) => (world.realm || "overworld") === one))}
+          confirm={confirmAction}
+          onClose={() => setTrimOpen(false)}
+          onDone={(message) => {
+            setNotice(message);
+            void loadTool("worlds");
+          }}
+        />
+      )}
+      {compareOpen && selected && (
+        <CompareDialog
+          current={selected}
+          others={instances.filter((one) => one.id !== selected.id)}
+          onClose={() => setCompareOpen(false)}
+        />
       )}
       {versionOpen && selected && (
         <div className="modal-backdrop roomy" onClick={() => setVersionOpen(false)}>
@@ -10447,6 +10597,27 @@ function App() {
                         }
                       />
                       <span>{tr(" days")}</span>
+                    </div>
+                  </div>
+                  <div className="setting-row">
+                    <div>
+                      <strong>{tr("Scheduled backups to keep")}</strong>
+                      <small>
+                        {tr("Older scheduled backups are removed once there are more than this. Manual backups stay. 0 keeps them all.")}</small>
+                    </div>
+                    <div className="setting-input">
+                      <input
+                        type="number"
+                        min={0}
+                        max={1000}
+                        value={settings.keepAutoBackups}
+                        onChange={(event) =>
+                          void updateSettings({
+                            keepAutoBackups: Number(event.target.value) || 0,
+                          })
+                        }
+                      />
+                      <span>{tr(" backups")}</span>
                     </div>
                   </div>
                     </div>

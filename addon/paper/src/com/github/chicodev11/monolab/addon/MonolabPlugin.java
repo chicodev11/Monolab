@@ -26,6 +26,7 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
     private ScheduledTask liveTask;
     private ScheduledTask perfTask;
     private MapRender map;
+    private int liveCount;
 
     @Override
     public void onEnable() {
@@ -202,6 +203,9 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
         }
         people.append(']');
         EntityTally tally = tallyEntities();
+        if (liveCount++ % LoadedChunks.EVERY_SECONDS == 0) {
+            log.setLoaded(loadedChunkList());
+        }
         log.setLive(new Json()
                 .put("at", System.currentTimeMillis())
                 .put("tps", Math.round(getServer().getTPS()[0] * 100.0) / 100.0)
@@ -237,6 +241,16 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
         } catch (RuntimeException noKey) {
             return type.name().toLowerCase(java.util.Locale.ROOT);
         }
+    }
+
+    private String loadedChunkList() {
+        LoadedChunks list = new LoadedChunks();
+        for (org.bukkit.World world : getServer().getWorlds()) {
+            for (org.bukkit.Chunk chunk : world.getLoadedChunks()) {
+                list.add(world.getName(), chunk.getX(), chunk.getZ(), chunk.isForceLoaded());
+            }
+        }
+        return list.json();
     }
 
     private long loadedChunks() {

@@ -138,6 +138,12 @@ export const commands = {
 	worlds: LiveWorld[],
 	players: LivePlayer_Serialize[],
 } | null>("read_live", { id }),
+	readLoadedChunks: (id: string) => __TAURI_INVOKE<{
+	at: number | null,
+	worlds: LoadedWorld[],
+} | null>("read_loaded_chunks", { id }),
+	listRuns: (id: string) => __TAURI_INVOKE<RunEntry[]>("list_runs", { id }),
+	trimChunks: (id: string, realm: string, maxMinutes: number, keepRadius: number, apply: boolean) => __TAURI_INVOKE<TrimReport>("trim_chunks", { id, realm, maxMinutes, keepRadius, apply }),
 	diagnoseLag: (id: string) => __TAURI_INVOKE<LagDiagnosis>("diagnose_lag", { id }),
 	getServerPing: (id: string) => __TAURI_INVOKE<PingSnapshot>("get_server_ping", { id }),
 	listPlayers: (id: string) => __TAURI_INVOKE<PlayerEntry[]>("list_players", { id }),
@@ -191,6 +197,7 @@ export const commands = {
 	exportMrpack: (id: string, target: string) => __TAURI_INVOKE<number>("export_mrpack", { id, target }),
 	exportMrpackDownload: (id: string) => __TAURI_INVOKE<Handed>("export_mrpack_download", { id }),
 	exportSettings: (target: string) => __TAURI_INVOKE<number>("export_settings", { target }),
+	saveMapPng: (target: string, png: string) => __TAURI_INVOKE<null>("save_map_png", { target, png }),
 	importSettings: (source: string) => __TAURI_INVOKE<ImportSummary>("import_settings", { source }),
 	listPanelHosts: () => __TAURI_INVOKE<PanelHostView[]>("list_panel_hosts"),
 	savePanelHost: (host: PanelHost, key: string | null, appKey: string | null) => __TAURI_INVOKE<null>("save_panel_host", { host, key, appKey }),
@@ -336,6 +343,7 @@ export type AddonUpdate = {
 	newFileName: string,
 	downloadUrl: string,
 	sha512: string,
+	issues: UpdateIssue[],
 };
 
 export type AddonUpdateResult = {
@@ -361,6 +369,7 @@ export type AppSettings = {
 	openConsoleOnStart?: boolean,
 	defaultMemoryMib?: number,
 	keepBackupDays?: number,
+	keepAutoBackups?: number,
 	consoleLineLimit?: number,
 	backupRoot?: string,
 	backupWorldsOnly?: boolean,
@@ -845,6 +854,17 @@ export type LiveWorld = {
 	entities: number,
 };
 
+export type LoadedChunks = {
+	at: number | null,
+	worlds: LoadedWorld[],
+};
+
+export type LoadedWorld = {
+	world: string,
+	chunks: number[],
+	forced: number[],
+};
+
 export type LogFile = {
 	fileName: string,
 	sizeBytes: number,
@@ -1162,6 +1182,12 @@ export type ResourceSnapshot = {
 	diskTotalMib: number,
 };
 
+export type RunEntry = {
+	at: number,
+	kind: string,
+	detail: string,
+};
+
 export type ServerCommand = {
 	name: string,
 	usage: string | null,
@@ -1323,12 +1349,27 @@ export type TrashFile = {
 	directory: boolean,
 };
 
+export type TrimReport = {
+	regions: number,
+	chunks: number,
+	removed: number,
+	bytesBefore: number | null,
+	bytesAfter: number | null,
+	applied: boolean,
+	backup: string,
+};
+
 export type Tunnel = {
 	id: string,
 	name: string,
 	localPort: number,
 	address: string,
 	disabled: boolean,
+};
+
+export type UpdateIssue = {
+	kind: string,
+	project: string,
 };
 
 export type UpgradeHistoryEntry = {

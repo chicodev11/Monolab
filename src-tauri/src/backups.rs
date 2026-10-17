@@ -199,13 +199,19 @@ pub fn remove(vault: &Path, file_name: &str) -> Result<(), String> {
     fs::remove_file(path).map_err(|error| format!("Could not delete the backup: {error}"))
 }
 
-pub fn sweep(vault: &Path, days: u32) {
-    if days == 0 {
-        return;
-    }
+pub fn sweep(vault: &Path, days: u32, keep_auto: u32) {
     let cutoff = unix_now().saturating_sub(u64::from(days) * 24 * 60 * 60);
-    for one in list(vault) {
-        if one.created_at < cutoff {
+    let mut autos = 0;
+    let mut all = list(vault);
+    all.sort_by_key(|one| std::cmp::Reverse(one.created_at));
+    for one in all {
+        let too_old = days > 0 && one.created_at < cutoff;
+        let auto = one.note.starts_with("Auto");
+        if auto {
+            autos += 1;
+        }
+        let too_many = auto && keep_auto > 0 && autos > keep_auto;
+        if too_old || too_many {
             let _ = remove(vault, &one.file_name);
         }
     }
@@ -262,6 +268,25 @@ fn pick(vault: &Path, file_name: &str) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keeps_only_the_newest_auto_backups() {
+        let vault = std::env::temp_dir().join(format!("se-bk-keep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&vault);
+        std::fs::create_dir_all(&vault).unwrap();
+        let now = unix_now();
+        for at in 0..5 {
+            std::fs::write(vault.join(format!("{}-Auto.zip", now - at * 60)), b"x").unwrap();
+        }
+        std::fs::write(vault.join(format!("{}-Auto_worlds_only.zip", now - 600)), b"x").unwrap();
+        std::fs::write(vault.join(format!("{}-Before_upgrade.zip", now - 9000)), b"x").unwrap();
+        sweep(&vault, 0, 2);
+        let left: Vec<String> = list(&vault).into_iter().map(|one| one.note).collect();
+        assert_eq!(left, vec!["Auto", "Auto", "Before upgrade"]);
+        sweep(&vault, 0, 0);
+        assert_eq!(list(&vault).len(), 3);
+        let _ = std::fs::remove_dir_all(&vault);
+    }
 
     #[test]
     fn packs_only_the_worlds_and_puts_them_where_told() {

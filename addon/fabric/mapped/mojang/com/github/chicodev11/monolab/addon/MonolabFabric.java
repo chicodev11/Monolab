@@ -18,6 +18,7 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
 
     private final EventSink sink = new EventSink();
     private MapRender map;
+    private final ChunkWatch chunks = new ChunkWatch();
 
     @Override
     public void onInitializeServer() {
@@ -30,6 +31,10 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
             }
         });
         ServerTickEvents.END_SERVER_TICK.register(this::onTick);
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents.CHUNK_LOAD.register((world, chunk, generated) ->
+                chunks.load(Bridge.worldIdOf(world), chunk.getPos().getMinBlockX() >> 4, chunk.getPos().getMinBlockZ() >> 4));
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents.CHUNK_UNLOAD.register((world, chunk) ->
+                chunks.unload(Bridge.worldIdOf(world), chunk.getPos().getMinBlockX() >> 4, chunk.getPos().getMinBlockZ() >> 4));
     }
 
     private void onStarted(MinecraftServer server) {
@@ -94,6 +99,9 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
     }
 
     private void snapshot(MinecraftServer server) {
+        if (chunks.due()) {
+            sink.loaded(chunks.json(name -> null));
+        }
         EntityTally tally = tallyEntities(server);
         List<EventSink.Spot> people = new ArrayList<>();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {

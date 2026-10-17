@@ -461,6 +461,7 @@ fn shade(
     scale: i32,
     night: bool,
     blend: Option<[u32; 3]>,
+    cave: bool,
 ) -> u32 {
     let name = &tile.blocks[tile.block[at] as usize];
     let biome = tile.biomes.get(tile.biome[at] as usize).and_then(|one| palette.biomes.get(one));
@@ -499,7 +500,13 @@ fn shade(
     } else if !name.ends_with(":podzol") {
         color = color.map(|one| one * 1.06);
     }
-    if depth == 0 {
+    if cave {
+        let h = f32::from(height);
+        let dn = (h - f32::from(north.unwrap_or(height))) / scale as f32;
+        let slope = if dn < -0.25 { 0.82 } else if dn > 0.25 { 1.08 } else { 1.0 };
+        let deep = (0.5 + (h + 64.0) / 96.0 * 0.6).clamp(0.5, 1.1);
+        color = color.map(|one| one * slope * deep);
+    } else if depth == 0 {
         let h = f32::from(height);
         let dn = (h - f32::from(north.unwrap_or(height))) / scale as f32;
         let dnw = (h - f32::from(west.unwrap_or(height))) / scale as f32;
@@ -531,7 +538,7 @@ fn shade(
 pub fn void_color(realm: &str) -> Option<[u8; 3]> {
     match realm {
         "overworld" | "nether" => None,
-        key if key.ends_with("-cave") => None,
+        key if key.ends_with("-cave") => Some([20, 20, 20]),
         _ => Some([8, 0, 24]),
     }
 }
@@ -547,6 +554,7 @@ pub fn render_view(
     blocks_per_pixel: f32,
     night: bool,
     void: Option<[u8; 3]>,
+    cave: bool,
 ) -> Result<Vec<u8>, String> {
     let width = width.clamp(16, MAX_SIDE);
     let height = height.clamp(16, MAX_SIDE);
@@ -599,7 +607,7 @@ pub fn render_view(
                     }
                     let west = height_at(bx - 1, bz - 1, &mut tile_at);
                     let north = height_at(bx, bz - 1, &mut tile_at);
-                    let color = channels(shade(palette, &tile, at, west, north, 1, night, land.at(bx, bz).map(|one| [one[0], one[1], water.at(bx, bz).map_or(one[2], |w| w[2])])));
+                    let color = channels(shade(palette, &tile, at, west, north, 1, night, land.at(bx, bz).map(|one| [one[0], one[1], water.at(bx, bz).map_or(one[2], |w| w[2])]), cave));
                     for i in 0..3 {
                         sum[i] += color[i];
                     }
@@ -712,13 +720,13 @@ mod tests {
             if x < 256 { (0, u16::MAX, 60, 0) } else { (u16::MAX, u16::MAX, 0, 0) }
         })).unwrap());
         let mut fetch = |rx: i32, _rz: i32| if rx == 0 { drawn.clone() } else { Arc::new(Tile::empty()) };
-        let png = render_view(&mut fetch, &palette, 0, 0, 64, 16, 16.0, false, void_color("end")).unwrap();
+        let png = render_view(&mut fetch, &palette, 0, 0, 64, 16, 16.0, false, void_color("end"), false).unwrap();
         let image = image::load_from_memory(&png).unwrap().to_rgba8();
         assert_eq!(image.get_pixel(20, 8).0, [8, 0, 24, 255], "empty cells in drawn regions are void");
         assert_eq!(image.get_pixel(40, 8).0[3], 0, "missing regions stay transparent");
         assert_ne!(image.get_pixel(4, 8).0, [8, 0, 24, 255], "islands keep their color");
         assert_eq!(void_color("overworld"), None);
-        assert_eq!(void_color("overworld-cave"), None);
+        assert_eq!(void_color("overworld-cave"), Some([20, 20, 20]));
         assert_eq!(realm_key("overworld-cave"), "overworld-cave");
 
         let marked = Arc::new(parse_tile(&tile_bytes(&["minecraft:end_stone"], |x, _| {
@@ -726,7 +734,7 @@ mod tests {
         })).unwrap());
         assert!(marked.marks_void && marked.block[300] == u16::MAX);
         let mut fetch = |_rx: i32, _rz: i32| marked.clone();
-        let png = render_view(&mut fetch, &palette, 0, 0, 512, 16, 16.0, false, void_color("end")).unwrap();
+        let png = render_view(&mut fetch, &palette, 0, 0, 512, 16, 16.0, false, void_color("end"), false).unwrap();
         let image = image::load_from_memory(&png).unwrap().to_rgba8();
         assert_eq!(image.get_pixel(20, 8).0, [8, 0, 24, 255], "recorded void");
         assert_eq!(image.get_pixel(28, 8).0[3], 0, "ungenerated chunks are transparent");
@@ -743,8 +751,8 @@ mod tests {
         assert_eq!(palette.color("minecraft:grass_block", palette.biomes.get("minecraft:plains")), 0x91_bd_59);
         assert_eq!(palette.color("minecraft:grass_block", palette.biomes.get("minecraft:swamp")), 0x6a_70_39);
         let tile = Arc::new(parse_tile(&tile_bytes(&["minecraft:water", "minecraft:sand"], |x, _| (0, 1, 62, if x < 8 { 1 } else { 12 }))).unwrap());
-        let shallow = channels(shade(&palette, &tile, 2, None, None, 1, false, None));
-        let deep = channels(shade(&palette, &tile, 20, None, None, 1, false, None));
+        let shallow = channels(shade(&palette, &tile, 2, None, None, 1, false, None, false));
+        let deep = channels(shade(&palette, &tile, 20, None, None, 1, false, None, false));
         assert!(shallow[0] > deep[0] + 8.0, "{shallow:?} {deep:?}");
     }
 
@@ -752,9 +760,9 @@ mod tests {
     fn lights_slopes_from_the_north_west() {
         let palette = Palette::parse(br#"{"blocks":{"minecraft:stone":["808080","none"]},"biomes":{}}"#, None, None);
         let tile = Arc::new(parse_tile(&tile_bytes(&["minecraft:stone"], |_, _| (0, u16::MAX, 70, 0))).unwrap());
-        let flat = channels(shade(&palette, &tile, 0, Some(70), Some(70), 1, false, None))[0];
-        let facing = channels(shade(&palette, &tile, 0, Some(66), Some(66), 1, false, None))[0];
-        let away = channels(shade(&palette, &tile, 0, Some(74), Some(74), 1, false, None))[0];
+        let flat = channels(shade(&palette, &tile, 0, Some(70), Some(70), 1, false, None, false))[0];
+        let facing = channels(shade(&palette, &tile, 0, Some(66), Some(66), 1, false, None, false))[0];
+        let away = channels(shade(&palette, &tile, 0, Some(74), Some(74), 1, false, None, false))[0];
         assert!(facing > flat && flat > away);
     }
 
@@ -781,7 +789,7 @@ mod tests {
         let bpp: f32 = std::env::var("SE_MAP_BPP").ok().and_then(|one| one.parse().ok()).unwrap_or(1.0);
         let tall: u32 = std::env::var("SE_MAP_TALL").ok().and_then(|one| one.parse().ok()).unwrap_or(size);
         let px = |blocks: u32| ((blocks as f32) / bpp).round() as u32;
-        let png = render_view(&mut fetch, &palette, left, top, px(size), px(tall), bpp, night, void_color(&realm)).unwrap();
+        let png = render_view(&mut fetch, &palette, left, top, px(size), px(tall), bpp, night, void_color(&realm), realm.ends_with("-cave")).unwrap();
         std::fs::write(out, png).unwrap();
     }
 }

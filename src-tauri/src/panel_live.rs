@@ -66,16 +66,31 @@ pub fn start_watcher(app: AppHandle) {
             {
                 let mut live = state.panel_live.lock().expect("panel state poisoned");
                 let mut checked = state.panel_checked.lock().expect("panel state poisoned");
+                let mut lost = state.panel_unreachable.lock().expect("panel state poisoned");
                 for (id, got) in results {
                     checked.insert(id.clone());
                     match got {
                         Ok(stats) => {
+                            lost.remove(&id);
+                            if let Some(before) = live.get(&id).map(|one| one.stats.state.clone()) {
+                                let up = |state: &str| state == "running" || state == "starting";
+                                if up(&before) && stats.state == "offline" {
+                                    if crate::runlog::take_asked(&id) {
+                                        crate::note_run(&app, &id, "stop", "");
+                                    } else {
+                                        crate::note_run(&app, &id, "crash", "Stopped without a stop request (crash or stopped outside the app)");
+                                    }
+                                } else if before == "offline" && up(&stats.state) {
+                                    crate::note_run(&app, &id, "start", "");
+                                }
+                            }
                             if stats.state != "offline" {
                                 wanted_sockets.push(id.clone());
                             }
                             live.insert(id, PanelLive { stats, at: Instant::now() });
                         }
                         Err(_) => {
+                            lost.insert(id.clone());
                             if live.get(&id).is_some_and(|one| one.at.elapsed() > KEEP_BLIND) {
                                 live.remove(&id);
                             }
