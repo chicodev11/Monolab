@@ -71,7 +71,7 @@ function savedMode(engine: Engine): Mode {
 const MODELS = ["default", "fable", "opus", "sonnet", "haiku"];
 function savedModel(engine: Engine) {
   const value = remembered(keyFor(MODEL_KEY, engine));
-  if (engine === "codex") return /^[w.-]{1,63}$/.test(value) ? value : "default";
+  if (engine === "codex") return /^[\w.-]{1,63}$/.test(value) ? value : "default";
   return MODELS.includes(value) ? value : "default";
 }
 
@@ -409,6 +409,11 @@ export function ClaudeChat({
   };
   const [mode, setMode] = useState<Mode>(() => savedMode(engine));
   const [pickedModel, setPickedModel] = useState(() => savedModel(engine));
+  const [codexModels, setCodexModels] = useState<{ slug: string; name: string; description: string }[]>([]);
+  useEffect(() => {
+    if (engine !== "codex") return;
+    void commands.codexModels().then(setCodexModels, () => setCodexModels([]));
+  }, [engine]);
   const modeRef = useRef(mode);
   const modelRef = useRef(pickedModel);
   const chatRef = useRef<string | null>(null);
@@ -727,7 +732,10 @@ export function ClaudeChat({
                 className="chat-pick"
                 options={
                   engine === "codex"
-                    ? [{ value: "default", label: tr("Default model"), hint: tr("Whatever your Codex config.toml says") }]
+                    ? [
+                        { value: "default", label: tr("Default model"), hint: tr("Your Codex setting, or the first model below if Codex can't use it here") },
+                        ...codexModels.map((one) => ({ value: one.slug, label: one.name, hint: one.description })),
+                      ]
                     : [
                         { value: "default", label: tr("Default model"), hint: model.model || tr("Chosen by Claude Code") },
                         { value: "fable", label: "Fable" },

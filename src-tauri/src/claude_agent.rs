@@ -52,13 +52,13 @@ fn folder_name(name: &str, id: &str) -> String {
 }
 
 pub(crate) fn history_dir(app: &AppHandle, dir: &Path) -> Option<PathBuf> {
-    let home = app.path().home_dir().ok()?;
+    let shared = crate::claude_accounts::shared_root(app).ok()?;
     let slug: String = dir
         .to_string_lossy()
         .chars()
         .map(|letter| if letter.is_ascii_alphanumeric() { letter } else { '-' })
         .collect();
-    Some(home.join(".claude").join("projects").join(slug))
+    Some(shared.join("projects").join(slug))
 }
 
 fn move_agent_folder(app: &AppHandle, from: &Path, to: &Path) -> Result<(), String> {

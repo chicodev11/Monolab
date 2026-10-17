@@ -228,6 +228,7 @@ export const commands = {
 	claudeAccountUse: (server: string, id: string) => __TAURI_INVOKE<null>("claude_account_use", { server, id }),
 	claudeAccountLogin: (id: string) => __TAURI_INVOKE<null>("claude_account_login", { id }),
 	codexLogin: () => __TAURI_INVOKE<null>("codex_login"),
+	codexModels: () => __TAURI_INVOKE<CodexModel[]>("codex_models"),
 	claudeAccountLoginCode: (code: string) => __TAURI_INVOKE<null>("claude_account_login_code", { code }),
 	claudeAccountLoginCancel: () => __TAURI_INVOKE<void>("claude_account_login_cancel"),
 	sftpMakeDir: (side: Side, dir: string, name: string) => __TAURI_INVOKE<null>("sftp_make_dir", { side, dir, name }),
@@ -509,6 +510,12 @@ export type ClaudeInfo = {
 	codex: string,
 	codexLoggedIn: boolean,
 	codexHistory: boolean,
+};
+
+export type CodexModel = {
+	slug: string,
+	name: string,
+	description: string,
 };
 
 export type CommandBook = {

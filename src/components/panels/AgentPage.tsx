@@ -344,6 +344,19 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
           }
         />
       ) : installed ? (
+        <>
+        {engine === "claude" && currentOne && !currentOne.loggedIn && !login && (
+          <div className="agent-signin">
+            <Icon name="users" />
+            <span>
+              <strong>{tr("This Claude account isn't signed in")}</strong>
+              <small className="muted">{tr("Sign in once and your browser will open. You can still try chatting if you signed in another way.")}</small>
+            </span>
+            <button className="button primary small" onClick={() => startLogin("claude", currentOne.id)}>
+              {tr("Sign in")}
+            </button>
+          </div>
+        )}
         <ClaudeChat
           key={`${engine}-${accounts?.current}-${signedIn}`}
           server={server}
@@ -352,6 +365,7 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
           onError={onError}
           onLogin={() => startLogin(engine, accounts?.current ?? "default")}
         />
+        </>
       ) : null}
     </div>
   );

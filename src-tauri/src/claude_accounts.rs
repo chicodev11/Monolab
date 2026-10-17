@@ -65,33 +65,60 @@ fn account_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
 }
 
 fn config_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
-    if id == DEFAULT {
-        home_claude(app)
-    } else {
-        account_dir(app, id)
-    }
+    account_dir(app, id)
+}
+
+pub fn shared_root(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app.path().app_data_dir().map_err(|error| error.to_string())?.join("claude-accounts").join("shared"))
 }
 
 pub fn config_for_server(app: &AppHandle, server: &str) -> Option<PathBuf> {
     let store = read(app);
-    let id = store.servers.get(server)?;
-    if id == DEFAULT || !store.accounts.iter().any(|one| &one.id == id) {
-        return None;
-    }
-    let dir = account_dir(app, id).ok()?;
+    let id = store
+        .servers
+        .get(server)
+        .filter(|id| store.accounts.iter().any(|one| &one.id == *id))
+        .cloned()
+        .unwrap_or_else(|| DEFAULT.into());
+    let dir = account_dir(app, &id).ok()?;
     let _ = prepare(app, &dir);
     Some(dir)
 }
 
+fn import_history(app: &AppHandle, shared: &Path) {
+    let Ok(home) = home_claude(app) else { return };
+    let Ok(entries) = fs::read_dir(home.join("projects")) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !(name.contains("-Documents-Monolab-") || name.contains("-Documents-Monorinth-")) {
+            continue;
+        }
+        let target = shared.join("projects").join(&name);
+        if !target.exists() {
+            let _ = crate::copy_tree_counting(&entry.path(), &target, &|| {});
+        }
+    }
+}
+
 fn prepare(app: &AppHandle, dir: &Path) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(|error| format!("Could not create the account folder: {error}"))?;
-    let home = home_claude(app)?;
+    let shared = shared_root(app)?;
+    if !shared.join("projects").exists() {
+        fs::create_dir_all(shared.join("projects")).map_err(|error| error.to_string())?;
+        import_history(app, &shared);
+    }
     for name in SHARED {
-        let target = home.join(name);
+        let target = shared.join(name);
         fs::create_dir_all(&target).map_err(|error| error.to_string())?;
         let link = dir.join(name);
         if fs::symlink_metadata(&link).is_ok() {
-            continue;
+            if fs::read_link(&link).is_ok_and(|now| now == target) {
+                continue;
+            }
+            if fs::read_link(&link).is_err() {
+                continue;
+            }
+            fs::remove_dir(&link).map_err(|error| format!("Could not detach the old conversation history link: {error}"))?;
         }
         link_folder(&link, &target)?;
     }
@@ -128,6 +155,9 @@ pub fn list(app: &AppHandle, server: &str) -> ClaudeAccounts {
     let store = read(app);
     let mut accounts = vec![ClaudeAccount { id: DEFAULT.into(), name: "Default account".into(), logged_in: logged_in(app, DEFAULT) }];
     for one in &store.accounts {
+        if let Ok(dir) = account_dir(app, &one.id) {
+            let _ = prepare(app, &dir);
+        }
         accounts.push(ClaudeAccount { id: one.id.clone(), name: one.name.clone(), logged_in: logged_in(app, &one.id) });
     }
     let current = store
@@ -228,11 +258,9 @@ pub fn login(app: &AppHandle, id: &str) -> Result<(), String> {
         crate::hidden_command(&claude)
     };
     command.args(["auth", "login"]);
-    if id != DEFAULT {
-        let dir = account_dir(app, id)?;
-        prepare(app, &dir)?;
-        command.env("CLAUDE_CONFIG_DIR", dir);
-    }
+    let dir = account_dir(app, id)?;
+    prepare(app, &dir)?;
+    command.env("CLAUDE_CONFIG_DIR", dir);
     command.env_remove("CLAUDECODE").env_remove("CLAUDE_CODE_ENTRYPOINT").env_remove("CLAUDE_CODE_CHILD_SESSION");
     drive_login(app, command, &|| logged_in(app, id) && credentials_time(app, id) != before)
 }

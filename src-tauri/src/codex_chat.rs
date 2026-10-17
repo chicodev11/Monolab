@@ -63,7 +63,73 @@ pub fn find_codex(app: &AppHandle) -> Option<PathBuf> {
 }
 
 fn codex_home(app: &AppHandle) -> Option<PathBuf> {
-    std::env::var_os("CODEX_HOME").map(PathBuf::from).or_else(|| app.path().home_dir().ok().map(|home| home.join(".codex")))
+    let dir = app.path().app_data_dir().ok()?.join("codex");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
+fn with_home(app: &AppHandle, command: &mut std::process::Command) {
+    if let Some(dir) = codex_home(app) {
+        command.env("CODEX_HOME", dir);
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexModel {
+    pub slug: String,
+    pub name: String,
+    pub description: String,
+}
+
+pub fn models(app: &AppHandle) -> Vec<CodexModel> {
+    let Some(text) = codex_home(app).and_then(|dir| std::fs::read_to_string(dir.join("models_cache.json")).ok()) else {
+        return Vec::new();
+    };
+    let Ok(doc) = serde_json::from_str::<Value>(&text) else { return Vec::new() };
+    let mut list: Vec<(i64, CodexModel)> = doc
+        .get("models")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|one| one.get("visibility").and_then(Value::as_str).unwrap_or("list") == "list")
+        .filter_map(|one| {
+            let slug = one.get("slug").and_then(Value::as_str)?.to_string();
+            Some((
+                one.get("priority").and_then(Value::as_i64).unwrap_or(1000),
+                CodexModel {
+                    name: one.get("display_name").and_then(Value::as_str).unwrap_or(&slug).to_string(),
+                    description: one.get("description").and_then(Value::as_str).unwrap_or("").to_string(),
+                    slug,
+                },
+            ))
+        })
+        .collect();
+    list.sort_by_key(|one| one.0);
+    list.into_iter().map(|one| one.1).collect()
+}
+
+fn configured_model(app: &AppHandle) -> Option<String> {
+    let text = std::fs::read_to_string(codex_home(app)?.join("config.toml")).ok()?;
+    text.lines()
+        .map(str::trim)
+        .take_while(|line| !line.starts_with('['))
+        .find_map(|line| {
+            let (key, value) = line.split_once('=')?;
+            (key.trim() == "model").then(|| value.trim().trim_matches(['"', '\'']).to_string())
+        })
+}
+
+fn usable_model(app: &AppHandle, chosen: &str) -> String {
+    if !chosen.is_empty() {
+        return chosen.to_string();
+    }
+    let list = models(app);
+    match (configured_model(app), list.first()) {
+        (Some(set), _) if list.iter().any(|one| one.slug == set) => String::new(),
+        (_, Some(best)) => best.slug.clone(),
+        _ => String::new(),
+    }
 }
 
 pub fn logged_in(app: &AppHandle) -> bool {
@@ -83,6 +149,7 @@ fn command_for(program: &Path) -> std::process::Command {
 pub fn login(app: &AppHandle) -> Result<(), String> {
     let codex = find_codex(app).ok_or("Codex is not installed on this computer. Install it as shown, then try again.")?;
     let mut command = command_for(&codex);
+    with_home(app, &mut command);
     command.arg("login");
     let before = codex_home(app).and_then(|dir| dir.join("auth.json").metadata().ok()?.modified().ok());
     crate::claude_accounts::drive_login(app, command, &|| {
@@ -100,7 +167,7 @@ fn store_file(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
 }
 
 fn threads(app: &AppHandle) -> HashMap<String, String> {
-    store_file(app, "codex-threads.json")
+    store_file(app, "codex-threads-app.json")
         .ok()
         .and_then(|file| std::fs::read_to_string(file).ok())
         .and_then(|text| serde_json::from_str(&text).ok())
@@ -113,7 +180,7 @@ fn set_thread(app: &AppHandle, server: &str, thread: Option<&str>) {
         Some(one) => all.insert(server.to_string(), one.to_string()),
         None => all.remove(server),
     };
-    if let (Ok(file), Ok(text)) = (store_file(app, "codex-threads.json"), serde_json::to_string_pretty(&all)) {
+    if let (Ok(file), Ok(text)) = (store_file(app, "codex-threads-app.json"), serde_json::to_string_pretty(&all)) {
         let _ = std::fs::write(file, text);
     }
 }
@@ -248,14 +315,17 @@ pub fn send(app: &AppHandle, id: &str, content: &str) -> Result<(), String> {
     let thread = threads(app).get(&server).cloned();
 
     let mut command = command_for(&codex);
+    with_home(app, &mut command);
     command.args(["exec", "--json", "--skip-git-repo-check"]);
     command.arg("-s").arg(sandbox(&mode)?);
     command.arg("-c").arg("approval_policy=\"never\"");
+    let model = usable_model(app, &model);
     if !model.is_empty() {
         command.arg("-m").arg(&model);
     }
     command.arg("-c").arg(format!("mcp_servers.monolab.url={}", toml_string(&format!("{url}?server={server}"))));
     command.arg("-c").arg(format!("mcp_servers.monolab.bearer_token_env_var={}", toml_string(TOKEN_VAR)));
+    command.arg("-c").arg("mcp_servers.monolab.default_tools_approval_mode=\"approve\"");
     command.arg("-c").arg(format!("developer_instructions={}", toml_string(&claude_agent::briefing(&instance, &dir))));
     for image in &images {
         command.arg("-i").arg(image);
@@ -402,6 +472,7 @@ fn translate(event: &Value) -> Vec<Value> {
         ("item.completed", "web_search") => {
             vec![tool_use(item_id, "WebSearch", json!({ "query": s("query") })), tool_result(item_id, "", false)]
         }
+        ("item.completed", "error") if s("message").contains("is not advertised as supported") => Vec::new(),
         ("item.completed", "error") => vec![json!({ "type": "monolab_stderr", "text": s("message") })],
         ("turn.completed", _) => vec![json!({ "type": "result", "subtype": "success" })],
         ("turn.failed", _) => {

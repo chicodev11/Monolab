@@ -2842,6 +2842,12 @@ fn claude_account_use(app: AppHandle, server: String, id: String) -> Result<(), 
     Ok(())
 }
 
+#[tauri::command(async)]
+#[specta::specta]
+fn codex_models(app: AppHandle) -> Vec<codex_chat::CodexModel> {
+    codex_chat::models(&app)
+}
+
 #[tauri::command]
 #[specta::specta]
 async fn codex_login(app: AppHandle) -> Result<(), String> {
@@ -9723,7 +9729,7 @@ async fn put_folders(
     Ok(count)
 }
 
-fn copy_tree_counting(from: &Path, to: &Path, tick: &dyn Fn()) -> Result<u32, String> {
+pub(crate) fn copy_tree_counting(from: &Path, to: &Path, tick: &dyn Fn()) -> Result<u32, String> {
     fs::create_dir_all(to).map_err(|error| error.to_string())?;
     let mut count = 0_u32;
     for entry in fs::read_dir(from).map_err(|error| error.to_string())? {
@@ -14959,6 +14965,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             claude_account_use,
             claude_account_login,
             codex_login,
+            codex_models,
             claude_account_login_code,
             claude_account_login_cancel,
             sftp_make_dir,

@@ -262,6 +262,7 @@ const TOOLS: &[Tool] = &[
     Tool { name: "install_addon", description: "Download and install a Modrinth mod/plugin (hash checked). Omit versionId for the newest fitting version. If the server is running it applies on next start.", args: &[SERVER, ("projectId", "string", "Modrinth project id.", true), ("versionId", "string", "Specific version id (optional).", false)], read_only: false, destructive: false },
     Tool { name: "toggle_addon", description: "Enable or disable an installed mod/plugin by file name (server should be stopped).", args: &[SERVER, ("fileName", "string", "File name from list_addons.", true)], read_only: false, destructive: false },
     Tool { name: "delete_addon", description: "Remove an installed mod/plugin (moved to the app's trash, restorable).", args: &[SERVER, ("fileName", "string", "File name from list_addons.", true)], read_only: false, destructive: true },
+    Tool { name: "monolab_addon", description: "The Monolab mod/plugin that feeds this app (monitor TPS, loaded chunks, world map, live players). action \"status\" shows whether it is installed and its version vs the newest one bundled with the app; \"install\" installs or updates it to the bundled version (replaces an old one); \"remove\" uninstalls it. Restart the server afterwards so it loads.", args: &[SERVER, ("action", "string", "status, install or remove.", true)], read_only: false, destructive: false },
     Tool { name: "start_server", description: "Start a server.", args: &[SERVER], read_only: false, destructive: false },
     Tool { name: "stop_server", description: "Stop a server safely (saves the world). Players get disconnected.", args: &[SERVER], read_only: false, destructive: true },
     Tool { name: "restart_server", description: "Restart a server. Players get disconnected.", args: &[SERVER], read_only: false, destructive: true },
@@ -621,6 +622,12 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
             invoke(app, name, with(json!({ "fileName": file, "kind": kind })))?;
             Ok(Value::String(if name == "toggle_addon" { format!("Toggled {file}.") } else { format!("Removed {file} (in the app trash).") }))
         }
+        "monolab_addon" => match need(args, "action")? {
+            "status" => invoke(app, "addon_status", with(json!({}))),
+            "install" => invoke(app, "install_addon", with(json!({}))).map(|_| Value::String("Installed the bundled Monolab addon. Restart the server so it loads.".into())),
+            "remove" => invoke(app, "remove_addon", with(json!({}))).map(|_| Value::String("Removed the Monolab addon. Restart the server to unload it.".into())),
+            _ => Err("action must be status, install or remove.".into()),
+        },
         "start_server" => invoke(app, "start_instance", with(json!({}))).map(|_| Value::String("Starting. Use read_console / server_status to follow.".into())),
         "stop_server" => invoke(app, "stop_instance", with(json!({}))).map(|_| Value::String("Stopping.".into())),
         "restart_server" => invoke(app, "restart_instance", with(json!({}))).map(|_| Value::String("Restarted.".into())),

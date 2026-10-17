@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { commands } from "../../lib/ipc";
 import { listenTo } from "../../lib/bridge";
 import type { TrimReport } from "../../lib/bindings";
@@ -67,7 +68,7 @@ export function TrimDialog({ server, realms, confirm, onClose, onDone }: Props) 
   const label = (one: string) => (one === "nether" ? tr("Nether") : one === "end" ? tr("End") : tr("Overworld"));
   const running = server.status !== "stopped";
 
-  return (
+  return createPortal(
     <div className="modal-backdrop roomy" onClick={() => !busy && onClose()}>
       <div className="add-modal trim-dialog" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <div className="tool-top">
@@ -139,6 +140,7 @@ export function TrimDialog({ server, realms, confirm, onClose, onDone }: Props) 
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { commands } from "../../lib/ipc";
 import type { AddonEntry, PropertyInfo } from "../../lib/bindings";
 import { tr } from "../../lib/i18n";
@@ -97,7 +98,7 @@ export function CompareDialog({ current, others, onClose }: { current: Side; oth
     );
   };
 
-  return (
+  return createPortal(
     <div className="modal-backdrop roomy" onClick={onClose}>
       <div className="add-modal compare-dialog" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <div className="tool-top">
@@ -141,6 +142,7 @@ export function CompareDialog({ current, others, onClose }: { current: Side; oth
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
