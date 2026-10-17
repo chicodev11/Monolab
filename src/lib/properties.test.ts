@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from "vitest";
-import ko from "../lang/ko.json";
+import { ko } from "../test/lang";
 import { setLanguage } from "./i18n";
 import { CATEGORIES, KNOWN_KEYS, propertyMatches, propertyMeta } from "./properties";
 

@@ -1,4 +1,4 @@
-import ko from "../lang/ko.json";
+import { ko } from "../test/lang";
 import { afterAll, beforeAll, describe, expect, it, test } from "vitest";
 import { setLanguage } from "./i18n";
 import { bytes, clock, date, fileSize, isImage, isProxy, realVersion, relativeTime, statusInfo, today, uptime, used } from "./format";

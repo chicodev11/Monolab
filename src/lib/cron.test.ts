@@ -1,4 +1,4 @@
-import ko from "../lang/ko.json";
+import { ko } from "../test/lang";
 import { beforeAll, describe, expect, it } from "vitest";
 import { describeCron, fromCron, toCron } from "./cron";
 import { setLanguage } from "./i18n";

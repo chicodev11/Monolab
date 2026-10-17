@@ -7403,8 +7403,7 @@ function App() {
         <div className="tool-content backup-page">
           <div className="tool-top">
             <p>
-              {tr("Compresses and stores the entire server folder.")}{" "}
-              <b>{tr("This is the only way back.")}</b>
+              {tr("Compresses and stores the entire server folder.")}
             </p>
             <button
               className="button primary"
@@ -7634,7 +7633,7 @@ function App() {
                       <p className="muted lag-note">
                         {lagReport.lagging
                           ? tr("No cause found inside the server. A plugin or mod may be responsible. Try disabling recent additions one at a time, or use the spark profiler to find what's slowing down ticks.")
-                          : tr("No issues detected right now. If TPS drops, possible causes and suggested actions will appear here.")}
+                          : tr("If TPS drops, the cause appears here.")}
                       </p>
                     ) : (
                       <ul className="lag-list">
@@ -10036,9 +10035,9 @@ function App() {
                       <>
                         <div className="web-ways" role="radiogroup" aria-label={tr("Where to open it")}>
                           {[
-                            { id: "none", icon: "home", label: tr("Same Wi-Fi only"), hint: tr("Only devices at home can open it.") },
-                            { id: "tunnel", icon: "cloud", label: tr("Anywhere (Cloudflare Tunnel)"), hint: tr("Encrypted. The address changes each time. Recommended") },
-                            { id: "direct", icon: "plug", label: tr("Port forwarding"), hint: tr("If your router forwards the port · the address stays the same but nothing is encrypted") },
+                            { id: "none", icon: "home", label: tr("Same Wi-Fi"), hint: tr("Only devices at home can open it.") },
+                            { id: "tunnel", icon: "cloud", label: tr("Cloudflare Tunnel"), hint: tr("Encrypted. The address changes each time it starts.") },
+                            { id: "direct", icon: "plug", label: tr("Port forwarding"), hint: tr("If your router forwards the port, it isn't encrypted and the address stays the same.") },
                           ].map((way) => {
                             const on = way.id === "tunnel" ? openOutside : way.id === "direct" ? openDirect : !openOutside && !openDirect;
                             return (
@@ -10806,7 +10805,7 @@ function App() {
                       value={importWhere}
                       onChange={setImportWhere}
                       options={[
-                        { value: "keep", label: tr("Keep it where it is") },
+                        { value: "keep", label: tr("Keep the original location") },
                         { value: "managed", label: tr("Copy into the app folder") },
                       ]}
                     />

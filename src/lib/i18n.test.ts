@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from "vitest";
-import ko from "../lang/ko.json";
-import rustKo from "../lang/rust.ko.json";
+import { ko } from "../test/lang";
+import { rustKo } from "../test/lang";
 import { format, language, setLanguage, t, tr, trBack } from "./i18n";
 
 test("defaults to ko", () => {

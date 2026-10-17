@@ -1,9 +1,9 @@
 import ts from "typescript";
 import fs from "node:fs";
 import path from "node:path";
+import { NEW_SECTION, addKeys, flat, languages as langList, save, uiFile } from "./lang.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
-const langDir = path.join(root, "src", "lang");
 const sync = process.argv.includes("--sync");
 const files = [];
 function walk(dir) {
@@ -38,22 +38,18 @@ for (const file of files) {
   visit(sf);
 }
 
-const languages = fs
-  .readdirSync(langDir)
-  .filter((name) => /^[a-z]+(-[A-Za-z]+)?\.json$/.test(name))
-  .map((name) => name.replace(/\.json$/, ""))
-  .sort((a, b) => (a === "en" ? -1 : b === "en" ? 1 : a.localeCompare(b)));
+const languages = langList();
 
 const isId = (key) => /^[a-z][A-Za-z]*(\.[A-Za-z0-9]+)+$/.test(key);
 const report = {};
 for (const lang of languages) {
-  const file = path.join(langDir, `${lang}.json`);
-  const table = JSON.parse(fs.readFileSync(file, "utf8"));
+  const one = uiFile(lang);
+  const table = flat(one.doc);
   const missing = [...keys].filter((key) => !(key in table) && (lang !== "en" || isId(key))).sort();
   if (sync && lang !== "en" && missing.length) {
-    for (const key of missing) table[key] = key;
-    fs.writeFileSync(file, JSON.stringify(table, null, 2) + "\n");
-    console.log(`Added ${missing.length} keys to ${lang}.json (text = key).`);
+    addKeys(one.doc, Object.fromEntries(missing.map((key) => [key, key])));
+    save(one);
+    console.log(`Added ${missing.length} keys to the "${NEW_SECTION}" section of ${lang}.json (text = key). Move them to the right section.`);
     report[lang] = [];
     continue;
   }

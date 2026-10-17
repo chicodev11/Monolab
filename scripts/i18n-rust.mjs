@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { flat, languages, removeKeys, rustFile, save } from "./lang.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const files = [];
@@ -47,20 +48,18 @@ for (const file of files) {
   }
 }
 
-const langDir = path.join(root, "src/lang");
 let stale = 0;
-for (const name of fs.readdirSync(langDir).filter((one) => /^rust\.\w+\.json$/.test(one))) {
-  const file = path.join(langDir, name);
-  const table = JSON.parse(fs.readFileSync(file, "utf8"));
+for (const lang of languages()) {
+  const one = rustFile(lang);
+  if (!one.doc) continue;
+  const table = flat(one.doc);
   const gone = Object.keys(table).filter((key) => !found.has(key));
   stale += gone.length;
   if (process.argv.includes("--prune")) {
-    for (const key of gone) delete table[key];
-    const sorted = Object.fromEntries(Object.entries(table).sort(([a], [b]) => a.localeCompare(b)));
-    fs.writeFileSync(file, JSON.stringify(sorted, null, 1) + "\n");
-    console.log(`${name}: removed ${gone.length}`);
+    if (removeKeys(one.doc, gone)) save(one);
+    console.log(`${one.name}: removed ${gone.length}`);
   } else {
-    console.log(`${name}: ${Object.keys(table).length} strings · ${gone.length} no longer in the Rust source`);
+    console.log(`${one.name}: ${Object.keys(table).length} strings · ${gone.length} no longer in the Rust source`);
     if (process.argv.includes("--list")) for (const key of gone) console.log(`  ${JSON.stringify(key)}`);
   }
 }

@@ -1,9 +1,9 @@
 import ts from "typescript";
 import fs from "node:fs";
 import path from "node:path";
+import { flat, languages as langList, removeKeys, save, uiFile } from "./lang.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
-const langDir = path.join(root, "src", "lang");
 const prune = process.argv.includes("--prune");
 const files = [];
 function walk(dir) {
@@ -32,14 +32,10 @@ for (const file of files) {
   visit(sf);
 }
 
-const languages = fs
-  .readdirSync(langDir)
-  .filter((name) => /^[a-z]+(-[A-Za-z]+)?\.json$/.test(name))
-  .map((name) => name.replace(/\.json$/, ""));
+const languages = langList();
 const unused = new Set();
 for (const lang of languages) {
-  const table = JSON.parse(fs.readFileSync(path.join(langDir, `${lang}.json`), "utf8"));
-  for (const key of Object.keys(table)) {
+  for (const key of Object.keys(flat(uiFile(lang).doc))) {
     if (key.startsWith("$")) continue;
     if (!literals.has(key)) unused.add(key);
   }
@@ -49,11 +45,11 @@ console.log(`${list.length} unused keys`);
 for (const key of list) console.log("  -", key);
 if (prune && list.length) {
   for (const lang of languages) {
-    const file = path.join(langDir, `${lang}.json`);
-    const table = JSON.parse(fs.readFileSync(file, "utf8"));
-    let removed = 0;
-    for (const key of list) if (key in table) { delete table[key]; removed++; }
-    fs.writeFileSync(file, JSON.stringify(table, null, 2) + "\n");
-    console.log(`Removed ${removed} from ${lang}.json`);
+    const one = uiFile(lang);
+    const removed = removeKeys(one.doc, list);
+    if (removed) {
+      save(one);
+      console.log(`Removed ${removed} from ${one.name}`);
+    }
   }
 }

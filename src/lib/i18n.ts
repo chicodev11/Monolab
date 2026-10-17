@@ -1,6 +1,20 @@
 export type Language = string;
 
-const files = import.meta.glob<Record<string, string>>("../lang/*.json", { import: "default" });
+type Sectioned = Record<string, string | Record<string, string>>;
+const files = import.meta.glob<Sectioned>("../lang/*.json", { import: "default" });
+
+export function flatten(table: Sectioned): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(table)) {
+    if (typeof value === "string") out[key] = value;
+    else Object.assign(out, value);
+  }
+  return out;
+}
+
+async function load(file: string | undefined): Promise<Record<string, string>> {
+  return file ? flatten(await files[file]()) : {};
+}
 
 function codeOf(file: string): string | null {
   const name = file.split("/").pop() ?? "";
@@ -17,11 +31,12 @@ export function languageCodes(): string[] {
 
 export async function languageNames(): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
-  for (const [file, load] of Object.entries(files)) {
+  for (const [file, read] of Object.entries(files)) {
     const code = codeOf(file);
     if (!code) continue;
     try {
-      out[code] = (await load())["$language"] ?? code;
+      const name = (await read())["$language"];
+      out[code] = typeof name === "string" ? name : code;
     } catch {
       out[code] = code;
     }
@@ -69,10 +84,9 @@ let loading: Promise<void> | null = null;
 
 export function loadLanguage(lang: Language = current): Promise<void> {
   if (loadedFor === lang) return Promise.resolve();
-  const file = Object.keys(files).find((one) => codeOf(one) === lang);
-  const table = file ? files[file]() : Promise.resolve({} as Record<string, string>);
+  const table = load(Object.keys(files).find((one) => codeOf(one) === lang));
   const rustFile = Object.keys(files).find((one) => one.endsWith(`/rust.${lang}.json`));
-  const rustTable = rustFile ? files[rustFile]() : Promise.resolve(null);
+  const rustTable = rustFile ? load(rustFile) : Promise.resolve(null);
   loading = Promise.all([table, rustTable])
     .then(([found, foundRust]) => {
       words = found;
@@ -276,9 +290,8 @@ export function t(key: string, values?: Record<string, string | number>): string
 }
 
 export async function wordsFor(lang: Language): Promise<Record<string, string>> {
-  const file = Object.keys(files).find((one) => codeOf(one) === lang);
   try {
-    return file ? await files[file]() : {};
+    return await load(Object.keys(files).find((one) => codeOf(one) === lang));
   } catch {
     return {};
   }

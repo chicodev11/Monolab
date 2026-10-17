@@ -123,7 +123,7 @@ export function LogLines({
                     <div className="console-error">
                       <b>
                         <Icon name="alert" />
-                        {tr("Something went wrong!")}
+                        {tr("An error occurred!")}
                       </b>
                       {chunk.rows.map((row, at) => (
                         <RawLine key={at} row={row} />

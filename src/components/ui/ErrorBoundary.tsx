@@ -21,7 +21,7 @@ export class ErrorBoundary extends Component<
     return (
       <div className="crash-screen">
         <div>
-          <h2>{tr("Something went wrong while displaying this screen.")}</h2>
+          <h2>{tr("An error occurred while displaying this screen.")}</h2>
           <p>
             {tr("Server files haven't changed. Go back below, or close and reopen this window.")}</p>
           <pre>{error.message}</pre>
