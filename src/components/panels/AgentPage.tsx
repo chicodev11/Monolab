@@ -105,7 +105,10 @@ function AccountManager({
             />
           )}
           {one.loggedIn ? (
-            <small className="claude-account-in">{tr("Signed in")}</small>
+            <span className="claude-account-who" data-tip={[one.email, one.displayName, one.plan].filter(Boolean).join(" · ") || undefined}>
+              <small className="claude-account-in">{one.email || tr("Signed in")}</small>
+              {(one.displayName || one.plan) && <small className="muted">{[one.displayName, one.plan].filter(Boolean).join(" · ")}</small>}
+            </span>
           ) : (
             <button className="button secondary small" onClick={() => onLogin(one.id)}>
               {tr("Sign in")}
@@ -235,6 +238,14 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
   const installed = info === null ? null : engine === "codex" ? Boolean(info.codex) : Boolean(info.path);
   const codexOut = engine === "codex" && installed === true && info !== null && !info.codexLoggedIn;
   const name = engine === "codex" ? "Codex" : "Claude Code";
+  const who =
+    engine === "codex"
+      ? info?.codexLoggedIn
+        ? [info.codexEmail, info.codexPlan].filter(Boolean).join(" · ")
+        : ""
+      : currentOne?.loggedIn
+        ? [currentOne.email, currentOne.plan].filter(Boolean).join(" · ")
+        : "";
 
   return (
     <div className="claude-page">
@@ -249,6 +260,12 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
           ]}
         />
         <span className="claude-bar-note muted">{tr("An agent for this server only. Both share the notes in AGENTS.md.")}</span>
+        {installed && who && (
+          <span className="claude-bar-who" data-tip={tr("Signed in as {0}", [who])}>
+            <Icon name="user" />
+            {who}
+          </span>
+        )}
         {engine === "claude" && installed && (
           <button
             className={`icon-button ${managing ? "on" : ""}`}

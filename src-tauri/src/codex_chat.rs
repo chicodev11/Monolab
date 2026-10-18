@@ -136,6 +136,27 @@ pub fn logged_in(app: &AppHandle) -> bool {
     codex_home(app).is_some_and(|dir| dir.join("auth.json").is_file())
 }
 
+/// Email and plan from the id token in auth.json. Read for display only.
+pub fn account_of(text: &str) -> (String, String) {
+    use base64::Engine;
+    let Ok(doc) = serde_json::from_str::<Value>(text) else { return Default::default() };
+    let Some(token) = doc["tokens"]["id_token"].as_str() else { return Default::default() };
+    let Some(body) = token.split('.').nth(1) else { return Default::default() };
+    let Ok(raw) = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(body.trim_end_matches('=')) else { return Default::default() };
+    let Ok(claims) = serde_json::from_slice::<Value>(&raw) else { return Default::default() };
+    let email = claims["email"].as_str().unwrap_or("").to_string();
+    let plan = claims["https://api.openai.com/auth"]["chatgpt_plan_type"].as_str().unwrap_or("").to_string();
+    let plan = plan.chars().next().map(|first| first.to_uppercase().collect::<String>() + &plan[first.len_utf8()..]).unwrap_or_default();
+    (email, plan)
+}
+
+pub fn account(app: &AppHandle) -> (String, String) {
+    codex_home(app)
+        .and_then(|dir| std::fs::read_to_string(dir.join("auth.json")).ok())
+        .map(|text| account_of(&text))
+        .unwrap_or_default()
+}
+
 fn command_for(program: &Path) -> std::process::Command {
     if program.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("cmd")) {
         let mut one = crate::hidden_command("cmd");
@@ -546,6 +567,13 @@ pub fn close_all() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_the_codex_account() {
+        let text = r#"{"tokens":{"id_token":"x.eyJlbWFpbCI6ImFAYi5jIiwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfcGxhbl90eXBlIjoicGx1cyJ9fQ.sig"}}"#;
+        assert_eq!(account_of(text), ("a@b.c".to_string(), "Plus".to_string()));
+        assert_eq!(account_of("{}"), (String::new(), String::new()));
+    }
 
     #[test]
     fn turns_codex_events_into_chat_lines() {

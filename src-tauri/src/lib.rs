@@ -28,7 +28,10 @@ mod logs;
 mod mcp;
 mod properties;
 mod pumpkin;
+mod chunky;
+mod chunkstats;
 mod crash;
+mod disk;
 mod doctor;
 mod mojang;
 mod nbt;
@@ -481,6 +484,13 @@ struct UpgradeHistoryEntry {
 }
 
 type RegionKey = (String, String, i32, i32);
+
+#[derive(Clone, Debug, Default)]
+struct ChunkFolder {
+    folder: String,
+    regions: HashSet<String>,
+    entities: HashSet<String>,
+}
 type TileKey = (String, String, i32, i32, i32);
 type RegionStamps = HashMap<(i32, i32), (u64, u64)>;
 type MapIndex = HashMap<(String, String), Arc<RegionStamps>>;
@@ -510,6 +520,10 @@ struct AppState {
     map_index: Arc<Mutex<MapIndex>>,
     resource_history: Arc<Mutex<HashMap<String, VecDeque<ResourceSample>>>>,
     spark_reports: Arc<Mutex<HashMap<String, spark::SparkReport>>>,
+    chunky: Arc<Mutex<HashMap<String, chunky::ChunkyProgress>>>,
+    chunk_stats: Arc<Mutex<HashMap<RegionKey, Arc<chunkstats::RegionStats>>>>,
+    chunk_entities: Arc<Mutex<HashMap<RegionKey, Arc<chunkstats::Grid>>>>,
+    chunk_folders: Arc<Mutex<HashMap<(String, String), ChunkFolder>>>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, specta::Type)]
@@ -1078,9 +1092,10 @@ fn run_task_now(
         .into_iter()
         .find(|item| item.id == id)
         .ok_or("Task not found.")?;
-    if task.warn_minutes > 0 && matches!(task.kind.as_str(), "restart" | "stop") {
+    let marks = tasks::warn_marks(&task);
+    if !marks.is_empty() && matches!(task.kind.as_str(), "restart" | "stop") {
         let worker = app.clone();
-        let minutes = task.warn_minutes;
+        let minutes = marks[0].div_ceil(60);
         thread::spawn(move || {
             let state = worker.state::<AppState>();
             let result = do_task(&worker, &state, &task);
@@ -1122,15 +1137,16 @@ fn say_to(app: &AppHandle, state: &AppState, id: &str, line: &str) {
 }
 
 fn warn_players(app: &AppHandle, state: &AppState, task: &tasks::Task) {
-    let mut left = task.warn_minutes;
-    while left > 0 {
-        let custom = task.message.trim();
-        let what = if task.kind == "stop" { "stops" } else { "restarts" };
-        let text = if custom.is_empty() { format!("The server {what} in {left} min.") } else { custom.replace("{minutes}", &left.to_string()) };
-        say_to(app, state, &task.server_id, &format!("say {text}"));
-        let step = if left > 5 { left - 5 } else if left > 1 { left - 1 } else { 1 };
-        thread::sleep(Duration::from_secs(u64::from(step) * 60));
-        left -= step;
+    let marks = tasks::warn_marks(task);
+    for (index, seconds) in marks.iter().enumerate() {
+        let line = tasks::announce_line(&task.warn_style, &tasks::warn_text(task, *seconds));
+        say_to(app, state, &task.server_id, &line);
+        let next = marks.get(index + 1).copied().unwrap_or(0);
+        thread::sleep(Duration::from_secs(u64::from(seconds - next)));
+    }
+    if !task.final_message.is_empty() {
+        say_to(app, state, &task.server_id, &tasks::announce_line(&task.warn_style, &task.final_message));
+        thread::sleep(Duration::from_secs(1));
     }
 }
 
@@ -1143,6 +1159,9 @@ fn power_task(app: &AppHandle, state: &AppState, task: &tasks::Task) -> Result<S
     }
     if task.kind != "start" {
         warn_players(app, state, task);
+        if !server_on(app, state, &task.server_id)? {
+            return Ok("Skipped because the server stopped during the warning.".into());
+        }
     }
     let (app_for, id, kind) = (app.clone(), task.server_id.clone(), task.kind.clone());
     off_runtime(move || {
@@ -1835,6 +1854,11 @@ pub(crate) fn web_invoke(
         "read_live" => ok(tauri::async_runtime::block_on(read_live(app.clone(), arg(body, "id")?))?),
         "list_runs" => ok(list_runs(app.clone(), arg(body, "id")?)?),
         "map_surface_height" => ok(map_surface_height(app.state(), arg(body, "id")?, arg(body, "realm")?, arg(body, "x")?, arg(body, "z")?)),
+        "disk_usage" => ok(tauri::async_runtime::block_on(disk_usage(app.clone(), arg(body, "id")?))?),
+        "chunk_stats" => ok(tauri::async_runtime::block_on(chunk_stats(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?, arg(body, "metric")?, arg(body, "rx")?, arg(body, "rz")?))?),
+        "chunky_status" => ok(tauri::async_runtime::block_on(chunky_status(app.clone(), app.state(), arg(body, "id")?))?),
+        "chunky_run" => ok(tauri::async_runtime::block_on(chunky_run(app.clone(), app.state(), arg(body, "id")?, arg(body, "action")?, arg(body, "world")?, arg(body, "x")?, arg(body, "z")?, arg(body, "radius")?, arg(body, "shape")?))?),
+        "clean_disk" => ok(tauri::async_runtime::block_on(clean_disk(app.clone(), arg(body, "id")?, arg(body, "kind")?))?),
         "read_loaded_chunks" => ok(tauri::async_runtime::block_on(read_loaded_chunks(app.clone(), arg(body, "id")?))?),
         "diagnose_lag" => ok(tauri::async_runtime::block_on(diagnose_lag(app.clone(), app.state(), arg(body, "id")?))?),
         "addon_status" => ok(tauri::async_runtime::block_on(addon_status(app.clone(), app.state(), arg(body, "id")?))?),
@@ -5820,6 +5844,13 @@ fn publish_log(
     if is_crash_line(&event.line) {
         mark_crash_seen(app, &event.server_id);
     }
+    if let Some(progress) = chunky::read_line(&event.line, unix_now()) {
+        app.state::<AppState>()
+            .chunky
+            .lock()
+            .expect("chunky state poisoned")
+            .insert(event.server_id.clone(), progress);
+    }
     if let Some(url) = spark::report_url(&event.line) {
         let at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -8231,6 +8262,7 @@ async fn world_map_bounds(
     let instance = instance_by_id(&app, &id)?;
     let realm = worldmap::realm_key(realm.as_deref().unwrap_or("overworld"));
     let realm = realm.as_str();
+    forget_chunk_stats(state.inner(), &id);
     let folder = map_tile_folder(&instance, realm);
     let rows: Option<Vec<(String, u64, u64)>> = if is_far(&instance) {
         far_list(&app, &instance, &folder)
@@ -8343,6 +8375,283 @@ fn loaded_from_text(text: &str) -> Option<LoadedChunks> {
     let found: LoadedChunks = serde_json::from_str(text).ok()?;
     let age = unix_now() as f64 * 1000.0 - found.at;
     (age < 30_000.0).then_some(found)
+}
+
+#[derive(Clone, Debug, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct ChunkyStatus {
+    installed: bool,
+    folder: String,
+    worlds: Vec<String>,
+    spawn: Option<[i32; 2]>,
+    progress: Option<chunky::ChunkyProgress>,
+}
+
+async fn chunky_folder_and_jar(app: &AppHandle, instance: &ServerInstance) -> (String, bool) {
+    for folder in ["plugins", "mods"] {
+        let names: Vec<String> = if is_far(instance) {
+            far_list(app, instance, folder).await.unwrap_or_default().into_iter().filter(|one| !one.directory).map(|one| one.name).collect()
+        } else {
+            fs::read_dir(Path::new(&instance.path).join(folder))
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|one| one.file_name().to_string_lossy().to_string())
+                .collect()
+        };
+        if names.iter().any(|name| chunky::is_chunky_jar(name)) {
+            return (folder.to_string(), true);
+        }
+    }
+    let folder = if matches!(instance.core.as_str(), "Paper" | "Purpur" | "Folia") { "plugins" } else { "mods" };
+    (folder.to_string(), false)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn chunky_status(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<ChunkyStatus, String> {
+    let instance = instance_by_id(&app, &id)?;
+    let (folder, installed) = chunky_folder_and_jar(&app, &instance).await;
+    let level = if is_far(&instance) {
+        far_read(&app, &instance, "server.properties")
+            .await
+            .ok()
+            .and_then(|text| text.lines().find_map(|line| line.trim().strip_prefix("level-name=")).map(|value| value.trim().to_string()))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "world".into())
+    } else {
+        level_name_of(&instance)
+    };
+    let worlds = ["overworld", "nether", "end"].iter().map(|realm| chunky::world_name(&instance.core, &level, realm)).collect();
+    let spawn = if is_far(&instance) {
+        None
+    } else {
+        nbt::read_level_data(&Path::new(&instance.path).join(&level).join("level.dat")).ok().map(|data| [data.spawn[0], data.spawn[2]])
+    };
+    let progress = state.chunky.lock().expect("chunky state poisoned").get(&id).cloned();
+    Ok(ChunkyStatus { installed, folder, worlds, spawn, progress })
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+#[allow(clippy::too_many_arguments)]
+async fn chunky_run(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    action: String,
+    world: String,
+    x: i32,
+    z: i32,
+    radius: u32,
+    shape: String,
+) -> Result<(), String> {
+    let instance = instance_by_id(&app, &id)?;
+    if !server_on(&app, state.inner(), &id)? {
+        return Err("Start the server first. Chunky runs inside the server.".into());
+    }
+    let world = world.trim().to_string();
+    if world.is_empty() || world.chars().any(|one| one.is_whitespace() || one.is_control()) {
+        return Err("The world name is malformed.".into());
+    }
+    let lines: Vec<String> = match action.as_str() {
+        "start" => {
+            if radius == 0 || radius > 100_000 {
+                return Err("Choose a radius between 1 and 100,000 blocks.".into());
+            }
+            let shape = if shape == "circle" { "circle" } else { "square" };
+            vec![
+                format!("chunky world {world}"),
+                format!("chunky center {x} {z}"),
+                format!("chunky radius {radius}"),
+                format!("chunky shape {shape}"),
+                "chunky start".into(),
+            ]
+        }
+        "pause" => vec!["chunky pause".into()],
+        "continue" => vec!["chunky continue".into()],
+        "cancel" => vec!["chunky cancel".into(), "chunky confirm".into()],
+        _ => return Err("Unknown Chunky action.".into()),
+    };
+    for line in &lines {
+        say_to(&app, state.inner(), &instance.id, line);
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    if action == "start" {
+        state.chunky.lock().expect("chunky state poisoned").insert(
+            id.clone(),
+            chunky::ChunkyProgress { world: world.clone(), state: "running".into(), at: unix_now(), ..Default::default() },
+        );
+    }
+    record_audit(&app, &id, "Server", "Chunk pre-generation", &format!("{action} · {world}"));
+    Ok(())
+}
+
+fn forget_chunk_stats(state: &AppState, id: &str) {
+    state.chunk_stats.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).retain(|key, _| key.0 != id);
+    state.chunk_entities.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).retain(|key, _| key.0 != id);
+    state.chunk_folders.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).retain(|key, _| key.0 != id);
+}
+
+async fn level_name_any(app: &AppHandle, instance: &ServerInstance) -> String {
+    if !is_far(instance) {
+        return level_name_of(instance);
+    }
+    far_read(app, instance, "server.properties")
+        .await
+        .ok()
+        .and_then(|text| text.lines().find_map(|line| line.trim().strip_prefix("level-name=")).map(|value| value.trim().to_string()))
+        .filter(|value| !value.is_empty() && !value.contains(['/', '\\', ':']))
+        .unwrap_or_else(|| "world".into())
+}
+
+async fn chunk_folder(app: &AppHandle, state: &AppState, instance: &ServerInstance, realm: &str) -> ChunkFolder {
+    let key = (instance.id.clone(), realm.to_string());
+    if let Some(found) = state.chunk_folders.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&key) {
+        return found.clone();
+    }
+    let level = level_name_any(app, instance).await;
+    let mut candidates = trim_candidates(&level, realm);
+    if let Some((space, path)) = realm.split_once('.') {
+        candidates = vec![format!("{level}/dimensions/{space}/{}", path.replace('.', "/"))];
+    }
+    let mut found = ChunkFolder::default();
+    for candidate in candidates {
+        let regions: HashSet<String> = trim_list(app, instance, &format!("{candidate}/region"))
+            .await
+            .into_iter()
+            .map(|(name, _)| name)
+            .filter(|name| trim::region_coords(name).is_some())
+            .collect();
+        if !regions.is_empty() {
+            let entities = trim_list(app, instance, &format!("{candidate}/entities")).await.into_iter().map(|(name, _)| name).collect();
+            found = ChunkFolder { folder: candidate, regions, entities };
+            break;
+        }
+    }
+    state.chunk_folders.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, found.clone());
+    found
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn chunk_stats(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    realm: String,
+    metric: String,
+    rx: i32,
+    rz: i32,
+) -> Result<Option<Vec<Option<f64>>>, String> {
+    if !chunkstats::METRICS.contains(&metric.as_str()) {
+        return Err("Unknown map view.".into());
+    }
+    let instance = instance_by_id(&app, &id)?;
+    let realm = worldmap::realm_key(&realm);
+    let realm = realm.strip_suffix("-cave").unwrap_or(&realm).to_string();
+    let found = chunk_folder(&app, state.inner(), &instance, &realm).await;
+    let name = format!("r.{rx}.{rz}.mca");
+    let key = (id.clone(), realm.clone(), rx, rz);
+    if metric == "entities" {
+        if let Some(grid) = state.chunk_entities.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&key) {
+            return Ok(Some(grid.as_ref().clone()));
+        }
+        if !found.entities.contains(&name) {
+            return Ok(None);
+        }
+        let Some(bytes) = trim_read(&app, &instance, &format!("{}/entities/{name}", found.folder)).await else { return Ok(None) };
+        let grid = Arc::new(tauri::async_runtime::spawn_blocking(move || chunkstats::read_entities(&bytes)).await.map_err(|error| error.to_string())?);
+        state.chunk_entities.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, grid.clone());
+        return Ok(Some(grid.as_ref().clone()));
+    }
+    let held = state.chunk_stats.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&key).cloned();
+    let stats = match held {
+        Some(one) => one,
+        None => {
+            if !found.regions.contains(&name) {
+                return Ok(None);
+            }
+            let Some(bytes) = trim_read(&app, &instance, &format!("{}/region/{name}", found.folder)).await else { return Ok(None) };
+            let one = Arc::new(tauri::async_runtime::spawn_blocking(move || chunkstats::read_region(&bytes)).await.map_err(|error| error.to_string())?);
+            state.chunk_stats.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, one.clone());
+            one
+        }
+    };
+    Ok(stats.get(&metric).cloned())
+}
+
+fn local_free_bytes(folder: &Path) -> u64 {
+    let Ok(folder) = folder.canonicalize().map(plain_path) else { return 0 };
+    let disks = Disks::new_with_refreshed_list();
+    disks
+        .list()
+        .iter()
+        .filter(|disk| folder.starts_with(disk.mount_point()))
+        .max_by_key(|disk| disk.mount_point().as_os_str().len())
+        .map_or(0, |disk| disk.available_space())
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn disk_usage(app: AppHandle, id: String) -> Result<disk::DiskReport, String> {
+    let instance = instance_by_id(&app, &id)?;
+    if !instance.panel_host.is_empty() {
+        return Err("Disk usage isn't available for panel servers yet.".into());
+    }
+    if !instance.remote_host.is_empty() {
+        let conn = remote::connect(&app, &instance.remote_host).await?;
+        let script = format!("cd {} || exit 9\n{}", remote::quote(&instance.path), disk::remote_script());
+        let out = conn.run_long(&script).await?;
+        if out.code == 9 {
+            return Err("The server folder was not found on the SSH server.".into());
+        }
+        return Ok(disk::parse_remote(&out.stdout));
+    }
+    let root = PathBuf::from(&instance.path);
+    let vault = backup_folder(&app, &instance)?;
+    let trash = instance_data_dir(&app, &id)?.join("trash");
+    tauri::async_runtime::spawn_blocking(move || {
+        let entries = disk::scan_local(&root);
+        disk::DiskReport {
+            total_bytes: disk::top_total(&entries),
+            entries,
+            free_bytes: local_free_bytes(&root),
+            backups_bytes: disk::tree_size(&vault).0,
+            trash_bytes: disk::tree_size(&trash).0,
+            cleanable: disk::local_cleanable(&root),
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn clean_disk(app: AppHandle, id: String, kind: String) -> Result<u32, String> {
+    let instance = instance_by_id(&app, &id)?;
+    if !instance.panel_host.is_empty() {
+        return Err("Disk usage isn't available for panel servers yet.".into());
+    }
+    if !disk::KINDS.contains(&kind.as_str()) {
+        return Err("Unknown cleanup type.".into());
+    }
+    let count = if !instance.remote_host.is_empty() {
+        let command = disk::remote_clean_command(&kind).ok_or("Unknown cleanup type.")?;
+        let conn = remote::connect(&app, &instance.remote_host).await?;
+        conn.run_long(&format!("cd {} && {command}", remote::quote(&instance.path))).await?.ok()?;
+        0
+    } else {
+        let mut count = 0;
+        for file in disk::cleanable_files(Path::new(&instance.path), &kind) {
+            if fs::remove_file(&file).is_ok() {
+                count += 1;
+            }
+        }
+        count
+    };
+    record_audit(&app, &id, "File", "Disk cleanup", &kind);
+    Ok(count)
 }
 
 #[tauri::command(async)]
@@ -13090,6 +13399,7 @@ async fn trim_chunks(
     let _ = app.emit("trim-progress", serde_json::json!({ "serverId": id, "done": total, "total": total }));
     if apply {
         let cache = app.state::<AppState>();
+        forget_chunk_stats(cache.inner(), &id);
         cache.map_cells.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clear();
         cache.map_tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clear();
     }
@@ -14939,6 +15249,11 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             read_live,
             read_loaded_chunks,
             map_surface_height,
+            disk_usage,
+            clean_disk,
+            chunky_status,
+            chunky_run,
+            chunk_stats,
             list_runs,
             trim_chunks,
             diagnose_lag,
@@ -15161,6 +15476,10 @@ pub fn run() {
             map_index: Arc::new(Mutex::new(HashMap::new())),
             resource_history: Arc::new(Mutex::new(HashMap::new())),
             spark_reports: Arc::new(Mutex::new(HashMap::new())),
+            chunky: Arc::new(Mutex::new(HashMap::new())),
+            chunk_stats: Arc::new(Mutex::new(HashMap::new())),
+            chunk_entities: Arc::new(Mutex::new(HashMap::new())),
+            chunk_folders: Arc::new(Mutex::new(HashMap::new())),
         })
         .manage(web::Running::default())
         .manage(tunnel::Running::default())

@@ -3,6 +3,8 @@ import { Icon } from "../ui/Icon";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MapPin } from "./pins";
 import { useSmoothPins } from "./pins";
+import { Dropdown } from "../ui/Dropdown";
+import { METRICS, colorOf, formatValue, gradient, makeScale, metricHint, metricLabel, type Metric, type StatFetch, type StatGrid } from "./chunkStats";
 
 const TILE = 128;
 const MIN_ZOOM = -4;
@@ -21,6 +23,7 @@ export function WorldMap({
   cave,
   onExport,
   chunks,
+  stats,
 }: {
   pins: MapPin[];
   onPick?: (x: number, z: number) => void;
@@ -29,6 +32,7 @@ export function WorldMap({
   cave?: { on: boolean; toggle: () => void } | null;
   onExport?: (png: string) => void;
   chunks?: { on: boolean; toggle: () => void; loaded: number[]; forced: number[]; known: boolean } | null;
+  stats?: StatFetch | null;
 }) {
   const drawn = useSmoothPins(pins, true);
   const box = useRef<HTMLDivElement>(null);
@@ -134,6 +138,90 @@ export function WorldMap({
     const timer = window.setInterval(() => pump.current(), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  const [metric, setMetric] = useState<Metric | null>(null);
+  const grids = useRef(new Map<string, StatGrid | null>());
+  const [gridTick, setGridTick] = useState(0);
+  const statsRef = useRef(stats);
+  statsRef.current = stats;
+  const regions = useMemo(() => {
+    if (!metric || size.w < 16) return [];
+    const first = Math.floor(corner.x / 512);
+    const last = Math.floor((corner.x + size.w * bpp) / 512);
+    const top = Math.floor(corner.z / 512);
+    const bottom = Math.floor((corner.z + size.h * bpp) / 512);
+    const midX = (corner.x + (size.w * bpp) / 2) / 512;
+    const midZ = (corner.z + (size.h * bpp) / 2) / 512;
+    const list: { rx: number; rz: number }[] = [];
+    for (let rz = top; rz <= bottom; rz += 1) for (let rx = first; rx <= last; rx += 1) list.push({ rx, rz });
+    list.sort((a, b) => Math.hypot(a.rx + 0.5 - midX, a.rz + 0.5 - midZ) - Math.hypot(b.rx + 0.5 - midX, b.rz + 0.5 - midZ));
+    return list.slice(0, 256);
+  }, [metric, corner.x, corner.z, size.w, size.h, bpp]);
+  useEffect(() => {
+    if (!metric || !statsRef.current) return;
+    let stop = false;
+    const queue = regions.filter((one) => !grids.current.has(`${metric}/${one.rx}/${one.rz}`));
+    const work = async () => {
+      while (!stop && queue.length) {
+        const next = queue.shift()!;
+        const key = `${metric}/${next.rx}/${next.rz}`;
+        if (grids.current.has(key)) continue;
+        grids.current.set(key, null);
+        try {
+          grids.current.set(key, (await statsRef.current?.(metric, next.rx, next.rz)) ?? null);
+        } catch {
+          grids.current.delete(key);
+        }
+        if (!stop) setGridTick((was) => was + 1);
+      }
+    };
+    void Promise.all([work(), work(), work(), work()]);
+    return () => {
+      stop = true;
+    };
+  }, [metric, regions]);
+  const shown = useMemo(() => {
+    if (!metric) return [];
+    return regions
+      .map((one) => ({ ...one, grid: grids.current.get(`${metric}/${one.rx}/${one.rz}`) ?? null }))
+      .filter((one): one is { rx: number; rz: number; grid: StatGrid } => one.grid !== null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metric, regions, gridTick]);
+  const scale = useMemo(() => (metric ? makeScale(metric, shown.map((one) => one.grid)) : null), [metric, shown]);
+  const hover = useMemo(() => {
+    if (!metric || !where) return null;
+    const cx = Math.floor(where.x / 16);
+    const cz = Math.floor(where.z / 16);
+    const grid = grids.current.get(`${metric}/${Math.floor(cx / 32)}/${Math.floor(cz / 32)}`);
+    const value = grid?.[(((cz % 32) + 32) % 32) * 32 + (((cx % 32) + 32) % 32)];
+    return value === undefined || value === null ? null : formatValue(metric, value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metric, where, gridTick]);
+  const statCanvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = statCanvas.current;
+    if (!canvas) return;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.round(size.w * ratio);
+    canvas.height = Math.round(size.h * ratio);
+    const pen = canvas.getContext("2d");
+    if (!pen) return;
+    pen.setTransform(ratio, 0, 0, ratio, 0, 0);
+    pen.clearRect(0, 0, size.w, size.h);
+    if (!scale) return;
+    const cell = 16 / bpp;
+    for (const { rx, rz, grid } of shown) {
+      for (let index = 0; index < 1024; index += 1) {
+        const value = grid[index];
+        if (value === null || value === undefined) continue;
+        const left = ((rx * 32 + (index % 32)) * 16 - corner.x) / bpp;
+        const top = ((rz * 32 + Math.floor(index / 32)) * 16 - corner.z) / bpp;
+        if (left + cell < 0 || top + cell < 0 || left > size.w || top > size.h) continue;
+        pen.fillStyle = colorOf(scale, value);
+        pen.fillRect(left, top, cell + 0.5, cell + 0.5);
+      }
+    }
+  }, [shown, scale, corner.x, corner.z, bpp, size.w, size.h]);
 
   const overlay = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -337,7 +425,25 @@ export function WorldMap({
             }}
           />
         ))}
+        <canvas ref={statCanvas} className="map-chunks" style={{ width: `${size.w}px`, height: `${size.h}px` }} />
         <canvas ref={overlay} className="map-chunks" style={{ width: `${size.w}px`, height: `${size.h}px` }} />
+        {metric && (
+          <div className="map-legend">
+            <strong>{metricLabel(metric)}</strong>
+            <small>{metricHint(metric)}</small>
+            {scale ? (
+              <>
+                <span className="map-legend-bar" style={{ background: gradient() }} />
+                <span className="map-legend-ends">
+                  <span>{metric === "version" ? String(scale.values[0] ?? scale.min) : formatValue(metric, scale.min)}</span>
+                  <span>{metric === "version" ? String(scale.values[scale.values.length - 1] ?? scale.max) : formatValue(metric, scale.max)}</span>
+                </span>
+              </>
+            ) : (
+              <small className="muted">{tr("Reading region files…")}</small>
+            )}
+          </div>
+        )}
         <div className="map-pins">
           {drawn.map((pin) => {
             const spot = toScreen(pin.x, pin.z);
@@ -396,7 +502,19 @@ export function WorldMap({
       <div className="map-bar">
         <span className="map-where">
           {where ? `X ${where.x}   Z ${where.z}` : tr("Click the map to add a bookmark")}
+          {where && hover && <b className="map-where-value"> · {hover}</b>}
         </span>
+        {stats && (
+          <Dropdown
+            className="map-view-pick"
+            value={metric ?? "map"}
+            options={[
+              { value: "map", label: tr("Map") },
+              ...METRICS.map((one) => ({ value: one, label: metricLabel(one) })),
+            ]}
+            onChange={(value) => setMetric(value === "map" ? null : (value as Metric))}
+          />
+        )}
         <button
           className={`button ghost small map-night ${night ? "on" : ""}`}
           aria-pressed={night}

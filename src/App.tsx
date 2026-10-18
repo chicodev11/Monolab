@@ -107,6 +107,8 @@ import { DependencyDialog } from "./components/dialogs/DependencyDialog";
 import { VersionDialog, type AddonVersion } from "./components/dialogs/VersionDialog";
 import { CompareDialog } from "./components/dialogs/CompareDialog";
 import { TrimDialog } from "./components/dialogs/TrimDialog";
+import { DiskDialog } from "./components/dialogs/DiskDialog";
+import { PregenDialog } from "./components/dialogs/PregenDialog";
 import { UpdateDialog, type UpdateChoice, type UpdateRow } from "./components/dialogs/UpdateDialog";
 import { format, language, languageCodes, languageNames, setLanguage, t, tr, trBack, wordsFor } from "./lib/i18n";
 import { logStore } from "./lib/logStore";
@@ -935,6 +937,8 @@ function App() {
   const [runs, setRuns] = useState<RunEntry[] | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
   const [trimOpen, setTrimOpen] = useState(false);
+  const [diskOpen, setDiskOpen] = useState(false);
+  const [pregenOpen, setPregenOpen] = useState(false);
   const [logQuery, setLogQuery] = useState("");
   const logLevel = "All";
   const [command, setCommand] = useState("");
@@ -4136,13 +4140,17 @@ function App() {
             const rank = (one: World) => (order.includes(one.realm) ? order.indexOf(one.realm) : order.length);
             return rank(a) - rank(b) || a.realm.localeCompare(b.realm);
           });
-        const totalMib = children.reduce(
-          (sum, one) => sum + (one.insideParent ? 0 : one.sizeMib ?? 0),
+        const ownMib = children.reduce(
+          (left, one) => left - (one.insideParent ? one.sizeMib ?? 0 : 0),
           parent.sizeMib ?? 0,
         );
-        return { name, parent, children, totalMib };
+        return { name, parent, children, ownMib };
       })
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .flatMap(({ parent, children, ownMib }) => [
+        { world: parent, sizeMib: Math.max(0, ownMib) },
+        ...children.map((one) => ({ world: one, sizeMib: one.sizeMib ?? 0 })),
+      ]);
   }, [worlds]);
   async function loadWorldSettings(world: World) {
     if (!selected) return;
@@ -4612,6 +4620,10 @@ function App() {
     if (!selected) throw new Error(tr("No servers found."));
     const layer = mapCave && mapRealm === "overworld" ? "overworld-cave" : mapRealm;
     return await commands.renderMapTile(selected.id, layer, z, tx, ty, night);
+  }
+  async function fetchChunkStats(metric: string, rx: number, rz: number) {
+    if (!selected) return null;
+    return await commands.chunkStats(selected.id, mapRealm, metric, rx, rz);
   }
   async function openVersionPick(one: Addon) {
     if (!selected) return;
@@ -6839,6 +6851,11 @@ function App() {
                         }]),
                   ]}
                 />
+                {!selected.panelHost && (
+                  <button className="icon-button" aria-label={tr("Disk usage")} data-tip={tr("Disk usage")} onClick={() => setDiskOpen(true)}>
+                    <Icon name="disk" />
+                  </button>
+                )}
                 <button
                   className="icon-button"
                   aria-label={tr("Trash")}
@@ -7201,6 +7218,7 @@ function App() {
               onExport={(png) => void saveMapPng(png)}
               chunks={mapChunks && { ...mapChunks, on: mapChunksOn, toggle: () => setMapChunksOn((was) => !was) }}
               cave={mapCave === null ? null : { on: mapCave, toggle: () => setMapCave((was) => !was) }}
+              stats={selected.panelHost ? null : fetchChunkStats}
             />
             </Suspense>
           ) : (
@@ -7238,6 +7256,12 @@ function App() {
           <div className="tool-top">
             <p>
               {tr("Detected world and dimension folders.")}</p>
+            {selected.core !== "Pumpkin" && selected.core !== "Vanilla" && (
+              <button className="button ghost" onClick={() => setPregenOpen(true)}>
+                <Icon name="layers" />
+                {tr("Pre-generate")}
+              </button>
+            )}
             {!selected.panelHost && worlds.length > 0 && (
               <button className="button ghost" onClick={() => setTrimOpen(true)}>
                 <Icon name="grid" />
@@ -7252,9 +7276,8 @@ function App() {
               {tr("Refresh")}</button>
           </div>
           {worlds.length ? (
-            <div className="world-tree">
-              {worldTree.map(({ parent, children, totalMib }) => {
-                const row = (world: World, top: boolean) => {
+            <article className="world-card world-flat">
+              {worldTree.map(({ world, sizeMib }) => {
                   const label = world.realm === "nether"
                     ? tr("Nether")
                     : world.realm === "end"
@@ -7262,21 +7285,16 @@ function App() {
                       : world.realm === "overworld"
                         ? tr("Overworld")
                         : world.realm.replace(".", ":");
-                  const size = top ? totalMib : (world.sizeMib ?? 0);
                   return (
-                    <div className={`world-row ${top ? "is-world" : "is-dim"}`} key={world.name}>
-                      <Icon name={top ? "folder" : "map"} />
+                    <div className="world-row is-world" key={world.name}>
+                      <Icon name={world.hasLevelData ? "folder" : "map"} />
                       <div className="world-text">
-                        <strong>{top ? world.name : label}</strong>
+                        <strong>{label}</strong>
                         <small>
-                          {!selected.panelHost && (
-                            <>
-                              {top && children.length > 0 ? tr("{0} MB total", [size.toFixed(1)]) : `${size.toFixed(1)} MB`}
-                              {" · "}
-                            </>
-                          )}
+                          <code>{world.name}</code>
+                          {" · "}
+                          {!selected.panelHost && <>{`${sizeMib.toFixed(1)} MB`}{" · "}</>}
                           <span data-tip={date(world.modifiedAt)}>{relativeTime(world.modifiedAt)}</span>
-                          {top && <> · {label}</>}
                         </small>
                       </div>
                       {SHOW_WORLD_MAP && (
@@ -7285,36 +7303,26 @@ function App() {
                           data-tip={addon?.installed ? undefined : tr("The map requires the Monolab mod or plugin. Install it from the Monitor tab.")}
                         >
                           <IconButton
-                            label={tr("Open {0} map", [top ? world.name : label])}
+                            label={tr("Open {0} map", [label])}
                             icon="map"
                             disabled={!addon?.installed}
                             onClick={() => void openMap(world.realm)}
                           />
                         </span>
                       )}
-                      <span
-                        className="tip-host"
-                        data-tip={world.hasLevelData ? undefined : tr("World settings (level.dat) are only available in the world folder. Open them from the row above.")}
-                      >
-                        <button
-                          className="button secondary small"
-                          disabled={!world.hasLevelData}
-                          onClick={() => void loadWorldSettings(world)}
-                        >
+                      {world.hasLevelData ? (
+                        <button className="button secondary small" onClick={() => void loadWorldSettings(world)}>
                           {tr("Open settings")}
                         </button>
-                      </span>
+                      ) : (
+                        <button className="button secondary small world-settings-gap" tabIndex={-1} aria-hidden="true">
+                          {tr("Open settings")}
+                        </button>
+                      )}
                     </div>
                   );
-                };
-                return (
-                  <article className="world-card" key={parent.world}>
-                    {row(parent, true)}
-                    {children.map((child) => row(child, false))}
-                  </article>
-                );
               })}
-            </div>
+            </article>
           ) : (
             <EmptyState
               icon="map"
@@ -8025,6 +8033,20 @@ function App() {
           onDone={(message) => {
             setNotice(message);
             void loadTool("worlds");
+          }}
+        />
+      )}
+      {pregenOpen && selected && (
+        <PregenDialog server={selected} onClose={() => setPregenOpen(false)} onNotice={setNotice} />
+      )}
+      {diskOpen && selected && (
+        <DiskDialog
+          server={selected}
+          confirm={confirmAction}
+          onClose={() => setDiskOpen(false)}
+          onDone={(message) => {
+            setNotice(message);
+            if (tool === "files") void browseTo(browsePath);
           }}
         />
       )}

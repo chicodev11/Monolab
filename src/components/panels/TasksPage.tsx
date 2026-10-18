@@ -4,7 +4,7 @@ import { commands } from "../../lib/ipc";
 import { relativeTime } from "../../lib/format";
 import { tr } from "../../lib/i18n";
 import type { Sent } from "../../lib/sent";
-import { EmptyState, SegmentedControl } from "../primitives";
+import { EmptyState, SegmentedControl, Switch } from "../primitives";
 import { Dropdown } from "../ui/Dropdown";
 import { Icon } from "../ui/Icon";
 
@@ -12,7 +12,35 @@ export type Task = Sent<GenTask>;
 type Kind = "command" | "backup" | "restart" | "start" | "stop" | "notify";
 type Server = { id: string; name: string; core: string; version: string };
 
-const DAYS = ["Month", "Tue", "Wed", "Thu", "Fri", "Sat", " days"];
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const MARKS = [1800, 900, 600, 300, 180, 60, 30, 10, 5];
+
+function legacyMarks(minutes: number) {
+  const out: number[] = [];
+  let left = Math.min(30, minutes);
+  while (left > 0) {
+    out.push(left * 60);
+    left -= left > 5 ? left - 5 : left > 1 ? left - 1 : 1;
+  }
+  return out;
+}
+
+export function warnMarks(task: Task) {
+  return task.warnAt.length ? task.warnAt : legacyMarks(task.warnMinutes);
+}
+
+function markLabel(seconds: number) {
+  return seconds >= 60 && seconds % 60 === 0 ? tr("{0} min", [seconds / 60]) : tr("{0} sec", [seconds]);
+}
+
+function warnPreview(task: Task, seconds: number) {
+  const fallback = task.kind === "stop" ? tr("The server stops in {time}.") : tr("The server restarts in {time}.");
+  const template = task.message.trim() || fallback;
+  return template
+    .replaceAll("{time}", markLabel(seconds))
+    .replaceAll("{minutes}", String(Math.ceil(seconds / 60)))
+    .replaceAll("{seconds}", String(seconds));
+}
 const POWER = new Set<string>(["restart", "start", "stop"]);
 
 export function blankTask(change: Partial<Task> = {}): Task {
@@ -29,7 +57,11 @@ export function blankTask(change: Partial<Task> = {}): Task {
     dailyTime: "04:00",
     lastRunAt: 0,
     weekdays: [],
-    warnMinutes: 5,
+    warnMinutes: 0,
+    warnAt: [300, 60, 10],
+    warnStyle: "say",
+    finalMessage: "",
+    timeWords: [],
     lastResult: "",
     lastOk: false,
     ...change,
@@ -38,7 +70,7 @@ export function blankTask(change: Partial<Task> = {}): Task {
 
 const TEMPLATES: { label: string; make: () => Partial<Task> }[] = [
   { label: "Back up daily at 4 AM", make: () => ({ name: tr("Nightly backup"), kind: "backup", schedule: "daily", dailyTime: "04:00" }) },
-  { label: "Restart daily at 5 AM", make: () => ({ name: tr("Daily restart"), kind: "restart", schedule: "daily", dailyTime: "05:00", warnMinutes: 5 }) },
+  { label: "Restart daily at 5 AM", make: () => ({ name: tr("Daily restart"), kind: "restart", schedule: "daily", dailyTime: "05:00", warnAt: [300, 60, 10] }) },
   { label: "Save every 30 min", make: () => ({ name: tr("Auto save"), kind: "command", command: "save-all", schedule: "interval", intervalMinutes: 30 }) },
   { label: "Start on weekend mornings", make: () => ({ name: tr("Start on weekends"), kind: "start", schedule: "weekly", weekdays: [5, 6], dailyTime: "09:00" }) },
 ];
@@ -83,11 +115,11 @@ function whatText(task: Task, server: string) {
     case "backup":
       return tr("{0} backup", [server]);
     case "restart":
-      return task.warnMinutes ? tr("Restart {0} · warn {1} min before", [server, task.warnMinutes]) : tr("Restart {0}", [server]);
+      return warnMarks(task).length ? tr("Restart {0} · warns {1} before", [server, warnMarks(task).map(markLabel).join(", ")]) : tr("Restart {0}", [server]);
     case "start":
       return tr("Start {0}", [server]);
     case "stop":
-      return task.warnMinutes ? tr("Stop {0} · warn {1} min before", [server, task.warnMinutes]) : tr("Stop {0}", [server]);
+      return warnMarks(task).length ? tr("Stop {0} · warns {1} before", [server, warnMarks(task).map(markLabel).join(", ")]) : tr("Stop {0}", [server]);
     default:
       return task.message;
   }
@@ -135,8 +167,8 @@ function TaskForm({
             { value: "command", label: tr("Command") },
             { value: "backup", label: tr("Backups") },
             { value: "restart", label: tr("Restart") },
-            { value: "start", label: tr("Enable") },
-            { value: "stop", label: tr("Suspend") },
+            { value: "start", label: tr("Start") },
+            { value: "stop", label: tr("Stop server") },
             { value: "notify", label: tr("Alerts") },
           ]}
         />
@@ -160,28 +192,88 @@ function TaskForm({
         </label>
       )}
       {kind === "backup" && <p className="field-help">{tr("If it's running, saving pauses while it packs. Old backups are removed after the retention period in Settings.")}</p>}
-      {(kind === "restart" || kind === "stop") && (
-        <div className="task-two">
-          <label className="field-block">
-            <span className="field-label">{tr("Warn players")}</span>
-            <Dropdown
-              value={String(draft.warnMinutes)}
-              onChange={(value) => set({ warnMinutes: Number(value) })}
-              options={[0, 1, 5, 10, 15, 30].map((one) => ({ value: String(one), label: one ? tr("{0} min ago", [one]) : tr("Don't warn") }))}
-            />
-          </label>
-          {draft.warnMinutes > 0 && (
-            <label className="field-block">
-              <span className="field-label">{tr("Warning text")}</span>
-              <input
-                value={draft.message}
-                placeholder={kind === "stop" ? tr("The server stops in {minutes} min.") : tr("The server restarts in {minutes} min.")}
-                onChange={(event) => set({ message: event.target.value })}
+      {(kind === "restart" || kind === "stop") && (() => {
+        const marks = warnMarks(draft);
+        const on = marks.length > 0;
+        return (
+          <div className="task-warn">
+            <label className="task-warn-toggle">
+              <Switch
+                checked={on}
+                onChange={(event) => set(event.target.checked ? { warnAt: [300, 60, 10], warnMinutes: 0 } : { warnAt: [], warnMinutes: 0 })}
               />
+              <span>
+                <strong>{tr("Warn players in game")}</strong>
+                <small>{tr("Messages go out before it happens, then it runs after the last one.")}</small>
+              </span>
             </label>
-          )}
-        </div>
-      )}
+            {on && (
+              <>
+                <div className="field-block">
+                  <span className="field-label">{tr("When to warn")}</span>
+                  <div className="task-days" role="group">
+                    {MARKS.map((seconds) => {
+                      const picked = marks.includes(seconds);
+                      return (
+                        <button
+                          type="button"
+                          key={seconds}
+                          className={`task-day ${picked ? "on" : ""}`}
+                          aria-pressed={picked}
+                          onClick={() => {
+                            const next = picked ? marks.filter((one) => one !== seconds) : [...marks, seconds];
+                            set({ warnAt: next.sort((a, b) => b - a), warnMinutes: 0 });
+                          }}
+                        >
+                          {markLabel(seconds)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="field-block">
+                  <span className="field-label">{tr("How to show it")}</span>
+                  <SegmentedControl
+                    className="page-tabs"
+                    value={(draft.warnStyle || "say") as "say" | "tellraw" | "title"}
+                    onChange={(warnStyle) => set({ warnStyle })}
+                    options={[
+                      { value: "say", label: tr("Chat ([Server])") },
+                      { value: "tellraw", label: tr("Chat (no name)") },
+                      { value: "title", label: tr("Big text on screen") },
+                    ]}
+                  />
+                </div>
+                <label className="field-block">
+                  <span className="field-label">{tr("Warning text")}</span>
+                  <input
+                    value={draft.message}
+                    placeholder={kind === "stop" ? tr("The server stops in {time}.") : tr("The server restarts in {time}.")}
+                    onChange={(event) => set({ message: event.target.value })}
+                  />
+                  <small className="field-help">{tr("{time} becomes the time left, like 5 min or 10 sec.")}</small>
+                </label>
+                <label className="field-block">
+                  <span className="field-label">{tr("Last message (optional)")}</span>
+                  <input
+                    value={draft.finalMessage}
+                    placeholder={kind === "stop" ? tr("Stopping now.") : tr("Restarting now. Come back in a minute!")}
+                    onChange={(event) => set({ finalMessage: event.target.value })}
+                  />
+                  <small className="field-help">{tr("Sent right before it happens. Leave empty to skip.")}</small>
+                </label>
+                <p className="task-warn-preview">
+                  <span className="muted">{tr("Players will see")}</span>
+                  {marks.slice(0, 3).map((seconds) => (
+                    <code key={seconds}>{warnPreview(draft, seconds)}</code>
+                  ))}
+                  {draft.finalMessage.trim() && <code>{draft.finalMessage.trim()}</code>}
+                </p>
+              </>
+            )}
+          </div>
+        );
+      })()}
       {kind === "start" && <p className="field-help">{tr("Skipped if it's already running.")}</p>}
       {kind === "notify" && (
         <label className="field-block">
@@ -267,7 +359,8 @@ export function TasksPage({
 
   const save = async (task: Task) => {
     try {
-      onChanged(await commands.saveTask(task));
+      const fallback = task.kind === "stop" ? tr("The server stops in {time}.") : task.kind === "restart" ? tr("The server restarts in {time}.") : "";
+      onChanged(await commands.saveTask({ ...task, message: task.message.trim() || fallback, timeWords: [tr("{0} min"), tr("{0} sec")] }));
       onDraft(null);
       onNotice(tr("Saved {0}.", [task.name]));
     } catch (cause) {

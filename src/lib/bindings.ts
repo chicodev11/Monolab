@@ -143,6 +143,11 @@ export const commands = {
 	worlds: LoadedWorld[],
 } | null>("read_loaded_chunks", { id }),
 	mapSurfaceHeight: (id: string, realm: string | null, x: number, z: number) => __TAURI_INVOKE<number | null>("map_surface_height", { id, realm, x, z }),
+	diskUsage: (id: string) => __TAURI_INVOKE<DiskReport>("disk_usage", { id }),
+	cleanDisk: (id: string, kind: string) => __TAURI_INVOKE<number>("clean_disk", { id, kind }),
+	chunkyStatus: (id: string) => __TAURI_INVOKE<ChunkyStatus>("chunky_status", { id }),
+	chunkyRun: (id: string, action: string, world: string, x: number, z: number, radius: number, shape: string) => __TAURI_INVOKE<null>("chunky_run", { id, action, world, x, z, radius, shape }),
+	chunkStats: (id: string, realm: string, metric: string, rx: number, rz: number) => __TAURI_INVOKE<(number | null)[] | null>("chunk_stats", { id, realm, metric, rx, rz }),
 	listRuns: (id: string) => __TAURI_INVOKE<RunEntry[]>("list_runs", { id }),
 	trimChunks: (id: string, realm: string, maxMinutes: number, keepRadius: number, apply: boolean) => __TAURI_INVOKE<TrimReport>("trim_chunks", { id, realm, maxMinutes, keepRadius, apply }),
 	diagnoseLag: (id: string) => __TAURI_INVOKE<LagDiagnosis>("diagnose_lag", { id }),
@@ -487,6 +492,24 @@ export type ChatState = {
 	pending: string[],
 };
 
+export type ChunkyProgress = {
+	world: string,
+	state: string,
+	percent: number | null,
+	chunks: number,
+	eta: string,
+	rate: number | null,
+	at: number,
+};
+
+export type ChunkyStatus = {
+	installed: boolean,
+	folder: string,
+	worlds: string[],
+	spawn: [number, number] | null,
+	progress: ChunkyProgress | null,
+};
+
 export type Claim = {
 	url: string,
 	state: string,
@@ -497,6 +520,9 @@ export type ClaudeAccount = {
 	id: string,
 	name: string,
 	loggedIn: boolean,
+	email: string,
+	displayName: string,
+	plan: string,
 };
 
 export type ClaudeAccounts = {
@@ -510,7 +536,15 @@ export type ClaudeInfo = {
 	history: boolean,
 	codex: string,
 	codexLoggedIn: boolean,
+	codexEmail: string,
+	codexPlan: string,
 	codexHistory: boolean,
+};
+
+export type Cleanable = {
+	kind: string,
+	files: number,
+	bytes: number,
 };
 
 export type CodexModel = {
@@ -597,6 +631,21 @@ export type Detected = {
 	version: string,
 	port: number,
 	jar: string,
+};
+
+export type DiskEntry = {
+	path: string,
+	bytes: number,
+	directory: boolean,
+};
+
+export type DiskReport = {
+	entries: DiskEntry[],
+	totalBytes: number,
+	freeBytes: number,
+	backupsBytes: number,
+	trashBytes: number,
+	cleanable: Cleanable[],
 };
 
 export type EntityKind = {
@@ -1300,6 +1349,13 @@ export type Task = {
 	weekdays?: number[],
 	/**  Minutes of in-game warning before a restart or stop. */
 	warnMinutes?: number,
+	/**  Seconds before the restart or stop at which players are warned. Empty means no warning. */
+	warnAt?: number[],
+	/**  "say", "tellraw" or "title". */
+	warnStyle?: string,
+	finalMessage?: string,
+	/**  How "{time}" is written: [minutes template, seconds template], each with {0}. */
+	timeWords?: string[],
 	lastResult?: string,
 	lastOk?: boolean,
 };

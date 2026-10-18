@@ -29,6 +29,37 @@ pub struct ClaudeAccount {
     pub id: String,
     pub name: String,
     pub logged_in: bool,
+    pub email: String,
+    pub display_name: String,
+    pub plan: String,
+}
+
+/// Plain words from the signed-in profile Claude Code keeps beside the credentials.
+pub fn profile_of(text: &str) -> (String, String, String) {
+    let Ok(doc) = serde_json::from_str::<serde_json::Value>(text) else { return Default::default() };
+    let account = &doc["oauthAccount"];
+    let word = |key: &str| account[key].as_str().unwrap_or("").trim().to_string();
+    let name = [word("displayName"), word("fullName")].into_iter().find(|one| !one.is_empty()).unwrap_or_default();
+    let plan = word("organizationType");
+    let plan = plan.strip_prefix("claude_").unwrap_or(&plan).replace('_', " ");
+    let plan = plan.chars().next().map(|first| first.to_uppercase().collect::<String>() + &plan[first.len_utf8()..]).unwrap_or_default();
+    (word("emailAddress"), name, plan)
+}
+
+fn profile(app: &AppHandle, id: &str) -> (String, String, String) {
+    if !logged_in(app, id) {
+        return Default::default();
+    }
+    config_dir(app, id)
+        .ok()
+        .and_then(|dir| fs::read_to_string(dir.join(".claude.json")).ok())
+        .map(|text| profile_of(&text))
+        .unwrap_or_default()
+}
+
+fn account(app: &AppHandle, id: &str, name: &str) -> ClaudeAccount {
+    let (email, display_name, plan) = profile(app, id);
+    ClaudeAccount { id: id.into(), name: name.into(), logged_in: logged_in(app, id), email, display_name, plan }
 }
 
 #[derive(Clone, Debug, Serialize, specta::Type)]
@@ -153,12 +184,12 @@ fn logged_in(app: &AppHandle, id: &str) -> bool {
 
 pub fn list(app: &AppHandle, server: &str) -> ClaudeAccounts {
     let store = read(app);
-    let mut accounts = vec![ClaudeAccount { id: DEFAULT.into(), name: "Default account".into(), logged_in: logged_in(app, DEFAULT) }];
+    let mut accounts = vec![account(app, DEFAULT, "Default account")];
     for one in &store.accounts {
         if let Ok(dir) = account_dir(app, &one.id) {
             let _ = prepare(app, &dir);
         }
-        accounts.push(ClaudeAccount { id: one.id.clone(), name: one.name.clone(), logged_in: logged_in(app, &one.id) });
+        accounts.push(account(app, &one.id, &one.name));
     }
     let current = store
         .servers
@@ -333,5 +364,15 @@ pub fn login_cancel() {
     LOGIN_CANCEL.store(true, std::sync::atomic::Ordering::SeqCst);
     if let Ok(mut input) = login_input().lock() {
         *input = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn reads_the_signed_in_profile() {
+        let text = r#"{"oauthAccount":{"emailAddress":"a@b.c","displayName":"Steve","organizationType":"claude_max"}}"#;
+        assert_eq!(super::profile_of(text), ("a@b.c".into(), "Steve".into(), "Max".into()));
+        assert_eq!(super::profile_of("{}"), (String::new(), String::new(), String::new()));
     }
 }

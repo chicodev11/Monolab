@@ -12,6 +12,8 @@ pub struct ClaudeInfo {
     pub history: bool,
     pub codex: String,
     pub codex_logged_in: bool,
+    pub codex_email: String,
+    pub codex_plan: String,
     pub codex_history: bool,
 }
 
@@ -227,8 +229,8 @@ files only through those tools (read_file, write_file, make_folder, list_files, 
 Never delete anything with shell commands (rm, del, Remove-Item): delete_file moves it to the server trash so the user \
 can restore it. \
 Your working folder {work} is this server's own workspace (Documents\\Monolab\\<server name>, NOT the server's \
-files): build custom plugins or mods here as Gradle projects in subfolders with plain ASCII names (e.g. shopplugin), then add_addon_file the built jar, restart_server (ask first - players get kicked) and check \
-read_console / search_logs. Suggest create_backup before risky changes. Keep lasting notes about this server \
+files): build custom plugins or mods here as Gradle projects in subfolders with plain ASCII names (e.g. shopplugin), then add_addon_file the built jar, restart_server (ask first - players get kicked); it waits for the server and returns a short startup summary, \
+so do not poll read_console or search_logs afterwards (read_console only returns lines you have not seen yet), and search for specific text instead of dumping whole logs. Suggest create_backup before risky changes. Keep lasting notes about this server \
 (what you built or installed, the user's rules and taste, unfinished work) in AGENTS.md in the working folder so \
 future sessions remember. The user is not a developer: reply in Korean, say briefly what you will do before doing it.",
         name = instance.name,
@@ -247,6 +249,8 @@ pub fn info(app: &AppHandle, server: &str) -> Result<ClaudeInfo, String> {
         history: has_history(app, &dir),
         codex: crate::codex_chat::find_codex(app).map(|one| one.to_string_lossy().into_owned()).unwrap_or_default(),
         codex_logged_in: crate::codex_chat::logged_in(app),
+        codex_email: crate::codex_chat::account(app).0,
+        codex_plan: crate::codex_chat::account(app).1,
         codex_history: crate::codex_chat::has_history(app, server),
     })
 }

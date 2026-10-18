@@ -28,6 +28,17 @@ pub struct Task {
     /// Minutes of in-game warning before a restart or stop.
     #[serde(default)]
     pub warn_minutes: u32,
+    /// Seconds before the restart or stop at which players are warned. Empty means no warning.
+    #[serde(default)]
+    pub warn_at: Vec<u32>,
+    /// "say", "tellraw" or "title".
+    #[serde(default)]
+    pub warn_style: String,
+    #[serde(default)]
+    pub final_message: String,
+    /// How "{time}" is written: [minutes template, seconds template], each with {0}.
+    #[serde(default)]
+    pub time_words: Vec<String>,
     #[serde(default)]
     pub last_result: String,
     #[serde(default)]
@@ -69,7 +80,23 @@ pub fn tidy(mut task: Task) -> Result<Task, String> {
                 return Err("Pick a server for this task.".into());
             }
             task.message = task.message.trim().to_string();
-            task.warn_minutes = if task.kind == "start" { 0 } else { task.warn_minutes.min(30) };
+            task.final_message = task.final_message.trim().to_string();
+            if task.kind == "start" {
+                task.warn_minutes = 0;
+                task.warn_at.clear();
+            } else {
+                if task.warn_at.is_empty() && task.warn_minutes > 0 {
+                    task.warn_at = legacy_marks(task.warn_minutes.min(30));
+                }
+                task.warn_at.retain(|seconds| (1..=1800).contains(seconds));
+                task.warn_at.sort_unstable_by(|a, b| b.cmp(a));
+                task.warn_at.dedup();
+                task.warn_minutes = task.warn_at.first().map_or(0, |most| most.div_ceil(60));
+            }
+            if !matches!(task.warn_style.as_str(), "say" | "tellraw" | "title") {
+                task.warn_style = "say".into();
+            }
+            task.time_words.truncate(2);
         }
         _ => return Err("Unknown task type.".into()),
     }
@@ -95,6 +122,57 @@ pub fn tidy(mut task: Task) -> Result<Task, String> {
         _ => return Err("Unknown repeat mode.".into()),
     }
     Ok(task)
+}
+
+fn legacy_marks(minutes: u32) -> Vec<u32> {
+    let mut out = Vec::new();
+    let mut left = minutes;
+    while left > 0 {
+        out.push(left * 60);
+        left -= if left > 5 { left - 5 } else if left > 1 { left - 1 } else { 1 };
+    }
+    out
+}
+
+pub fn warn_marks(task: &Task) -> Vec<u32> {
+    let mut marks = if task.warn_at.is_empty() { legacy_marks(task.warn_minutes.min(30)) } else { task.warn_at.clone() };
+    marks.retain(|seconds| (1..=1800).contains(seconds));
+    marks.sort_unstable_by(|a, b| b.cmp(a));
+    marks.dedup();
+    marks
+}
+
+fn time_left(task: &Task, seconds: u32) -> String {
+    let pick = |index: usize, fallback: &str| {
+        task.time_words.get(index).filter(|one| one.contains("{0}")).cloned().unwrap_or_else(|| fallback.to_string())
+    };
+    if seconds >= 60 && seconds.is_multiple_of(60) {
+        pick(0, "{0} min").replace("{0}", &(seconds / 60).to_string())
+    } else {
+        pick(1, "{0} sec").replace("{0}", &seconds.to_string())
+    }
+}
+
+pub fn warn_text(task: &Task, seconds: u32) -> String {
+    let template = if task.message.trim().is_empty() {
+        if task.kind == "stop" { "The server stops in {time}." } else { "The server restarts in {time}." }
+    } else {
+        task.message.trim()
+    };
+    template
+        .replace("{time}", &time_left(task, seconds))
+        .replace("{minutes}", &seconds.div_ceil(60).to_string())
+        .replace("{seconds}", &seconds.to_string())
+}
+
+pub fn announce_line(style: &str, text: &str) -> String {
+    let text: String = text.chars().filter(|letter| !letter.is_control()).collect();
+    let json = serde_json::json!({ "text": text, "color": "yellow" }).to_string();
+    match style {
+        "tellraw" => format!("tellraw @a {json}"),
+        "title" => format!("title @a title {json}"),
+        _ => format!("say {text}"),
+    }
 }
 
 pub fn parse_daily(value: &str) -> Option<u32> {
@@ -134,7 +212,7 @@ pub fn is_due(task: &Task, now: u64, minutes_today: u32, weekday: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_due, parse_daily, tidy, Task};
+    use super::{announce_line, is_due, parse_daily, tidy, warn_text, Task};
 
     fn sample(kind: &str, schedule: &str) -> Task {
         Task {
@@ -151,6 +229,10 @@ mod tests {
             last_run_at: 0,
             weekdays: Vec::new(),
             warn_minutes: 0,
+            warn_at: Vec::new(),
+            warn_style: String::new(),
+            final_message: String::new(),
+            time_words: Vec::new(),
             last_result: String::new(),
             last_ok: false,
         }
@@ -179,6 +261,26 @@ mod tests {
         let done = tidy(task).unwrap();
         assert_eq!(done.kind, "backup");
         assert_eq!(done.server_id, "instance-1");
+    }
+
+    #[test]
+    fn warns_at_the_chosen_times_in_the_chosen_style() {
+        let mut task = sample("restart", "daily");
+        task.message = String::new();
+        task.warn_minutes = 10;
+        let old = tidy(task.clone()).unwrap();
+        assert_eq!(old.warn_at, vec![600, 300, 60]);
+        task.warn_at = vec![10, 300, 300, 5000, 60];
+        let done = tidy(task).unwrap();
+        assert_eq!(done.warn_at, vec![300, 60, 10]);
+        assert_eq!(done.warn_minutes, 5);
+        assert_eq!(warn_text(&done, 300), "The server restarts in 5 min.");
+        assert_eq!(warn_text(&done, 10), "The server restarts in 10 sec.");
+        let local = Task { message: "{time} left".into(), time_words: vec!["{0}m".into(), "{0}s".into()], ..done.clone() };
+        assert_eq!(warn_text(&local, 60), "1m left");
+        assert_eq!(announce_line("say", "hi\nthere"), "say hithere");
+        assert_eq!(announce_line("tellraw", "a\"b"), r#"tellraw @a {"color":"yellow","text":"a\"b"}"#);
+        assert!(announce_line("title", "x").starts_with("title @a title {"));
     }
 
     #[test]

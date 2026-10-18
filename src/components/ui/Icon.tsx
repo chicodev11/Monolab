@@ -10,11 +10,12 @@ import {
   Image as ImageIcon,
   Sun, Moon,
   Database, Network, Users, SlidersVertical, CalendarClock, ChartLine, CloudUpload, SquareTerminal,
-  Eye, EyeOff,
+  Eye, EyeOff, HardDrive,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
   map: MapIcon,
+  disk: HardDrive,
   sun: Sun,
   moon: Moon,
   layers: Layers,
