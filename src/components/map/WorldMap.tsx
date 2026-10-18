@@ -44,7 +44,7 @@ export function WorldMap({
   const [where, setWhere] = useState<{ x: number; z: number } | null>(null);
   const [tiles, setTiles] = useState<Record<string, string>>({});
   const [night, setNight] = useState(false);
-  const drag = useRef<{ x: number; y: number; from: { x: number; z: number } } | null>(null);
+  const drag = useRef<{ x: number; y: number; from: { x: number; z: number }; moved: boolean } | null>(null);
   const glide = useRef<{ to: number; atX: number; atY: number } | null>(null);
   const frame = useRef(0);
 
@@ -298,24 +298,24 @@ export function WorldMap({
         onPointerDown={(event) => {
           if (event.button !== 0) return;
           event.currentTarget.setPointerCapture(event.pointerId);
-          drag.current = { x: event.clientX, y: event.clientY, from: { x: event.clientX, z: event.clientY } };
+          drag.current = { x: event.clientX, y: event.clientY, from: { x: event.clientX, z: event.clientY }, moved: false };
         }}
         onPointerMove={(event) => {
           setWhere(toWorld(event.clientX, event.clientY));
           if (!drag.current) return;
           const step = 2 ** viewRef.current.zoom;
           const last = drag.current.from;
+          if (Math.abs(event.clientX - drag.current.x) + Math.abs(event.clientY - drag.current.y) > 4) drag.current.moved = true;
           const v = viewRef.current;
           setView({ zoom: v.zoom, x: v.x - (event.clientX - last.x) * step, z: v.z - (event.clientY - last.z) * step });
           drag.current.from = { x: event.clientX, z: event.clientY };
         }}
         onPointerUp={(event) => {
+          const held = drag.current;
+          if (!held) return;
           event.currentTarget.releasePointerCapture(event.pointerId);
-          const moved =
-            drag.current &&
-            Math.abs(event.clientX - drag.current.x) + Math.abs(event.clientY - drag.current.y) > 4;
           drag.current = null;
-          if (!moved && onPick) {
+          if (!held.moved && onPick) {
             const spot = toWorld(event.clientX, event.clientY);
             if (spot) onPick(spot.x, spot.z);
           }

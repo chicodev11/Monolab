@@ -1279,10 +1279,13 @@ pub fn launch_log(id: &str) -> String {
 
 const RESTART_LOOP: &str = r#"tries=()
 while :; do
+began=$(date +%s)
 { @COMMAND@
 } 2> >(tee -a @LOG@ >&2); code=$?; wait $!
 tail -n 400 logs/latest.log 2>/dev/null | grep -q 'Stopping the server' && exit $code
-now=$(date +%s); kept=(); for t in "${tries[@]}"; do [ $((now - t)) -lt 600 ] && kept+=("$t"); done; tries=("${kept[@]}")
+now=$(date +%s)
+if [ $((now - began)) -lt 30 ]; then echo '[Monolab] Stopped within 30 seconds of starting. Not restarting.'; exit $code; fi
+kept=(); for t in "${tries[@]}"; do [ $((now - t)) -lt 600 ] && kept+=("$t"); done; tries=("${kept[@]}")
 if [ ${#tries[@]} -ge 3 ]; then echo '[Monolab] Crashed three times within 10 minutes. Not restarting.'; exit $code; fi
 tries+=("$now")
 echo "[Monolab] The server stopped unexpectedly (exit $code). Restarting in 5 seconds (${#tries[@]}/3)."

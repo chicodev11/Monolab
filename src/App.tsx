@@ -4405,6 +4405,7 @@ function App() {
       await askText(tr("Bookmark X {0}, Z {1}", [x, z]), tr("Name"), "", tr("Save"))
     )?.trim();
     if (!name) return;
+    const y = (await commands.mapSurfaceHeight(selected.id, mapRealm, x, z).catch(() => null)) ?? 64;
     const ok = await call(
       () =>
         commands.saveBookmark({
@@ -4413,7 +4414,7 @@ function App() {
           name,
           dimension: mapRealm,
           x,
-          y: 64,
+          y,
           z,
           note: "",
         }),

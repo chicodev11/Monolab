@@ -32,6 +32,30 @@ pub fn take_asked(id: &str) -> bool {
         .is_some_and(|when| when.elapsed() < Duration::from_secs(600))
 }
 
+static CRASHED: Mutex<Option<HashMap<String, Instant>>> = Mutex::new(None);
+
+pub fn heard_stop(id: &str) {
+    let crashed = CRASHED
+        .lock()
+        .expect("run log poisoned")
+        .get_or_insert_with(HashMap::new)
+        .get(id)
+        .is_some_and(|when| when.elapsed() < Duration::from_secs(600));
+    if !crashed {
+        asked_to_stop(id);
+    }
+}
+
+pub fn heard_crash(id: &str) {
+    CRASHED.lock().expect("run log poisoned").get_or_insert_with(HashMap::new).insert(id.to_string(), Instant::now());
+    ASKED.lock().expect("run log poisoned").get_or_insert_with(HashMap::new).remove(id);
+}
+
+pub fn started(id: &str) {
+    ASKED.lock().expect("run log poisoned").get_or_insert_with(HashMap::new).remove(id);
+    CRASHED.lock().expect("run log poisoned").get_or_insert_with(HashMap::new).remove(id);
+}
+
 pub fn record(folder: &Path, kind: &str, detail: &str) {
     let at = SystemTime::now().duration_since(UNIX_EPOCH).map(|one| one.as_secs()).unwrap_or(0);
     let entry = RunEntry { at, kind: kind.into(), detail: detail.chars().take(300).collect() };
@@ -87,6 +111,14 @@ mod tests {
         asked_to_stop("a");
         assert!(take_asked("a"));
         assert!(!take_asked("a"));
+        heard_stop("b");
+        assert!(take_asked("b"));
+        heard_crash("c");
+        heard_stop("c");
+        assert!(!take_asked("c"));
+        started("c");
+        heard_stop("c");
+        assert!(take_asked("c"));
         let _ = fs::remove_dir_all(&folder);
     }
 }

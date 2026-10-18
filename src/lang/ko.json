@@ -889,6 +889,7 @@
     "Remove chunks": "청크 지우기",
     "Remove {0} chunks?": "청크 {0}개를 지울까요?",
     "A backup of the worlds is made first. Removed chunks are generated fresh when someone goes there again, so builds in them are lost.": "먼저 월드를 백업해요. 지운 청크는 누군가 다시 가면 새로 만들어지므로, 그 안에 지은 것은 사라져요.",
+    "A backup of the whole server folder is made on the SSH server first. For a big server this can take several minutes. Removed chunks are generated fresh when someone goes there again, so builds in them are lost.": "먼저 SSH 서버에서 서버 폴더 전체를 백업해요. 큰 서버는 몇 분 걸릴 수 있어요. 지운 청크는 누군가 다시 가면 새로 만들어지므로, 그 안에 지은 것은 사라져요.",
     "Removed {0} chunks. Backup: {1}": "청크 {0}개를 지웠어요. 백업: {1}",
     "Nether": "네더",
     "End": "엔드",

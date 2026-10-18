@@ -27,6 +27,7 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
     private ScheduledTask perfTask;
     private MapRender map;
     private int liveCount;
+    private boolean chunkListBroken;
 
     @Override
     public void onEnable() {
@@ -203,8 +204,13 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
         }
         people.append(']');
         EntityTally tally = tallyEntities();
-        if (liveCount++ % LoadedChunks.EVERY_SECONDS == 0) {
-            log.setLoaded(loadedChunkList());
+        if (!chunkListBroken && liveCount++ % LoadedChunks.EVERY_SECONDS == 0) {
+            try {
+                log.setLoaded(loadedChunkList());
+            } catch (RuntimeException unsupported) {
+                chunkListBroken = true;
+                getLogger().log(Level.INFO, "Loaded chunk list isn't available on this server; skipping it.", unsupported);
+            }
         }
         log.setLive(new Json()
                 .put("at", System.currentTimeMillis())

@@ -1834,6 +1834,7 @@ pub(crate) fn web_invoke(
         "list_trash_instances" => ok(list_trash_instances(app.clone())?),
         "read_live" => ok(tauri::async_runtime::block_on(read_live(app.clone(), arg(body, "id")?))?),
         "list_runs" => ok(list_runs(app.clone(), arg(body, "id")?)?),
+        "map_surface_height" => ok(map_surface_height(app.state(), arg(body, "id")?, arg(body, "realm")?, arg(body, "x")?, arg(body, "z")?)),
         "read_loaded_chunks" => ok(tauri::async_runtime::block_on(read_loaded_chunks(app.clone(), arg(body, "id")?))?),
         "diagnose_lag" => ok(tauri::async_runtime::block_on(diagnose_lag(app.clone(), app.state(), arg(body, "id")?))?),
         "addon_status" => ok(tauri::async_runtime::block_on(addon_status(app.clone(), app.state(), arg(body, "id")?))?),
@@ -5904,11 +5905,14 @@ fn is_stop_line(line: &str) -> bool {
 fn mark_stop_intended(app: &AppHandle, server_id: &str) {
     let state = app.state::<AppState>();
     let mut processes = state.processes.lock().expect("process state poisoned");
-    if let Some(process) = processes.get_mut(server_id) {
-        if process.stop_requested_at.is_none() {
-            process.stop_requested_at = Some(SystemTime::now());
-            process.stop_from_log = true;
+    match processes.get_mut(server_id) {
+        Some(process) => {
+            if process.stop_requested_at.is_none() {
+                process.stop_requested_at = Some(SystemTime::now());
+                process.stop_from_log = true;
+            }
         }
+        None => runlog::heard_stop(server_id),
     }
 }
 
@@ -5931,8 +5935,9 @@ fn is_crash_line(line: &str) -> bool {
 fn mark_crash_seen(app: &AppHandle, server_id: &str) {
     let state = app.state::<AppState>();
     let mut processes = state.processes.lock().expect("process state poisoned");
-    if let Some(process) = processes.get_mut(server_id) {
-        process.crash_seen = true;
+    match processes.get_mut(server_id) {
+        Some(process) => process.crash_seen = true,
+        None => runlog::heard_crash(server_id),
     }
 }
 
@@ -5940,6 +5945,7 @@ fn mark_ready(app: &AppHandle, server_id: &str) {
     let state = app.state::<AppState>();
     let mut processes = state.processes.lock().expect("process state poisoned");
     let Some(process) = processes.get_mut(server_id) else {
+        runlog::started(server_id);
         return;
     };
     if process.ready {
@@ -6690,7 +6696,7 @@ async fn panel_power(app: &AppHandle, state: &AppState, id: &str, signal: &str) 
         }
     }
     api.power(&target, signal).await?;
-    if signal != "start" {
+    if signal == "stop" || signal == "kill" {
         runlog::asked_to_stop(id);
     }
     let what = match signal {
@@ -8341,6 +8347,24 @@ fn loaded_from_text(text: &str) -> Option<LoadedChunks> {
 
 #[tauri::command(async)]
 #[specta::specta]
+fn map_surface_height(state: State<'_, AppState>, id: String, realm: Option<String>, x: i32, z: i32) -> Option<i32> {
+    let realm = worldmap::realm_key(realm.as_deref().unwrap_or("overworld"));
+    let tile = state
+        .map_cells
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .get(&(id, realm, x.div_euclid(512), z.div_euclid(512)))
+        .cloned()?;
+    let at = z.rem_euclid(512) as usize * worldmap::SPAN + x.rem_euclid(512) as usize;
+    let block = *tile.block.get(at)?;
+    if !tile.present || block == u16::MAX {
+        return None;
+    }
+    Some(i32::from(*tile.height.get(at)?) + 1)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
 async fn read_loaded_chunks(app: AppHandle, id: String) -> Result<Option<LoadedChunks>, String> {
     let instance = instance_by_id(&app, &id)?;
     if is_far(&instance) {
@@ -8604,6 +8628,7 @@ fn start_remote_watcher(app: AppHandle) {
                                 note_run(&app, &one.id, "crash", "Stopped without a stop request (crash or stopped outside the app)");
                             }
                         } else if !was && now {
+                            runlog::started(&one.id);
                             note_run(&app, &one.id, "start", "");
                         }
                     }
@@ -12908,6 +12933,23 @@ async fn trim_list(app: &AppHandle, instance: &ServerInstance, relative: &str) -
         .unwrap_or_default()
 }
 
+async fn trim_side_names(app: &AppHandle, instance: &ServerInstance, folder: &str, side: &str) -> Result<HashSet<String>, String> {
+    if is_far(instance) {
+        let parent = far_list(app, instance, folder).await.map_err(|error| format!("Could not list {}: {}", folder, error))?;
+        if !parent.iter().any(|one| one.directory && one.name == side) {
+            return Ok(HashSet::new());
+        }
+        let inside = format!("{folder}/{side}");
+        let rows = far_list(app, instance, &inside).await.map_err(|error| format!("Could not list {}: {}", inside, error))?;
+        return Ok(rows.into_iter().filter(|one| !one.directory).map(|one| one.name).collect());
+    }
+    match fs::read_dir(Path::new(&instance.path).join(folder).join(side)) {
+        Ok(entries) => Ok(entries.flatten().map(|one| one.file_name().to_string_lossy().to_string()).collect()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(HashSet::new()),
+        Err(error) => Err(format!("Could not list {}/{}: {}", folder, side, error)),
+    }
+}
+
 async fn trim_read(app: &AppHandle, instance: &ServerInstance, relative: &str) -> Option<Vec<u8>> {
     if is_far(instance) {
         return far_read_bytes(app, instance, relative, 256 * 1024 * 1024).await.ok();
@@ -12995,6 +13037,13 @@ async fn trim_chunks(
         }
         record_audit(&app, &id, "Server", "Chunk cleanup", &format!("{folder} · {backup}"));
     }
+    let mut sides = Vec::new();
+    if apply {
+        for side in ["entities", "poi"] {
+            sides.push((side, trim_side_names(&app, &instance, &folder, side).await?));
+        }
+    }
+    let saved = backup.clone();
     let mut report = TrimReport { regions: regions.len() as u32, chunks: 0, removed: 0, bytes_before: 0.0, bytes_after: 0.0, applied: apply, backup };
     let total = regions.len();
     for (done, (name, _)) in regions.into_iter().enumerate() {
@@ -13017,15 +13066,25 @@ async fn trim_chunks(
         if !apply || plan.removed.is_empty() {
             continue;
         }
-        trim_write(&app, &instance, &relative, smaller).await?;
-        for side in ["entities", "poi"] {
+        let mut extras = Vec::new();
+        for (side, names) in &sides {
+            if !names.contains(&name) {
+                continue;
+            }
             let other = format!("{folder}/{side}/{name}");
-            let Some(extra) = trim_read(&app, &instance, &other).await else { continue };
+            let Some(extra) = trim_read(&app, &instance, &other).await else {
+                return Err(format!("Could not read {}, so cleanup stopped here. Earlier regions are already trimmed. Backup: {}", other, saved));
+            };
+            extras.push((other, extra));
+        }
+        let stopped = |error: String| format!("{} Cleanup stopped here. Backup: {}", error, saved);
+        trim_write(&app, &instance, &relative, smaller).await.map_err(stopped)?;
+        for (other, extra) in extras {
             let removed = plan.removed.clone();
             let cut = tauri::async_runtime::spawn_blocking(move || trim::strip(&extra, &removed))
                 .await
                 .map_err(|error| error.to_string())?;
-            trim_write(&app, &instance, &other, cut).await?;
+            trim_write(&app, &instance, &other, cut).await.map_err(stopped)?;
         }
     }
     let _ = app.emit("trim-progress", serde_json::json!({ "serverId": id, "done": total, "total": total }));
@@ -14879,6 +14938,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             perf_history,
             read_live,
             read_loaded_chunks,
+            map_surface_height,
             list_runs,
             trim_chunks,
             diagnose_lag,

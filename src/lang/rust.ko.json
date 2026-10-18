@@ -467,6 +467,10 @@
     "Could not save the bookmark: {error}": "좌표 북마크를 저장할 수 없어요: $1",
     "Bookmark not found.": "북마크를 찾을 수 없어요.",
     "Chunk cleanup isn't available for panel servers yet.": "패널 서버는 아직 청크 정리를 할 수 없어요.",
+    "Could not read {}, so cleanup stopped here. Earlier regions are already trimmed. Backup: {}": "$1을(를) 읽지 못해 여기서 멈췄어요. 앞의 지역은 이미 정리됐어요. 백업: $2",
+    "{} Cleanup stopped here. Backup: {}": "$1 청크 정리는 여기서 멈췄어요. 백업: $2",
+    "Could not list {}: {}": "$1 목록을 읽지 못했어요: $2",
+    "Could not list {}/{}: {}": "$1/$2 목록을 읽지 못했어요: $3",
     "This dimension has no region files yet.": "이 차원에는 아직 지역 파일이 없어요.",
     "Chunk cleanup": "청크 정리"
   },

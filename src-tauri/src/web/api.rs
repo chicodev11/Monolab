@@ -49,6 +49,7 @@ const READS: &[&str] = &[
     "list_trash_instances",
     "read_live",
     "read_loaded_chunks",
+    "map_surface_height",
     "list_runs",
     "diagnose_lag",
     "addon_status",

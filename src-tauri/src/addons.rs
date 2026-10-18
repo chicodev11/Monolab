@@ -45,10 +45,17 @@ pub struct UpdateIssue {
     pub project: String,
 }
 
-fn dependency_issues(version: &serde_json::Value, installed: &HashSet<String>) -> Vec<(String, String)> {
+fn dependency_issues(
+    version: &serde_json::Value,
+    installed: &HashSet<String>,
+    projects_of_versions: &HashMap<String, String>,
+) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for one in version.get("dependencies").and_then(|value| value.as_array()).into_iter().flatten() {
-        let Some(project) = one.get("project_id").and_then(|value| value.as_str()) else { continue };
+        let project = one.get("project_id").and_then(|value| value.as_str()).or_else(|| {
+            one.get("version_id").and_then(|value| value.as_str()).and_then(|id| projects_of_versions.get(id)).map(String::as_str)
+        });
+        let Some(project) = project else { continue };
         match one.get("dependency_type").and_then(|value| value.as_str()) {
             Some("required") if !installed.contains(project) => out.push(("missing".to_string(), project.to_string())),
             Some("incompatible") if installed.contains(project) => out.push(("incompatible".to_string(), project.to_string())),
@@ -615,7 +622,37 @@ pub fn find_updates(
     let Some(map) = value.as_object() else {
         return Ok(Vec::new());
     };
-    let installed: HashSet<String> = known.iter().filter_map(|addon| addon.project_id.clone()).collect();
+    let installed: HashSet<String> = known.iter().filter(|addon| addon.enabled).filter_map(|addon| addon.project_id.clone()).collect();
+    let unnamed: Vec<String> = addons
+        .iter()
+        .filter(|addon| addon.enabled && addon.project_id.is_none())
+        .flat_map(|addon| [addon.mod_id.to_lowercase(), addon.file_name.to_lowercase()])
+        .filter(|one| !one.is_empty())
+        .collect();
+    let loose: Vec<String> = known
+        .iter()
+        .filter_map(|addon| map.get(&addon.sha512))
+        .flat_map(|latest| latest.get("dependencies").and_then(|value| value.as_array()).cloned().unwrap_or_default())
+        .filter(|one| one.get("project_id").and_then(|value| value.as_str()).is_none())
+        .filter_map(|one| one.get("version_id").and_then(|value| value.as_str()).map(String::from))
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    let mut projects_of_versions: HashMap<String, String> = HashMap::new();
+    if !loose.is_empty() {
+        if let Ok(found) = client
+            .get("https://api.modrinth.com/v2/versions")
+            .query(&[("ids", serde_json::to_string(&loose).unwrap_or_default())])
+            .send()
+            .and_then(|answer| answer.json::<serde_json::Value>())
+        {
+            for one in found.as_array().into_iter().flatten() {
+                if let (Some(id), Some(project)) = (one.get("id").and_then(|v| v.as_str()), one.get("project_id").and_then(|v| v.as_str())) {
+                    projects_of_versions.insert(id.to_string(), project.to_string());
+                }
+            }
+        }
+    }
     let mut updates = Vec::new();
     let mut raw_issues: Vec<Vec<(String, String)>> = Vec::new();
     for addon in known {
@@ -645,10 +682,11 @@ pub fn find_updates(
             sha512: file.2,
             issues: Vec::new(),
         });
-        raw_issues.push(dependency_issues(latest, &installed));
+        raw_issues.push(dependency_issues(latest, &installed, &projects_of_versions));
     }
     let ids: Vec<String> = raw_issues.iter().flatten().map(|one| one.1.clone()).collect::<HashSet<_>>().into_iter().collect();
     let mut titles: HashMap<String, String> = HashMap::new();
+    let mut slugs: HashMap<String, String> = HashMap::new();
     if !ids.is_empty() {
         if let Ok(found) = client
             .get("https://api.modrinth.com/v2/projects")
@@ -660,16 +698,25 @@ pub fn find_updates(
                 if let (Some(id), Some(title)) = (one.get("id").and_then(|v| v.as_str()), one.get("title").and_then(|v| v.as_str())) {
                     titles.insert(id.to_string(), title.to_string());
                 }
+                if let (Some(id), Some(slug)) = (one.get("id").and_then(|v| v.as_str()), one.get("slug").and_then(|v| v.as_str())) {
+                    slugs.insert(id.to_string(), slug.to_lowercase());
+                }
             }
         }
     }
     for (update, list) in updates.iter_mut().zip(raw_issues) {
         update.issues = list
             .into_iter()
+            .filter(|(kind, id)| kind != "missing" || !slugs.get(id).is_some_and(|slug| covers(&unnamed, slug)))
             .map(|(kind, id)| UpdateIssue { kind, project: titles.get(&id).cloned().unwrap_or(id) })
             .collect();
     }
     Ok(updates)
+}
+
+fn covers(unnamed: &[String], slug: &str) -> bool {
+    let plain = slug.replace('-', "");
+    unnamed.iter().any(|one| one == slug || one.replace(['-', '_'], "") == plain || (one.ends_with(".jar") && one.replace(['-', '_'], "").contains(&plain)))
 }
 
 fn primary_file(version: &serde_json::Value) -> Option<(String, String, String)> {
@@ -886,9 +933,16 @@ mod tests {
         ]});
         let installed = ["lib", "bad"].into_iter().map(String::from).collect();
         assert_eq!(
-            dependency_issues(&version, &installed),
+            dependency_issues(&version, &installed, &std::collections::HashMap::new()),
             vec![("missing".to_string(), "api".to_string()), ("incompatible".to_string(), "bad".to_string())]
         );
+        let by_version = serde_json::json!({ "dependencies": [{ "version_id": "v1", "project_id": null, "dependency_type": "required" }] });
+        let projects = [("v1".to_string(), "api".to_string())].into_iter().collect();
+        assert_eq!(dependency_issues(&by_version, &installed, &projects), vec![("missing".to_string(), "api".to_string())]);
+        let unnamed = vec!["fabric-api".to_string(), "geckolib-fabric-1.21-4.7.jar".to_string()];
+        assert!(super::covers(&unnamed, "fabric-api"));
+        assert!(super::covers(&unnamed, "geckolib"));
+        assert!(!super::covers(&unnamed, "cloth-config"));
     }
 
     fn addon(file: &str, id: &str, project: Option<&str>) -> InstalledAddon {

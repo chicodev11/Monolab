@@ -81,6 +81,7 @@ pub fn start_watcher(app: AppHandle) {
                                         crate::note_run(&app, &id, "crash", "Stopped without a stop request (crash or stopped outside the app)");
                                     }
                                 } else if before == "offline" && up(&stats.state) {
+                                    crate::runlog::started(&id);
                                     crate::note_run(&app, &id, "start", "");
                                 }
                             }

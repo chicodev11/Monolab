@@ -9,7 +9,7 @@ import { Icon } from "../ui/Icon";
 import { Dropdown } from "../ui/Dropdown";
 
 type Props = {
-  server: { id: string; name: string; status: string };
+  server: { id: string; name: string; status: string; remoteHost?: string };
   realms: string[];
   confirm: (title: string, body: string, label: string, danger: boolean) => Promise<boolean>;
   onClose: () => void;
@@ -58,7 +58,9 @@ export function TrimDialog({ server, realms, confirm, onClose, onDone }: Props) 
     if (!report) return;
     const ok = await confirm(
       tr("Remove {0} chunks?", [report.removed.toLocaleString()]),
-      tr("A backup of the worlds is made first. Removed chunks are generated fresh when someone goes there again, so builds in them are lost."),
+      server.remoteHost
+        ? tr("A backup of the whole server folder is made on the SSH server first. For a big server this can take several minutes. Removed chunks are generated fresh when someone goes there again, so builds in them are lost.")
+        : tr("A backup of the worlds is made first. Removed chunks are generated fresh when someone goes there again, so builds in them are lost."),
       tr("Remove chunks"),
       true,
     );
@@ -66,7 +68,7 @@ export function TrimDialog({ server, realms, confirm, onClose, onDone }: Props) 
   };
 
   const label = (one: string) => (one === "nether" ? tr("Nether") : one === "end" ? tr("End") : tr("Overworld"));
-  const running = server.status !== "stopped";
+  const running = server.status !== "stopped" && server.status !== "crashed";
 
   return createPortal(
     <div className="modal-backdrop roomy" onClick={() => !busy && onClose()}>

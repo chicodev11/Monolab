@@ -142,6 +142,7 @@ export const commands = {
 	at: number | null,
 	worlds: LoadedWorld[],
 } | null>("read_loaded_chunks", { id }),
+	mapSurfaceHeight: (id: string, realm: string | null, x: number, z: number) => __TAURI_INVOKE<number | null>("map_surface_height", { id, realm, x, z }),
 	listRuns: (id: string) => __TAURI_INVOKE<RunEntry[]>("list_runs", { id }),
 	trimChunks: (id: string, realm: string, maxMinutes: number, keepRadius: number, apply: boolean) => __TAURI_INVOKE<TrimReport>("trim_chunks", { id, realm, maxMinutes, keepRadius, apply }),
 	diagnoseLag: (id: string) => __TAURI_INVOKE<LagDiagnosis>("diagnose_lag", { id }),
