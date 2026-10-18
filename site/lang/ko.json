@@ -60,5 +60,14 @@
   "Codex chat failed when the Codex app was set to a model the command line can't use, and couldn't use the app's tools.": "Codex 앱에 명령줄이 못 쓰는 모델이 설정돼 있으면 Codex 대화가 실패하고, 앱 도구도 못 쓰던 문제를 고쳤어요.",
   "The settings search bar covered dialogs opened from Server settings.": "서버 설정에서 연 창을 설정 찾기 칸이 가리던 문제를 고쳤어요.",
   "Reports which chunks are loaded and which are force-loaded, every 5 seconds.": "어느 청크가 로드되고 강제 로드됐는지 5초마다 알려 줘요.",
-  "The What's new button in the update notice sits next to Update now.": "업데이트 알림의 바뀐 점 보기 단추가 지금 업데이트 옆으로 갔어요."
+  "The What's new button in the update notice sits next to Update now.": "업데이트 알림의 바뀐 점 보기 단추가 지금 업데이트 옆으로 갔어요.",
+  "Bookmarks made by clicking the map use the real ground height.": "지도를 눌러 만든 북마크가 실제 땅 높이를 써요.",
+  "The chunk cleanup notice for SSH servers says the whole server folder is backed up first.": "SSH 서버의 청크 정리 안내가 서버 폴더 전체를 먼저 백업한다고 알려 줘요.",
+  "SSH servers with crash restart no longer hide why a server stopped right after starting.": "크래시 자동 재시작을 켠 SSH 서버가 켜자마자 꺼진 까닭을 가리던 문제를 고쳤어요.",
+  "Stopping an SSH or panel server from its console or in game was recorded as a crash in Run history.": "SSH·패널 서버를 콘솔이나 게임 안에서 끄면 실행 기록에 크래시로 적히던 문제를 고쳤어요.",
+  "Chunk cleanup could leave old mobs and item frames behind if a side file couldn't be read.": "청크 정리 중 개체 파일을 못 읽으면 옛 몹·액자가 남을 수 있던 문제를 고쳤어요.",
+  "Chunk cleanup couldn't be applied to a server that had crashed.": "크래시로 꺼진 서버에서 청크 정리를 할 수 없던 문제를 고쳤어요.",
+  "Mod update warnings said a needed mod was missing when it was installed by hand.": "직접 넣은 모드를 업데이트 경고가 없다고 하던 문제를 고쳤어요.",
+  "Dragging the world map, or right-clicking it, could open the bookmark window.": "월드 지도를 끌거나 오른쪽 단추로 누르면 북마크 창이 뜨던 문제를 고쳤어요.",
+  "The loaded chunk list no longer gets in the way on servers that can't provide it, such as Folia.": "Folia처럼 로드된 청크 목록을 줄 수 없는 서버에서 방해되지 않아요."
 }

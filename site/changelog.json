@@ -1,6 +1,31 @@
 [
   {
     "kind": "app",
+    "version": "1.0.2",
+    "date": "2026-10-18",
+    "changed": [
+      "Bookmarks made by clicking the map use the real ground height.",
+      "The chunk cleanup notice for SSH servers says the whole server folder is backed up first."
+    ],
+    "fixed": [
+      "SSH servers with crash restart no longer hide why a server stopped right after starting.",
+      "Stopping an SSH or panel server from its console or in game was recorded as a crash in Run history.",
+      "Chunk cleanup could leave old mobs and item frames behind if a side file couldn't be read.",
+      "Chunk cleanup couldn't be applied to a server that had crashed.",
+      "Mod update warnings said a needed mod was missing when it was installed by hand.",
+      "Dragging the world map, or right-clicking it, could open the bookmark window."
+    ]
+  },
+  {
+    "kind": "addon",
+    "version": "26",
+    "date": "2026-10-18",
+    "fixed": [
+      "The loaded chunk list no longer gets in the way on servers that can't provide it, such as Folia."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.0.1",
     "date": "2026-10-18",
     "added": [
