@@ -1,6 +1,43 @@
 [
   {
     "kind": "app",
+    "version": "1.2.0",
+    "date": "2026-10-19",
+    "added": [
+      "The Worlds tab opens straight to a full-size map, with dimensions, players and bookmarks, and tools in small menus on the map.",
+      "Right-drag on the map to select an area: generate its chunks, see how long players stayed there, copy its corners, save it as a PNG or delete its chunks.",
+      "Share the world map with friends as a web page through the web panel's Cloudflare address.",
+      "Chunksmith can be installed and used for chunk generation, next to Chunky.",
+      "Chunk borders on the map, with chunk and region file under the cursor.",
+      "Offline players' last positions on SSH and panel servers too.",
+      "Pumpkin servers can be created on SSH servers.",
+      "Chunk cleanup takes any number of minutes.",
+      "A warning before closing the app while the web panel is on."
+    ],
+    "changed": [
+      "The map loads much faster: drawn tiles are kept on disk, blurry tiles fill gaps while loading, and the map zooms out two more steps.",
+      "Map views read small stats files from addon 27 instead of whole region files, and remember what they read.",
+      "The agent uses much less of your plan when restarting servers and reading the console.",
+      "Monitor is now Resources, and disk usage moved there.",
+      "Picking your own server jar is now a card in the core list."
+    ],
+    "fixed": [
+      "The console no longer stops a little above the newest line when opened.",
+      "Checking the addon on SSH servers no longer hashes every mod file.",
+      "Map tiles drawn without colors were sometimes saved and showed as black squares.",
+      "Loaded chunks are visible when the map is zoomed far out."
+    ]
+  },
+  {
+    "kind": "addon",
+    "version": "27",
+    "date": "2026-10-19",
+    "added": [
+      "Writes small per-region stats files (time players stayed, entities, generation status and more) next to the map tiles, so map views load quickly."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.1.0",
     "date": "2026-10-18",
     "added": [
