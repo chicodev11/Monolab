@@ -75,7 +75,15 @@
     "Upload to mclo.gs failed: {error}": "mclo.gs에 올리지 못했어요: $1",
     "mclo.gs rejected it: {}": "mclo.gs가 거절했어요: $1",
     "Unknown reason": "원인을 알 수 없어요",
-    "mclo.gs did not return a URL.": "mclo.gs가 주소를 주지 않았어요."
+    "mclo.gs did not return a URL.": "mclo.gs가 주소를 주지 않았어요.",
+    "Map shared": "지도 공유",
+    "Map sharing stopped": "지도 공유 끔",
+    "Area chunks deleted": "영역 청크 삭제",
+    "The area is malformed.": "영역 값이 잘못됐어요.",
+    "The downloaded Pumpkin file isn't a Linux program.": "다운로드한 Pumpkin 파일이 리눅스 프로그램이 아니에요.",
+    "Pumpkin has no Linux build for this SSH server's CPU ({arch}).": "Pumpkin은 이 SSH 서버의 CPU($1)용 리눅스 버전이 없어요.",
+    "This Pumpkin release has no {asset} file.": "이 Pumpkin 버전에는 $1 파일이 없어요.",
+    "Could not download Pumpkin for Linux: {error}": "리눅스용 Pumpkin을 다운로드하지 못했어요: $1"
   },
   "lib.rs · 켜기·정지": {
     "The Pumpkin executable is missing": "Pumpkin 실행 파일이 없어요",
@@ -477,10 +485,10 @@
     "The server folder was not found on the SSH server.": "SSH 서버에서 서버 폴더를 찾지 못했어요.",
     "Unknown cleanup type.": "알 수 없는 정리 종류예요.",
     "Disk cleanup": "디스크 정리",
-    "Start the server first. Chunky runs inside the server.": "서버를 먼저 켜 주세요. Chunky는 서버 안에서 돌아요.",
     "Choose a radius between 1 and 100,000 blocks.": "반경은 1~100,000 블록 사이로 정해 주세요.",
-    "Unknown Chunky action.": "알 수 없는 Chunky 동작이에요.",
-    "Chunk pre-generation": "청크 미리 생성",
+    "Chunk pre-generation": "청크 생성",
+    "Start the server first. The pre-generator runs inside the server.": "서버를 먼저 켜 주세요. 미리 생성 도구는 서버 안에서 돌아요.",
+    "Unknown pre-generation action.": "알 수 없는 미리 생성 동작이에요.",
     "Unknown map view.": "알 수 없는 지도 보기예요."
   },
   "lib.rs · 백업·업그레이드": {
@@ -541,7 +549,6 @@
     "Could not read the archive: {error}": "압축 파일을 읽을 수 없어요: $1",
     "This server is already on the SSH server.": "이미 SSH 서버에 있는 서버예요.",
     "Could not read the packed file: {error}": "묶은 파일을 읽을 수 없어요: $1",
-    "Pumpkin ships as a Windows program, so it cannot be created on an SSH server.": "Pumpkin은 Windows용 파일이라 SSH 서버에 만들 수 없어요.",
     "Choose a port above 1024.": "포트는 1024보다 큰 번호로 골라주세요.",
     "{} copy": "$1 복사본",
     "Duplicated (SSH)": "복제 (SSH)",
@@ -749,7 +756,6 @@
     "No Pumpkin release was found.": "Pumpkin 배포 버전을 하나도 찾지 못했어요.",
     "Could not fetch Pumpkin release info: {error}": "Pumpkin 배포 정보를 가져올 수 없어요: $1",
     "Pumpkin release {version} was not found.": "Pumpkin 배포 버전 $1을 찾을 수 없어요.",
-    "This Pumpkin release has no Windows file ({PUMPKIN_WINDOWS_ASSET}).": "이 Pumpkin 배포 버전에는 Windows용 파일($1)이 없어요.",
     "Could not fetch the version list: {error}": "버전 목록을 가져올 수 없어요: $1",
     "Could not fetch the {project} version list: {error}": "$1 버전 목록을 가져올 수 없어요: $2",
     "The {project} version list is malformed.": "$1 버전 목록 형식이 맞지 않아요.",

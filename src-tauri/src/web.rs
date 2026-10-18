@@ -131,6 +131,9 @@ fn serve(app: &AppHandle, guard: &auth::Guard, mut stream: TcpStream) -> std::io
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
 
     if method == "GET" {
+        if let Some((token, tail)) = crate::mapshare::split(path) {
+            return share(app, &mut stream, token, tail, query);
+        }
         if let Some((kind, body)) = api::asset(path) {
             return reply(&mut stream, 200, kind, &body);
         }
@@ -238,6 +241,59 @@ fn serve(app: &AppHandle, guard: &auth::Guard, mut stream: TcpStream) -> std::io
         return json(&mut stream, 200, "{\"ok\":\"Signed out.\"}");
     }
     reply(&mut stream, 404, "text/plain; charset=utf-8", b"not found")
+}
+
+/// The public, read-only world map a share link opens. Only map tiles of the one shared server.
+fn share(app: &AppHandle, stream: &mut TcpStream, token: &str, tail: &str, query: &str) -> std::io::Result<()> {
+    let Some(found) = crate::mapshare::find(app, token) else {
+        return reply(stream, 404, "text/plain; charset=utf-8", b"This link is no longer shared.");
+    };
+    let id = found.server_id.clone();
+    match tail {
+        "" => reply(stream, 200, "text/html; charset=utf-8", crate::mapshare::PAGE.as_bytes()),
+        "info" => {
+            let name = crate::instance_by_id(app, &id).map(|one| one.name).unwrap_or_default();
+            let mut realms: Vec<String> = tauri::async_runtime::block_on(crate::list_worlds(app.clone(), id))
+                .unwrap_or_default()
+                .into_iter()
+                .map(|one| if one.realm.is_empty() { "overworld".to_string() } else { one.realm })
+                .collect();
+            realms.dedup();
+            let body = serde_json::json!({ "name": name, "realms": realms, "labels": found.labels });
+            json(stream, 200, &body.to_string())
+        }
+        "bounds" => {
+            let realm = param(query, "realm");
+            match tauri::async_runtime::block_on(crate::world_map_bounds(app.clone(), app.state(), id, Some(realm))) {
+                Ok((a, b, c, d)) => json(stream, 200, &serde_json::json!([a, b, c, d]).to_string()),
+                Err(_) => json(stream, 404, "{\"error\":\"none\"}"),
+            }
+        }
+        "tile" => {
+            let number = |name: &str| param(query, name).parse::<i32>().unwrap_or(0);
+            let made = tauri::async_runtime::block_on(crate::render_map_tile(
+                app.clone(),
+                app.state(),
+                id,
+                Some(param(query, "realm")),
+                number("z"),
+                number("tx"),
+                number("ty"),
+                Some(param(query, "night") == "1"),
+            ));
+            let Ok(url) = made else {
+                return reply(stream, 404, "text/plain; charset=utf-8", b"none");
+            };
+            let url = url.strip_prefix("partial:").unwrap_or(&url);
+            let data = url.split_once(",").map(|(_, data)| data).unwrap_or("");
+            use base64::Engine;
+            match base64::engine::general_purpose::STANDARD.decode(data) {
+                Ok(bytes) => reply(stream, 200, "image/png", &bytes),
+                Err(_) => reply(stream, 404, "text/plain; charset=utf-8", b"none"),
+            }
+        }
+        _ => reply(stream, 404, "text/plain; charset=utf-8", b"no"),
+    }
 }
 
 fn param(query: &str, name: &str) -> String {

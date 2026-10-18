@@ -284,6 +284,39 @@ fn pumpkin_download_source(
     client: &reqwest::blocking::Client,
     version: &str,
 ) -> Result<DownloadSource, String> {
+    pumpkin_asset_source(client, version, PUMPKIN_WINDOWS_ASSET)
+}
+
+/// Downloads the Linux build of a Pumpkin release for an SSH server (x86-64 or ARM64).
+pub fn pumpkin_linux_download(version: &str, arm: bool, destination: &Path) -> Result<(), String> {
+    let client = crate::net::builder()
+        .timeout(Duration::from_secs(180))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let asset = if arm { "pumpkin-ARM64-Linux" } else { "pumpkin-X64-Linux" };
+    let source = pumpkin_asset_source(&client, version, asset)?;
+    crate::net::check_download_url(&source.url)?;
+    let bytes = client
+        .get(&source.url)
+        .send()
+        .and_then(|reply| reply.error_for_status())
+        .and_then(|reply| reply.bytes())
+        .map_err(|error| format!("Could not download Pumpkin for Linux: {error}"))?;
+    if bytes.len() < 1024 * 1024 || !bytes.starts_with(b"\x7fELF") {
+        return Err("The downloaded Pumpkin file isn't a Linux program.".into());
+    }
+    fs::write(destination, &bytes).map_err(|error| error.to_string())?;
+    if let Some(sum) = source.sha256 {
+        crate::hashes::verify_sha256(destination, &sum)?;
+    }
+    Ok(())
+}
+
+fn pumpkin_asset_source(
+    client: &reqwest::blocking::Client,
+    version: &str,
+    asset: &str,
+) -> Result<DownloadSource, String> {
     let release: serde_json::Value = client
         .get(format!(
             "https://api.github.com/repos/Pumpkin-MC/Pumpkin/releases/tags/{version}"
@@ -299,19 +332,17 @@ fn pumpkin_download_source(
         .and_then(|assets| assets.as_array())
         .and_then(|assets| {
             assets.iter().find(|one| {
-                one.get("name").and_then(|name| name.as_str()) == Some(PUMPKIN_WINDOWS_ASSET)
+                one.get("name").and_then(|name| name.as_str()) == Some(asset)
             })
         })
         .and_then(|one| one.get("browser_download_url"))
         .and_then(|url| url.as_str())
-        .ok_or_else(|| {
-            format!("This Pumpkin release has no Windows file ({PUMPKIN_WINDOWS_ASSET}).")
-        })?
+        .ok_or_else(|| format!("This Pumpkin release has no {asset} file."))?
         .to_string();
     Ok(DownloadSource {
         url,
         sha1: None,
-        sha256: pumpkin_sha256(client, &release, PUMPKIN_WINDOWS_ASSET),
+        sha256: pumpkin_sha256(client, &release, asset),
         md5: None,
     })
 }
@@ -1012,6 +1043,15 @@ mod tests {
         assert_eq!(neoforge_game_version("26.1.2.97").as_deref(), Some("26.1.2"));
         assert_eq!(neoforge_game_version("26.2.0.64").as_deref(), Some("26.2"));
         assert_eq!(neoforge_game_version("weirdvalue").as_deref(), None);
+    }
+
+    #[test]
+    #[ignore]
+    fn downloads_pumpkin_for_linux() {
+        let target = std::env::temp_dir().join("monolab-pumpkin-linux-test");
+        super::pumpkin_linux_download("nightly", false, &target).expect("should download the Linux build");
+        assert!(std::fs::metadata(&target).unwrap().len() > 1024 * 1024);
+        let _ = std::fs::remove_file(&target);
     }
 
     #[test]

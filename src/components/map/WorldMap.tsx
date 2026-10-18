@@ -9,11 +9,48 @@ import { METRICS, colorOf, formatValue, gradient, makeScale, metricHint, metricL
 const TILE = 128;
 const MIN_ZOOM = -4;
 const MAX_ZOOM = 5;
+const MAX_VIEW = 7;
 const WORKERS = 6;
+
+export type MapArea = { minX: number; minZ: number; maxX: number; maxZ: number };
+
+function snapArea(a: { x: number; z: number }, b: { x: number; z: number }): MapArea {
+  return {
+    minX: Math.floor(Math.min(a.x, b.x) / 16) * 16,
+    minZ: Math.floor(Math.min(a.z, b.z) / 16) * 16,
+    maxX: Math.floor(Math.max(a.x, b.x) / 16) * 16 + 15,
+    maxZ: Math.floor(Math.max(a.z, b.z) / 16) * 16 + 15,
+  };
+}
+
+type AreaStay = { chunks: number; visited: number; total: number; max: number; tooBig: boolean };
 
 export type TileFetch = (z: number, tx: number, ty: number, night: boolean) => Promise<string>;
 
 type Want = { key: string; level: number; tx: number; ty: number };
+
+const KEEP_MS = 3 * 60 * 1000;
+const KEEP_TILES = 500;
+const held = new Map<string, { at: number; tiles: Record<string, string> }>();
+
+function tileCache(key: string) {
+  const now = Date.now();
+  for (const [name, one] of held) if (now - one.at > KEEP_MS) held.delete(name);
+  let one = held.get(key);
+  if (!one) {
+    one = { at: now, tiles: {} };
+    held.set(key, one);
+    while (held.size > 6) held.delete(held.keys().next().value!);
+  }
+  return one;
+}
+
+function keepTile(key: string, tile: string, url: string) {
+  const one = tileCache(key);
+  one.tiles[tile] = url;
+  const names = Object.keys(one.tiles);
+  if (names.length > KEEP_TILES) for (const name of names.slice(0, names.length - KEEP_TILES)) delete one.tiles[name];
+}
 
 export function WorldMap({
   pins,
@@ -24,6 +61,10 @@ export function WorldMap({
   onExport,
   chunks,
   stats,
+  focus,
+  cacheKey,
+  onPregenArea,
+  onDeleteArea,
 }: {
   pins: MapPin[];
   onPick?: (x: number, z: number) => void;
@@ -33,6 +74,10 @@ export function WorldMap({
   onExport?: (png: string) => void;
   chunks?: { on: boolean; toggle: () => void; loaded: number[]; forced: number[]; known: boolean } | null;
   stats?: StatFetch | null;
+  focus?: { x: number; z: number; n: number } | null;
+  cacheKey?: string;
+  onPregenArea?: ((area: MapArea) => void) | null;
+  onDeleteArea?: ((area: MapArea) => void) | null;
 }) {
   const drawn = useSmoothPins(pins, true);
   const box = useRef<HTMLDivElement>(null);
@@ -46,8 +91,26 @@ export function WorldMap({
   const corner = view;
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [where, setWhere] = useState<{ x: number; z: number } | null>(null);
-  const [tiles, setTiles] = useState<Record<string, string>>({});
+  const [tiles, setTiles] = useState<Record<string, string>>(() => (cacheKey ? { ...tileCache(cacheKey).tiles } : {}));
   const [night, setNight] = useState(false);
+  const [showPins, setShowPins] = useState(true);
+  const [showGrid, setShowGrid] = useState(false);
+  const gridCanvas = useRef<HTMLCanvasElement>(null);
+  const [area, setArea] = useState<MapArea | null>(null);
+  const picking = useRef<{ x: number; z: number } | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [stay, setStay] = useState<AreaStay | "loading" | null>(null);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setArea(null);
+        setStay(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const drag = useRef<{ x: number; y: number; from: { x: number; z: number }; moved: boolean } | null>(null);
   const glide = useRef<{ to: number; atX: number; atY: number } | null>(null);
   const frame = useRef(0);
@@ -87,11 +150,22 @@ export function WorldMap({
         Math.hypot((a.tx + 0.5) * span - midX, (a.ty + 0.5) * span - midZ) -
         Math.hypot((b.tx + 0.5) * span - midX, (b.ty + 0.5) * span - midZ),
     );
+    const coarse = Math.min(MAX_ZOOM, level + 2);
+    if (coarse > level) {
+      const wide = TILE * 2 ** coarse;
+      const under: Want[] = [];
+      for (let ty = Math.floor(corner.z / wide); ty <= Math.floor((corner.z + size.h * bpp) / wide); ty += 1) {
+        for (let tx = Math.floor(corner.x / wide); tx <= Math.floor((corner.x + size.w * bpp) / wide); tx += 1) {
+          under.push({ key: `${prefix}/${coarse}/${tx}/${ty}`, level: coarse, tx, ty });
+        }
+      }
+      return [...under, ...list];
+    }
     return list;
   }, [corner.x, corner.z, level, size.w, size.h, bpp, prefix]);
 
   const wantRef = useRef<Want[]>([]);
-  const have = useRef<Record<string, string>>({});
+  const have = useRef<Record<string, string>>(cacheKey ? { ...tileCache(cacheKey).tiles } : {});
   const busy = useRef(new Set<string>());
   const later = useRef(new Map<string, number>());
   const running = useRef(0);
@@ -118,7 +192,10 @@ export function WorldMap({
             const clean = partial ? url.slice("partial:".length) : url;
             if (partial) later.current.set(next.key, Date.now() + 2500);
             else later.current.delete(next.key);
-            if (!partial) have.current[next.key] = clean;
+            if (!partial) {
+              have.current[next.key] = clean;
+              if (cacheKey) keepTile(cacheKey, next.key, clean);
+            }
             setTiles((held) => ({ ...held, [next.key]: clean }));
           },
           () => later.current.set(next.key, Date.now() + 3000),
@@ -139,6 +216,13 @@ export function WorldMap({
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (!focus || size.w < 16) return;
+    const zoomTo = Math.min(viewRef.current.zoom, 0);
+    const step = 2 ** zoomTo;
+    setView({ zoom: zoomTo, x: focus.x - (size.w * step) / 2, z: focus.z - (size.h * step) / 2 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus?.n]);
   const [metric, setMetric] = useState<Metric | null>(null);
   const grids = useRef(new Map<string, StatGrid | null>());
   const [gridTick, setGridTick] = useState(0);
@@ -175,7 +259,7 @@ export function WorldMap({
         if (!stop) setGridTick((was) => was + 1);
       }
     };
-    void Promise.all([work(), work(), work(), work()]);
+    void Promise.all([work(), work(), work(), work(), work(), work()]);
     return () => {
       stop = true;
     };
@@ -197,6 +281,38 @@ export function WorldMap({
     return value === undefined || value === null ? null : formatValue(metric, value);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metric, where, gridTick]);
+  useEffect(() => {
+    const canvas = gridCanvas.current;
+    if (!canvas) return;
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.round(size.w * ratio);
+    canvas.height = Math.round(size.h * ratio);
+    const pen = canvas.getContext("2d");
+    if (!pen) return;
+    pen.setTransform(ratio, 0, 0, ratio, 0, 0);
+    pen.clearRect(0, 0, size.w, size.h);
+    if (!showGrid || size.w < 16) return;
+    const lines = (step: number, color: string, width: number) => {
+      pen.strokeStyle = color;
+      pen.lineWidth = width;
+      pen.beginPath();
+      const firstX = Math.ceil(corner.x / step) * step;
+      for (let x = firstX; x <= corner.x + size.w * bpp; x += step) {
+        const px = Math.round((x - corner.x) / bpp) + 0.5;
+        pen.moveTo(px, 0);
+        pen.lineTo(px, size.h);
+      }
+      const firstZ = Math.ceil(corner.z / step) * step;
+      for (let z = firstZ; z <= corner.z + size.h * bpp; z += step) {
+        const py = Math.round((z - corner.z) / bpp) + 0.5;
+        pen.moveTo(0, py);
+        pen.lineTo(size.w, py);
+      }
+      pen.stroke();
+    };
+    if (16 / bpp >= 6) lines(16, "rgba(255, 255, 255, 0.22)", 1);
+    if (512 / bpp >= 12) lines(512, "rgba(255, 255, 255, 0.55)", 1.5);
+  }, [showGrid, corner.x, corner.z, bpp, size.w, size.h]);
   const statCanvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = statCanvas.current;
@@ -236,33 +352,47 @@ export function WorldMap({
     pen.clearRect(0, 0, size.w, size.h);
     if (!chunks?.on) return;
     const cell = 16 / bpp;
+    const small = cell < 5;
+    const dot = small ? 5 : cell;
+    const shift = (dot - cell) / 2;
     const paint = (list: number[], fill: string, line: string) => {
+      const spots: [number, number][] = [];
+      for (let at = 0; at + 1 < list.length; at += 2) {
+        const left = (list[at] * 16 - corner.x) / bpp - shift;
+        const top = (list[at + 1] * 16 - corner.z) / bpp - shift;
+        if (left + dot < 0 || top + dot < 0 || left > size.w || top > size.h) continue;
+        spots.push([left, top]);
+      }
+      if (small) {
+        pen.fillStyle = "rgba(0, 0, 0, 0.6)";
+        for (const [left, top] of spots) pen.fillRect(left - 1, top - 1, dot + 2, dot + 2);
+      }
       pen.fillStyle = fill;
       pen.strokeStyle = line;
       pen.lineWidth = 1;
-      for (let at = 0; at + 1 < list.length; at += 2) {
-        const left = (list[at] * 16 - corner.x) / bpp;
-        const top = (list[at + 1] * 16 - corner.z) / bpp;
-        if (left + cell < 0 || top + cell < 0 || left > size.w || top > size.h) continue;
-        pen.fillRect(left, top, cell, cell);
-        if (cell >= 6) pen.strokeRect(left + 0.5, top + 0.5, cell - 1, cell - 1);
+      for (const [left, top] of spots) {
+        pen.fillRect(left, top, dot, dot);
+        if (!small && cell >= 6) pen.strokeRect(left + 0.5, top + 0.5, cell - 1, cell - 1);
       }
     };
-    paint(chunks.loaded, "rgba(80, 200, 255, 0.28)", "rgba(80, 200, 255, 0.55)");
-    paint(chunks.forced, "rgba(255, 170, 40, 0.45)", "rgba(255, 170, 40, 0.85)");
+    paint(chunks.loaded, small ? "rgba(80, 200, 255, 0.95)" : "rgba(80, 200, 255, 0.28)", "rgba(80, 200, 255, 0.55)");
+    paint(chunks.forced, small ? "rgba(255, 170, 40, 1)" : "rgba(255, 170, 40, 0.45)", "rgba(255, 170, 40, 0.85)");
   }, [chunks, corner.x, corner.z, bpp, size.w, size.h]);
 
   const [exporting, setExporting] = useState(false);
-  const exportView = async () => {
-    if (!onExport || exporting || size.w < 16) return;
+  const exportArea = async (pick: MapArea) => {
+    if (!onExport || exporting) return;
     setExporting(true);
     try {
+      const blocksW = pick.maxX - pick.minX + 1;
+      const blocksH = pick.maxZ - pick.minZ + 1;
+      const level = Math.max(-2, Math.min(MAX_ZOOM, Math.ceil(Math.log2(Math.max(blocksW, blocksH) / 4096))));
       const scale = 2 ** level;
       const span = TILE * scale;
-      const left = corner.x;
-      const top = corner.z;
-      const width = Math.round((size.w * bpp) / scale);
-      const height = Math.round((size.h * bpp) / scale);
+      const left = pick.minX;
+      const top = pick.minZ;
+      const width = Math.max(1, Math.round(blocksW / scale));
+      const height = Math.max(1, Math.round(blocksH / scale));
       const canvas = document.createElement("canvas");
       canvas.width = width;
       canvas.height = height;
@@ -331,7 +461,7 @@ export function WorldMap({
     frame.current = requestAnimationFrame(step);
   };
   const glideTo = (target: number, atX: number, atY: number) => {
-    glide.current = { to: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, target)), atX, atY };
+    glide.current = { to: Math.max(MIN_ZOOM, Math.min(MAX_VIEW, target)), atX, atY };
     animate();
   };
 
@@ -383,13 +513,30 @@ export function WorldMap({
       <div
         className={`map-view ${drag.current ? "dragging" : ""}`}
         ref={box}
+        onContextMenu={(event) => event.preventDefault()}
         onPointerDown={(event) => {
+          if (event.button === 2) {
+            const spot = toWorld(event.clientX, event.clientY);
+            if (!spot) return;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            picking.current = spot;
+            setSelecting(true);
+            setArea(snapArea(spot, spot));
+            setStay(null);
+            setCopied(false);
+            return;
+          }
           if (event.button !== 0) return;
           event.currentTarget.setPointerCapture(event.pointerId);
           drag.current = { x: event.clientX, y: event.clientY, from: { x: event.clientX, z: event.clientY }, moved: false };
         }}
         onPointerMove={(event) => {
-          setWhere(toWorld(event.clientX, event.clientY));
+          const spotNow = toWorld(event.clientX, event.clientY);
+          setWhere(spotNow);
+          if (picking.current) {
+            if (spotNow) setArea(snapArea(picking.current, spotNow));
+            return;
+          }
           if (!drag.current) return;
           const step = 2 ** viewRef.current.zoom;
           const last = drag.current.from;
@@ -399,6 +546,12 @@ export function WorldMap({
           drag.current.from = { x: event.clientX, z: event.clientY };
         }}
         onPointerUp={(event) => {
+          if (picking.current) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+            picking.current = null;
+            setSelecting(false);
+            return;
+          }
           const held = drag.current;
           if (!held) return;
           event.currentTarget.releasePointerCapture(event.pointerId);
@@ -426,25 +579,19 @@ export function WorldMap({
           />
         ))}
         <canvas ref={statCanvas} className="map-chunks" style={{ width: `${size.w}px`, height: `${size.h}px` }} />
+        <canvas ref={gridCanvas} className="map-chunks" style={{ width: `${size.w}px`, height: `${size.h}px` }} />
         <canvas ref={overlay} className="map-chunks" style={{ width: `${size.w}px`, height: `${size.h}px` }} />
-        {metric && (
-          <div className="map-legend">
-            <strong>{metricLabel(metric)}</strong>
-            <small>{metricHint(metric)}</small>
-            {scale ? (
-              <>
-                <span className="map-legend-bar" style={{ background: gradient() }} />
-                <span className="map-legend-ends">
-                  <span>{metric === "version" ? String(scale.values[0] ?? scale.min) : formatValue(metric, scale.min)}</span>
-                  <span>{metric === "version" ? String(scale.values[scale.values.length - 1] ?? scale.max) : formatValue(metric, scale.max)}</span>
-                </span>
-              </>
-            ) : (
-              <small className="muted">{tr("Reading region files…")}</small>
-            )}
-          </div>
-        )}
-        <div className="map-pins">
+        {area && (() => {
+          const a = toScreen(area.minX, area.minZ);
+          const b = toScreen(area.maxX + 1, area.maxZ + 1);
+          return (
+            <div
+              className="map-area"
+              style={{ left: `${a.left}px`, top: `${a.top}px`, width: `${Math.max(2, b.left - a.left)}px`, height: `${Math.max(2, b.top - a.top)}px` }}
+            />
+          );
+        })()}
+        <div className="map-pins" hidden={!showPins}>
           {drawn.map((pin) => {
             const spot = toScreen(pin.x, pin.z);
             if (spot.left < -60 || spot.top < -60 || spot.left > size.w + 60 || spot.top > size.h + 60) {
@@ -499,87 +646,238 @@ export function WorldMap({
         </div>
       </div>
 
-      <div className="map-bar">
-        <span className="map-where">
-          {where ? `X ${where.x}   Z ${where.z}` : tr("Click the map to add a bookmark")}
-          {where && hover && <b className="map-where-value"> · {hover}</b>}
-        </span>
+      <div className="map-float map-float-top">
         {stats && (
-          <Dropdown
-            className="map-view-pick"
-            value={metric ?? "map"}
-            options={[
-              { value: "map", label: tr("Map") },
-              ...METRICS.map((one) => ({ value: one, label: metricLabel(one) })),
-            ]}
-            onChange={(value) => setMetric(value === "map" ? null : (value as Metric))}
-          />
+          <div className="map-float-box map-view-box">
+            <Dropdown
+              className="map-view-pick"
+              value={metric ?? "map"}
+              options={[
+                { value: "map", label: tr("Terrain") },
+                ...METRICS.map((one) => ({ value: one, label: metricLabel(one) })),
+              ]}
+              onChange={(value) => setMetric(value === "map" ? null : (value as Metric))}
+            />
+          </div>
         )}
+        {metric && (
+          <div className="map-float-box map-legend">
+            <small>{metricHint(metric)}</small>
+            {scale ? (
+              <>
+                <span className="map-legend-bar" style={{ background: gradient() }} />
+                <span className="map-legend-ends">
+                  <span>{metric === "version" ? String(scale.values[0] ?? scale.min) : formatValue(metric, scale.min)}</span>
+                  <span>{metric === "version" ? String(scale.values[scale.values.length - 1] ?? scale.max) : formatValue(metric, scale.max)}</span>
+                </span>
+              </>
+            ) : (
+              <small className="muted">{tr("Reading region files…")}</small>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="map-float map-float-layers map-float-box">
         <button
-          className={`button ghost small map-night ${night ? "on" : ""}`}
+          className={`map-tool ${night ? "on" : ""}`}
           aria-pressed={night}
+          data-tip={night ? tr("Night") : tr("Day")}
+          aria-label={night ? tr("Night") : tr("Day")}
           onClick={() => setNight((was) => !was)}
         >
           <Icon name={night ? "moon" : "sun"} />
-          {night ? tr("Night") : tr("Day")}
         </button>
         {cave && (
           <button
-            className={`button ghost small map-night ${cave.on ? "on" : ""}`}
+            className={`map-tool ${cave.on ? "on" : ""}`}
             aria-pressed={cave.on}
             data-tip={tr("Shows cave floors below Y 32")}
+            aria-label={tr("Caves")}
             onClick={cave.toggle}
           >
             <Icon name="layers" />
-            {tr("Caves")}
           </button>
         )}
         {chunks && (
           <button
-            className={`button ghost small map-night ${chunks.on ? "on" : ""}`}
+            className={`map-tool ${chunks.on ? "on" : ""}`}
             aria-pressed={chunks.on}
             data-tip={
-              chunks.known
-                ? tr("Blue: loaded chunks · orange: force-loaded chunks")
-                : tr("Loaded chunks in this dimension. This server type can't tell which ones are force-loaded.")
+              chunks.on
+                ? tr("{0, plural, one {# loaded chunk} other {# loaded chunks}}", [(chunks.loaded.length + chunks.forced.length) / 2])
+                : chunks.known
+                  ? tr("Blue: loaded chunks · orange: force-loaded chunks")
+                  : tr("Loaded chunks in this dimension. This server type can't tell which ones are force-loaded.")
             }
+            aria-label={tr("Loaded chunks")}
             onClick={chunks.toggle}
           >
             <Icon name="grid" />
-            {chunks.on
-              ? tr("{0, plural, one {# loaded chunk} other {# loaded chunks}}", [(chunks.loaded.length + chunks.forced.length) / 2])
-              : tr("Loaded chunks")}
           </button>
         )}
-        {onExport && (
-          <button
-            className="button ghost small map-night"
-            data-tip={tr("Saves what you see as a PNG")}
-            disabled={exporting}
-            onClick={() => void exportView()}
-          >
-            <Icon name="image" />
-            {exporting ? tr("Saving…") : tr("Save PNG")}
-          </button>
-        )}
-        <span className="map-note">
-          {bpp >= 1
-            ? tr("{0, plural, one {# block} other {# blocks}} per px", [Math.round(bpp * 10) / 10])
-            : tr("{0} px per block", [Math.round((1 / bpp) * 10) / 10])}
-        </span>
         <button
-          className="icon-button"
-          data-tip={tr("Small")}
-          onClick={() => glideTo(Math.round(zoom) + 1, size.w / 2, size.h / 2)}
+          className={`map-tool ${showGrid ? "on" : ""}`}
+          aria-pressed={showGrid}
+          data-tip={tr("Chunk borders · thick lines are region files (512 blocks)")}
+          aria-label={tr("Chunk borders")}
+          onClick={() => setShowGrid((was) => !was)}
         >
-          −
+          <Icon name="chunk-grid" />
         </button>
         <button
-          className="icon-button"
-          data-tip={tr("Large")}
-          onClick={() => glideTo(Math.round(zoom) - 1, size.w / 2, size.h / 2)}
+          className={`map-tool ${showPins ? "on" : ""}`}
+          aria-pressed={showPins}
+          data-tip={tr("Players and bookmarks")}
+          aria-label={tr("Players and bookmarks")}
+          onClick={() => setShowPins((was) => !was)}
         >
-          ＋
+          <Icon name="users" />
+        </button>
+      </div>
+
+      {area && !selecting && (() => {
+        const b = toScreen(area.maxX + 1, area.maxZ + 1);
+        const a = toScreen(area.minX, area.minZ);
+        const left = Math.min(Math.max(8, b.left + 10), Math.max(8, size.w - 290));
+        const top = Math.min(Math.max(8, a.top), Math.max(8, size.h - 260));
+        const width = area.maxX - area.minX + 1;
+        const height = area.maxZ - area.minZ + 1;
+        const count = (width / 16) * (height / 16);
+        const measureStay = async () => {
+          if (!statsRef.current) return;
+          setMetric("inhabited");
+          const rx0 = Math.floor(area.minX / 512);
+          const rx1 = Math.floor(area.maxX / 512);
+          const rz0 = Math.floor(area.minZ / 512);
+          const rz1 = Math.floor(area.maxZ / 512);
+          if ((rx1 - rx0 + 1) * (rz1 - rz0 + 1) > 100) {
+            setStay({ chunks: count, visited: 0, total: 0, max: 0, tooBig: true });
+            return;
+          }
+          setStay("loading");
+          let visited = 0;
+          let total = 0;
+          let max = 0;
+          for (let rz = rz0; rz <= rz1; rz += 1) {
+            for (let rx = rx0; rx <= rx1; rx += 1) {
+              const key = `inhabited/${rx}/${rz}`;
+              let grid = grids.current.get(key) ?? null;
+              if (!grid) {
+                grid = (await statsRef.current?.("inhabited", rx, rz).catch(() => null)) ?? null;
+                if (grid) grids.current.set(key, grid);
+              }
+              if (!grid) continue;
+              for (let index = 0; index < 1024; index += 1) {
+                const cx = (rx * 32 + (index % 32)) * 16;
+                const cz = (rz * 32 + Math.floor(index / 32)) * 16;
+                if (cx < area.minX || cx > area.maxX || cz < area.minZ || cz > area.maxZ) continue;
+                const value = grid[index];
+                if (value === null || value === undefined) continue;
+                total += value;
+                if (value > 0) visited += 1;
+                if (value > max) max = value;
+              }
+            }
+          }
+          setGridTick((was) => was + 1);
+          setStay({ chunks: count, visited, total, max, tooBig: false });
+        };
+        return (
+          <div className="map-area-tools map-float-box" style={{ left: `${left}px`, top: `${top}px` }} onPointerDown={(event) => event.stopPropagation()}>
+            <div className="map-area-head">
+              <span>
+                <strong>{tr("Selected area")}</strong>
+                <small>
+                  {tr("{0} × {1} blocks · {2} chunks", [width.toLocaleString(), height.toLocaleString(), count.toLocaleString()])}
+                </small>
+              </span>
+              <button className="map-tool" aria-label={tr("Clear selection")} data-tip={tr("Clear selection")} onClick={() => { setArea(null); setStay(null); }}>
+                <Icon name="close" />
+              </button>
+            </div>
+            <code className="map-area-coords">
+              X {area.minX} ~ {area.maxX} · Z {area.minZ} ~ {area.maxZ}
+            </code>
+            {onPregenArea && (
+              <button className="map-area-action" onClick={() => onPregenArea(area)}>
+                <Icon name="layers" />
+                {tr("Pre-generate this area")}
+              </button>
+            )}
+            {statsRef.current && (
+              <button className="map-area-action" disabled={stay === "loading"} onClick={() => void measureStay()}>
+                <Icon name="clock" />
+                {stay === "loading" ? tr("Reading region files…") : tr("Time players stayed here")}
+              </button>
+            )}
+            {stay && stay !== "loading" && (
+              <div className="map-area-stay">
+                {stay.tooBig ? (
+                  <small className="muted">{tr("The area is too big. Select a smaller area.")}</small>
+                ) : (
+                  <>
+                    <span>
+                      <small>{tr("Total")}</small>
+                      <strong>{formatValue("inhabited", stay.total)}</strong>
+                    </span>
+                    <span>
+                      <small>{tr("Longest in one chunk")}</small>
+                      <strong>{formatValue("inhabited", stay.max)}</strong>
+                    </span>
+                    <span>
+                      <small>{tr("Chunks visited")}</small>
+                      <strong>
+                        {stay.visited.toLocaleString()} / {stay.chunks.toLocaleString()}
+                      </strong>
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+            <button
+              className="map-area-action"
+              onClick={() => {
+                void navigator.clipboard?.writeText(`${area.minX} ${area.minZ} ${area.maxX} ${area.maxZ}`).then(() => setCopied(true));
+              }}
+            >
+              <Icon name={copied ? "check" : "copy"} />
+              {copied ? tr("Copied") : tr("Copy corners")}
+            </button>
+            {onExport && (
+              <button className="map-area-action" disabled={exporting} onClick={() => void exportArea(area)}>
+                <Icon name="image" />
+                {exporting ? tr("Saving…") : tr("Save this area as PNG")}
+              </button>
+            )}
+            {onDeleteArea && (
+              <button className="map-area-action danger" onClick={() => onDeleteArea(area)}>
+                <Icon name="trash" />
+                {tr("Delete chunks in this area")}
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
+      <div className="map-float map-float-where map-float-box">
+        <span className="map-where">
+          {where ? `X ${where.x}   Z ${where.z}` : tr("Click to add a bookmark · right-drag to select an area")}
+          {where && hover && <b className="map-where-value"> · {hover}</b>}
+        </span>
+        {where && showGrid && (
+          <span className="map-note">
+            {tr("Chunk {0}, {1} · region r.{2}.{3}", [Math.floor(where.x / 16), Math.floor(where.z / 16), Math.floor(where.x / 512), Math.floor(where.z / 512)])}
+          </span>
+        )}
+      </div>
+
+      <div className="map-float map-float-zoom map-float-box">
+        <button className="map-tool" data-tip={tr("Zoom in")} aria-label={tr("Zoom in")} onClick={() => glideTo(Math.round(zoom) - 1, size.w / 2, size.h / 2)}>
+          <Icon name="plus" />
+        </button>
+        <button className="map-tool" data-tip={tr("Zoom out")} aria-label={tr("Zoom out")} onClick={() => glideTo(Math.round(zoom) + 1, size.w / 2, size.h / 2)}>
+          <Icon name="minus" />
         </button>
       </div>
     </div>

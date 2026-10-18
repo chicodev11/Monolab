@@ -7,23 +7,29 @@ import { Dropdown } from "../ui/Dropdown";
 import { SegmentedControl } from "../primitives";
 
 type Props = {
-  server: { id: string; name: string; status: string };
+  server: { id: string; name: string; status: string; core: string };
+  realm?: number;
+  area?: { x: number; z: number; rx: number; rz: number } | null;
   onClose: () => void;
   onNotice: (message: string) => void;
 };
 
-const CHUNKY_ID = "fALzjamp";
+const TOOLS = [
+  { id: "chunky", project: "fALzjamp", name: "Chunky" },
+  { id: "chunksmith", project: "4BeAEBIb", name: "Chunksmith" },
+] as const;
 
 type ChunkyStatus = Awaited<ReturnType<typeof commands.chunkyStatus>>;
 
-export function PregenDialog({ server, onClose, onNotice }: Props) {
+export function PregenDialog({ server, realm: startRealm = 0, area = null, onClose, onNotice }: Props) {
   const [status, setStatus] = useState<ChunkyStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [realm, setRealm] = useState(0);
-  const [center, setCenter] = useState<{ x: string; z: string } | null>(null);
-  const [radius, setRadius] = useState("2000");
-  const [shape, setShape] = useState<"square" | "circle">("square");
+  const [realm, setRealm] = useState(startRealm);
+  const [center, setCenter] = useState<{ x: string; z: string } | null>(area ? { x: String(area.x), z: String(area.z) } : null);
+  const [radius, setRadius] = useState(area ? String(area.rx) : "2000");
+  const [radiusZ, setRadiusZ] = useState(area ? String(area.rz) : "2000");
+  const [shape, setShape] = useState<"square" | "circle" | "rectangle">(area ? (area.rx === area.rz ? "square" : "rectangle") : "square");
   const running = server.status === "running";
 
   const load = useCallback(() => {
@@ -56,21 +62,24 @@ export function PregenDialog({ server, onClose, onNotice }: Props) {
     }
   };
 
-  const install = () =>
+  const install = (tool: (typeof TOOLS)[number]) =>
     act(
-      () => commands.installModrinth(server.id, CHUNKY_ID, status?.folder === "plugins" ? "plugin" : "mod", null),
-      running ? tr("Installed Chunky. Restart the server to use it.") : tr("Installed Chunky."),
+      () => commands.installModrinth(server.id, tool.project, status?.folder === "plugins" ? "plugin" : "mod", null),
+      running ? tr("Installed {0}. Restart the server to use it.", [tool.name]) : tr("Installed {0}.", [tool.name]),
     );
+  const offered = TOOLS.filter((tool) => !(tool.id === "chunksmith" && server.core === "Folia"));
+  const toolName = TOOLS.find((tool) => tool.id === status?.tool)?.name ?? "";
 
   const world = status?.worlds[realm] ?? "";
   const run = (action: string) =>
     act(() =>
-      commands.chunkyRun(server.id, action, world, Math.round(Number(center?.x) || 0), Math.round(Number(center?.z) || 0), Math.round(Number(radius) || 0), shape),
+      commands.chunkyRun(server.id, action, world, Math.round(Number(center?.x) || 0), Math.round(Number(center?.z) || 0), Math.round(Number(radius) || 0), shape === "rectangle" ? Math.round(Number(radiusZ) || 0) : 0, shape),
     );
 
   const progress = status?.progress ? { ...status.progress, percent: status.progress.percent ?? 0, rate: status.progress.rate ?? 0 } : null;
   const side = Math.max(0, Math.round(Number(radius) || 0)) * 2;
-  const chunks = shape === "circle" ? Math.round(Math.PI * (side / 32) ** 2) : Math.round((side / 16) ** 2);
+  const sideZ = shape === "rectangle" ? Math.max(0, Math.round(Number(radiusZ) || 0)) * 2 : side;
+  const chunks = shape === "circle" ? Math.round(Math.PI * (side / 32) ** 2) : Math.round((side / 16) * (sideZ / 16));
   const stateLabel: Record<string, string> = {
     running: tr("Generating"),
     finished: tr("Finished"),
@@ -92,18 +101,31 @@ export function PregenDialog({ server, onClose, onNotice }: Props) {
           </div>
         </div>
         <p className="muted trim-lead">
-          {tr("Makes the world ahead of time with Chunky, so players don't wait for new land and the server stays smooth while exploring.")}
+          {tr("Makes the world ahead of time, so players don't wait for new land and the server stays smooth while exploring.")}
+          {toolName && <> {tr("Using {0}.", [toolName])}</>}
         </p>
         {error && <p className="modal-error">{error}</p>}
         {!status ? (
           <p className="muted tool-empty">{tr("Loading…")}</p>
         ) : !status.installed ? (
           <div className="pregen-install">
-            <p>{tr("Chunky isn't installed on this server.")}</p>
-            <button className="button primary" disabled={busy} onClick={() => void install()}>
-              <Icon name="import" />
-              {tr("Install Chunky")}
-            </button>
+            <p>{tr("Install a pre-generator on this server first.")}</p>
+            <div className="pregen-tools">
+              {offered.map((tool) => (
+                <div key={tool.id} className="pregen-tool">
+                  <strong>{tool.name}</strong>
+                  <small className="muted">
+                    {tool.id === "chunky"
+                      ? tr("The well-known pre-generator. Simple and light.")
+                      : tr("Based on Chunky. Slows itself down while players are online, and builds Distant Horizons / voxy distant terrain as it goes.")}
+                  </small>
+                  <button className="button secondary small" disabled={busy} onClick={() => void install(tool)}>
+                    <Icon name="import" />
+                    {tr("Install {0}", [tool.name])}
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <>
@@ -159,9 +181,15 @@ export function PregenDialog({ server, onClose, onNotice }: Props) {
                 <input type="number" value={center?.z ?? "0"} onChange={(event) => setCenter({ x: center?.x ?? "0", z: event.target.value })} />
               </label>
               <label>
-                <span>{tr("Radius (blocks)")}</span>
+                <span>{shape === "rectangle" ? tr("Radius X") : tr("Radius (blocks)")}</span>
                 <input type="number" min={1} max={100000} value={radius} onChange={(event) => setRadius(event.target.value)} />
               </label>
+              {shape === "rectangle" && (
+                <label>
+                  <span>{tr("Radius Z")}</span>
+                  <input type="number" min={1} max={100000} value={radiusZ} onChange={(event) => setRadiusZ(event.target.value)} />
+                </label>
+              )}
               <div className="pregen-shape">
                 <span>{tr("Shape")}</span>
                 <SegmentedControl
@@ -171,15 +199,16 @@ export function PregenDialog({ server, onClose, onNotice }: Props) {
                   options={[
                     { value: "square", label: tr("Square") },
                     { value: "circle", label: tr("Circle") },
+                    { value: "rectangle", label: tr("Rectangle") },
                   ]}
                 />
               </div>
             </div>
             <p className="muted pregen-estimate">
-              {tr("About {0} chunks ({1} × {1} blocks). Existing chunks are skipped.", [chunks.toLocaleString(), side.toLocaleString()])}
+              {tr("About {0} chunks ({1} × {2} blocks). Existing chunks are skipped.", [chunks.toLocaleString(), side.toLocaleString(), sideZ.toLocaleString()])}
             </p>
             <div className="trim-actions">
-              {!running && <span className="muted">{tr("Start the server first. Chunky runs inside the server.")}</span>}
+              {!running && <span className="muted">{tr("Start the server first. The pre-generator runs inside the server.")}</span>}
               <button
                 className="button primary"
                 disabled={busy || !running || progress?.state === "running"}

@@ -25,7 +25,7 @@ const SECTOR: usize = 4096;
 
 pub type Grid = Vec<Option<f64>>;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, Deserialize)]
 pub struct RegionStats {
     pub inhabited: Grid,
     pub updated: Grid,
@@ -150,6 +150,52 @@ pub fn read_region(bytes: &[u8]) -> RegionStats {
     out
 }
 
+/// Reads the per-chunk stats file the Monolab addon (27+) writes next to each map tile (`r.X.Z.mst`).
+#[allow(clippy::needless_range_loop)]
+pub fn read_mst(bytes: &[u8]) -> Option<(RegionStats, Grid)> {
+    let mut raw = Vec::new();
+    flate2::read::GzDecoder::new(bytes).read_to_end(&mut raw).ok()?;
+    if raw.get(..4)? != b"MST1" {
+        return None;
+    }
+    let mut stats = RegionStats {
+        inhabited: vec![None; 1024],
+        updated: vec![None; 1024],
+        block_entities: vec![None; 1024],
+        size: vec![None; 1024],
+        status: vec![None; 1024],
+        version: vec![None; 1024],
+    };
+    let mut entities = vec![None; 1024];
+    let mut at = 4;
+    let take = |at: &mut usize, n: usize| -> Option<&[u8]> {
+        let part = raw.get(*at..*at + n)?;
+        *at += n;
+        Some(part)
+    };
+    let int = |part: &[u8]| i32::from_be_bytes([part[0], part[1], part[2], part[3]]);
+    for index in 0..1024 {
+        if take(&mut at, 1)?[0] == 0 {
+            continue;
+        }
+        let inhabited = i64::from_be_bytes(take(&mut at, 8)?.try_into().ok()?);
+        let updated = int(take(&mut at, 4)?);
+        let size = int(take(&mut at, 4)?);
+        let block_entities = int(take(&mut at, 4)?);
+        let status = take(&mut at, 1)?[0] as i8;
+        let version = int(take(&mut at, 4)?);
+        let entity = int(take(&mut at, 4)?);
+        stats.inhabited[index] = (inhabited >= 0).then(|| inhabited as f64 / 1200.0);
+        stats.updated[index] = (updated > 0).then_some(f64::from(updated as u32));
+        stats.size[index] = (size > 0).then_some(f64::from(size));
+        stats.block_entities[index] = (block_entities >= 0).then_some(f64::from(block_entities));
+        stats.status[index] = (status >= 0).then_some(f64::from(status));
+        stats.version[index] = (version >= 0).then_some(f64::from(version));
+        entities[index] = (entity >= 0).then_some(f64::from(entity));
+    }
+    Some((stats, entities))
+}
+
 pub fn read_entities(bytes: &[u8]) -> Grid {
     let mut out = vec![None; 1024];
     if bytes.len() < SECTOR * 2 {
@@ -163,6 +209,37 @@ pub fn read_entities(bytes: &[u8]) -> Grid {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod mst_tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn reads_the_addon_stats_file() {
+        let mut raw = b"MST1".to_vec();
+        raw.push(1);
+        raw.extend_from_slice(&2400i64.to_be_bytes());
+        raw.extend_from_slice(&1_700_000_000i32.to_be_bytes());
+        raw.extend_from_slice(&8192i32.to_be_bytes());
+        raw.extend_from_slice(&3i32.to_be_bytes());
+        raw.push(13);
+        raw.extend_from_slice(&3955i32.to_be_bytes());
+        raw.extend_from_slice(&(-1i32).to_be_bytes());
+        raw.extend(std::iter::repeat_n(0u8, 1023));
+        let mut packed = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        packed.write_all(&raw).unwrap();
+        let (stats, entities) = read_mst(&packed.finish().unwrap()).unwrap();
+        assert_eq!(stats.inhabited[0], Some(2.0));
+        assert_eq!(stats.size[0], Some(8192.0));
+        assert_eq!(stats.block_entities[0], Some(3.0));
+        assert_eq!(stats.status[0], Some(13.0));
+        assert_eq!(stats.version[0], Some(3955.0));
+        assert_eq!(entities[0], None);
+        assert_eq!(stats.inhabited[1], None);
+        assert!(read_mst(b"nope").is_none());
+    }
 }
 
 #[cfg(test)]

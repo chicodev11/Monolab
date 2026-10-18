@@ -44,7 +44,7 @@ export function TrimDialog({ server, realms, confirm, onClose, onDone }: Props) 
     setBusy(apply ? "apply" : "preview");
     setProgress(null);
     try {
-      const made = await commands.trimChunks(server.id, realm, minutes, radius, apply);
+      const made = await commands.trimChunks(server.id, realm, minutes, radius, apply, null);
       setReport(made);
       if (apply) onDone(tr("Removed {0} chunks. Backup: {1}", [made.removed.toLocaleString(), made.backup]));
     } catch (cause) {
@@ -93,14 +93,23 @@ export function TrimDialog({ server, realms, confirm, onClose, onDone }: Props) 
           </label>
           <label>
             <span>{tr("Remove chunks players stayed in for")}</span>
-            <Dropdown
-              value={String(minutes)}
-              options={MINUTES.map((one) => ({
-                value: String(one),
-                label: one === 0 ? tr("Never (0 minutes)") : tr("{0} minutes or less", [one]),
-              }))}
-              onChange={(value) => setMinutes(Number(value))}
-            />
+            <span className="trim-minutes">
+              <input
+                type="number"
+                min={0}
+                max={100000}
+                value={minutes}
+                onChange={(event) => setMinutes(Math.max(0, Math.min(100000, Math.round(Number(event.target.value) || 0))))}
+              />
+              <em>{tr("minutes or less")}</em>
+            </span>
+            <span className="trim-presets">
+              {MINUTES.map((one) => (
+                <button type="button" key={one} className={`chip-button ${minutes === one ? "on" : ""}`} onClick={() => setMinutes(one)}>
+                  {one === 0 ? tr("Never") : tr("{0} min", [one])}
+                </button>
+              ))}
+            </span>
           </label>
           <label>
             <span>{tr("Always keep around spawn (chunks)")}</span>

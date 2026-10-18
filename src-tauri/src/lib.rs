@@ -29,6 +29,7 @@ mod mcp;
 mod properties;
 mod pumpkin;
 mod chunky;
+mod mapshare;
 mod chunkstats;
 mod crash;
 mod disk;
@@ -488,8 +489,8 @@ type RegionKey = (String, String, i32, i32);
 #[derive(Clone, Debug, Default)]
 struct ChunkFolder {
     folder: String,
-    regions: HashSet<String>,
-    entities: HashSet<String>,
+    regions: HashMap<String, (u64, u64)>,
+    entities: HashMap<String, (u64, u64)>,
 }
 type TileKey = (String, String, i32, i32, i32);
 type RegionStamps = HashMap<(i32, i32), (u64, u64)>;
@@ -1626,6 +1627,9 @@ async fn precheck_instance(
         return Ok(Vec::new());
     }
     if let Some(instance) = remote_instance(&app, &id)? {
+        if pumpkin::is_pumpkin(&instance.core) {
+            return Ok(Vec::new());
+        }
         let jar = if instance.custom_command.trim().is_empty() && instance.start_script.trim().is_empty() {
             remote_jar(&app, &instance).await?.jar
         } else {
@@ -1857,7 +1861,7 @@ pub(crate) fn web_invoke(
         "disk_usage" => ok(tauri::async_runtime::block_on(disk_usage(app.clone(), arg(body, "id")?))?),
         "chunk_stats" => ok(tauri::async_runtime::block_on(chunk_stats(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?, arg(body, "metric")?, arg(body, "rx")?, arg(body, "rz")?))?),
         "chunky_status" => ok(tauri::async_runtime::block_on(chunky_status(app.clone(), app.state(), arg(body, "id")?))?),
-        "chunky_run" => ok(tauri::async_runtime::block_on(chunky_run(app.clone(), app.state(), arg(body, "id")?, arg(body, "action")?, arg(body, "world")?, arg(body, "x")?, arg(body, "z")?, arg(body, "radius")?, arg(body, "shape")?))?),
+        "chunky_run" => ok(tauri::async_runtime::block_on(chunky_run(app.clone(), app.state(), arg(body, "id")?, arg(body, "action")?, arg(body, "world")?, arg(body, "x")?, arg(body, "z")?, arg(body, "radius")?, arg(body, "radiusZ")?, arg(body, "shape")?))?),
         "clean_disk" => ok(tauri::async_runtime::block_on(clean_disk(app.clone(), arg(body, "id")?, arg(body, "kind")?))?),
         "read_loaded_chunks" => ok(tauri::async_runtime::block_on(read_loaded_chunks(app.clone(), arg(body, "id")?))?),
         "diagnose_lag" => ok(tauri::async_runtime::block_on(diagnose_lag(app.clone(), app.state(), arg(body, "id")?))?),
@@ -3309,7 +3313,28 @@ async fn move_instance_to_host(
 ) -> Result<InstanceView, String> {
     let instance = instance_by_id(&app, &id)?;
     if pumpkin::is_pumpkin(&instance.core) {
-        return Err("Pumpkin ships as a Windows program, so it cannot be created on an SSH server.".into());
+        let conn = remote::connect(&app, &host_id).await?;
+        let arch = conn.run("uname -m").await?.stdout;
+        let arch = arch.trim().to_string();
+        if !matches!(arch.as_str(), "x86_64" | "amd64" | "aarch64" | "arm64") {
+            return Err(format!("Pumpkin has no Linux build for this SSH server's CPU ({arch})."));
+        }
+        let arm = matches!(arch.as_str(), "aarch64" | "arm64");
+        let folder = PathBuf::from(&instance.path);
+        let version = instance.version.clone();
+        let target = folder.join("pumpkin");
+        tauri::async_runtime::spawn_blocking(move || off_runtime(move || cores::pumpkin_linux_download(&version, arm, &target)))
+            .await
+            .map_err(|error| error.to_string())??;
+        let _ = fs::remove_file(folder.join(cores::PUMPKIN_EXE));
+        {
+            let _store = lock_instance_store();
+            let mut instances = load_instances(&app)?;
+            if let Some(saved) = instances.iter_mut().find(|saved| saved.id == id) {
+                saved.server_jar = Some("pumpkin".into());
+            }
+            save_instances(&app, &instances)?;
+        }
     }
     let moved = upload_instance_to_host(app.clone(), state, id.clone(), host_id).await?;
     let local = PathBuf::from(&instance.path);
@@ -6509,19 +6534,24 @@ async fn start_remote(
     } else {
         format!("bash ./{}", approve_script(app, instance, trusted).await?)
     };
-    let launch = if instance.custom_command.trim().is_empty() && script_line.is_empty() {
+    let native = pumpkin::is_pumpkin(&instance.core) && instance.custom_command.trim().is_empty() && script_line.is_empty();
+    let launch = if instance.custom_command.trim().is_empty() && script_line.is_empty() && !native {
         remote_jar(app, instance).await?
     } else {
         remote::Launch::default()
     };
-    let line = remote::launch_line(
-        if script_line.is_empty() { &instance.custom_command } else { &script_line },
-        &instance.java_path,
-        &launch,
-        instance.min_memory_mib.max(1),
-        instance.max_memory_mib.max(1),
-        &instance.jvm_args,
-    )?;
+    let line = if native {
+        "chmod +x ./pumpkin 2>/dev/null; ./pumpkin".to_string()
+    } else {
+        remote::launch_line(
+            if script_line.is_empty() { &instance.custom_command } else { &script_line },
+            &instance.java_path,
+            &launch,
+            instance.min_memory_mib.max(1),
+            instance.max_memory_mib.max(1),
+            &instance.jvm_args,
+        )?
+    };
     // Don't start if it's already running outside.
     let already = |live: &remote::Live| {
         if live.session.is_empty() {
@@ -7568,11 +7598,11 @@ async fn addon_status(
             Some(events::AddonKind::NeoForge) | Some(events::AddonKind::Fabric) => "mods",
             _ => "plugins",
         };
-        let found = remote::addon_files(&app, &instance.remote_host, &instance.path, folder)
+        let found = far_list(&app, &instance, folder)
             .await
             .unwrap_or_default()
             .into_iter()
-            .find(|one| events::is_our_addon(&one.name))
+            .find(|one| !one.directory && events::is_our_addon(&one.name))
             .and_then(|one| {
                 events::addon_kind(&instance.core)
                     .and_then(|kind| events::addon_version_in_name(kind, &one.name))
@@ -8065,11 +8095,41 @@ async fn render_map_tile(
         .cloned();
 
     tauri::async_runtime::spawn_blocking(move || off_runtime(move || {
+        let bpp = 2f32.powi(z);
+        let span = (TILE as f32 * bpp) as i32;
+        let saved = index.as_ref().and_then(|known| {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            ("tile-v2", night, z).hash(&mut hasher);
+            for rz in (ty * span).div_euclid(512) - 1..=((ty + 1) * span - 1).div_euclid(512) + 1 {
+                for rx in (tx * span).div_euclid(512) - 1..=((tx + 1) * span - 1).div_euclid(512) + 1 {
+                    if let Some(stamp) = known.get(&(rx, rz)) {
+                        (rx, rz, format!("{stamp:?}")).hash(&mut hasher);
+                    }
+                }
+            }
+            let dir = instance_data_dir(&app, &id).ok()?.join("map-tiles").join(&realm_name);
+            let name = format!("{}{z}_{tx}_{ty}", if night { "n" } else { "d" });
+            Some((dir.join(format!("{name}.png")), dir.join(format!("{name}.sig")), format!("{:016x}", hasher.finish())))
+        });
+        if let Some((png, sig, hash)) = &saved {
+            if fs::read_to_string(sig).ok().as_deref() == Some(hash.as_str()) {
+                if let Ok(bytes) = fs::read(png) {
+                    use base64::Engine;
+                    let url = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(&bytes));
+                    tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, url.clone());
+                    return Ok(url);
+                }
+            }
+        }
+        static PALETTE_LOAD: Mutex<()> = Mutex::new(());
+        let _loading = PALETTE_LOAD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let held = palettes
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .get(&id)
             .cloned();
+        let mut palette_failed = false;
         let palette = match held {
             Some(found) => found,
             None => {
@@ -8093,11 +8153,11 @@ async fn render_map_tile(
                         .unwrap_or_else(|poisoned| poisoned.into_inner())
                         .insert(id.clone(), one.clone());
                 }
+                palette_failed = failed;
                 one
             }
         };
-        let bpp = 2f32.powi(z);
-        let span = (TILE as f32 * bpp) as i32;
+        drop(_loading);
         let missed = std::cell::Cell::new(false);
         let mut fetch = |rx: i32, rz: i32| -> Arc<worldmap::Tile> {
             let key = (id.clone(), realm_name.clone(), rx, rz);
@@ -8143,10 +8203,19 @@ async fn render_map_tile(
         if held.len() > 1200 {
             held.clear();
         }
-        if missed.get() {
+        if missed.get() || palette_failed {
             return Ok(format!("partial:{url}"));
         }
         held.insert(key, url.clone());
+        drop(held);
+        if let Some((png, sig, hash)) = saved {
+            if let Some(dir) = png.parent() {
+                let _ = fs::create_dir_all(dir);
+            }
+            if fs::write(&png, &map).is_ok() {
+                let _ = fs::write(&sig, hash);
+            }
+        }
         Ok(url)
     }))
     .await
@@ -8381,13 +8450,14 @@ fn loaded_from_text(text: &str) -> Option<LoadedChunks> {
 #[serde(rename_all = "camelCase")]
 struct ChunkyStatus {
     installed: bool,
+    tool: String,
     folder: String,
     worlds: Vec<String>,
     spawn: Option<[i32; 2]>,
     progress: Option<chunky::ChunkyProgress>,
 }
 
-async fn chunky_folder_and_jar(app: &AppHandle, instance: &ServerInstance) -> (String, bool) {
+async fn chunky_folder_and_jar(app: &AppHandle, instance: &ServerInstance) -> (String, String) {
     for folder in ["plugins", "mods"] {
         let names: Vec<String> = if is_far(instance) {
             far_list(app, instance, folder).await.unwrap_or_default().into_iter().filter(|one| !one.directory).map(|one| one.name).collect()
@@ -8399,19 +8469,23 @@ async fn chunky_folder_and_jar(app: &AppHandle, instance: &ServerInstance) -> (S
                 .map(|one| one.file_name().to_string_lossy().to_string())
                 .collect()
         };
+        if names.iter().any(|name| chunky::is_chunksmith_jar(name)) {
+            return (folder.to_string(), "chunksmith".into());
+        }
         if names.iter().any(|name| chunky::is_chunky_jar(name)) {
-            return (folder.to_string(), true);
+            return (folder.to_string(), "chunky".into());
         }
     }
     let folder = if matches!(instance.core.as_str(), "Paper" | "Purpur" | "Folia") { "plugins" } else { "mods" };
-    (folder.to_string(), false)
+    (folder.to_string(), String::new())
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 async fn chunky_status(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<ChunkyStatus, String> {
     let instance = instance_by_id(&app, &id)?;
-    let (folder, installed) = chunky_folder_and_jar(&app, &instance).await;
+    let (folder, tool) = chunky_folder_and_jar(&app, &instance).await;
+    let installed = !tool.is_empty();
     let level = if is_far(&instance) {
         far_read(&app, &instance, "server.properties")
             .await
@@ -8429,7 +8503,7 @@ async fn chunky_status(app: AppHandle, state: State<'_, AppState>, id: String) -
         nbt::read_level_data(&Path::new(&instance.path).join(&level).join("level.dat")).ok().map(|data| [data.spawn[0], data.spawn[2]])
     };
     let progress = state.chunky.lock().expect("chunky state poisoned").get(&id).cloned();
-    Ok(ChunkyStatus { installed, folder, worlds, spawn, progress })
+    Ok(ChunkyStatus { installed, tool, folder, worlds, spawn, progress })
 }
 
 #[tauri::command(async)]
@@ -8444,34 +8518,43 @@ async fn chunky_run(
     x: i32,
     z: i32,
     radius: u32,
+    radius_z: u32,
     shape: String,
 ) -> Result<(), String> {
     let instance = instance_by_id(&app, &id)?;
     if !server_on(&app, state.inner(), &id)? {
-        return Err("Start the server first. Chunky runs inside the server.".into());
+        return Err("Start the server first. The pre-generator runs inside the server.".into());
     }
+    let (_, tool) = chunky_folder_and_jar(&app, &instance).await;
+    let root = chunky::command_root(&tool);
     let world = world.trim().to_string();
     if world.is_empty() || world.chars().any(|one| one.is_whitespace() || one.is_control()) {
         return Err("The world name is malformed.".into());
     }
     let lines: Vec<String> = match action.as_str() {
         "start" => {
-            if radius == 0 || radius > 100_000 {
+            let radius_z = if radius_z == 0 { radius } else { radius_z };
+            if radius == 0 || radius > 100_000 || radius_z > 100_000 {
                 return Err("Choose a radius between 1 and 100,000 blocks.".into());
             }
-            let shape = if shape == "circle" { "circle" } else { "square" };
+            let shape = match shape.as_str() {
+                "circle" => "circle",
+                "rectangle" if radius_z != radius => "rectangle",
+                _ => "square",
+            };
+            let size = if shape == "rectangle" { format!("{radius} {radius_z}") } else { radius.to_string() };
             vec![
-                format!("chunky world {world}"),
-                format!("chunky center {x} {z}"),
-                format!("chunky radius {radius}"),
-                format!("chunky shape {shape}"),
-                "chunky start".into(),
+                format!("{root} world {world}"),
+                format!("{root} center {x} {z}"),
+                format!("{root} radius {size}"),
+                format!("{root} shape {shape}"),
+                format!("{root} start"),
             ]
         }
-        "pause" => vec!["chunky pause".into()],
-        "continue" => vec!["chunky continue".into()],
-        "cancel" => vec!["chunky cancel".into(), "chunky confirm".into()],
-        _ => return Err("Unknown Chunky action.".into()),
+        "pause" => vec![format!("{root} pause")],
+        "continue" => vec![format!("{root} continue")],
+        "cancel" => vec![format!("{root} cancel"), format!("{root} confirm")],
+        _ => return Err("Unknown pre-generation action.".into()),
     };
     for line in &lines {
         say_to(&app, state.inner(), &instance.id, line);
@@ -8485,6 +8568,59 @@ async fn chunky_run(
     }
     record_audit(&app, &id, "Server", "Chunk pre-generation", &format!("{action} · {world}"));
     Ok(())
+}
+
+#[derive(Clone, Debug, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct MapShareView {
+    shared: bool,
+    url: String,
+    panel_on: bool,
+    tunnel_on: bool,
+    created_at: u64,
+}
+
+fn map_share_view(app: &AppHandle, id: &str) -> MapShareView {
+    let share = mapshare::of_server(app, id);
+    let port = app.state::<web::Running>().lock().expect("web panel poisoned").as_ref().map(|one| one.port());
+    let outside = app.state::<tunnel::Running>().lock().expect("tunnel poisoned").as_ref().map(|one| one.url().to_string());
+    let url = match (&share, &outside, port) {
+        (Some(one), Some(base), _) => format!("{}/m/{}", base.trim_end_matches('/'), one.token),
+        (Some(one), None, Some(port)) => format!("http://{}:{port}/m/{}", lan_address(), one.token),
+        _ => String::new(),
+    };
+    MapShareView {
+        shared: share.is_some(),
+        url,
+        panel_on: port.is_some(),
+        tunnel_on: outside.is_some(),
+        created_at: share.map(|one| one.created_at).unwrap_or(0),
+    }
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn map_share_state(app: AppHandle, id: String) -> Result<MapShareView, String> {
+    instance_by_id(&app, &id)?;
+    Ok(map_share_view(&app, &id))
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn map_share_create(app: AppHandle, id: String, labels: HashMap<String, String>) -> Result<MapShareView, String> {
+    instance_by_id(&app, &id)?;
+    let labels = labels.into_iter().filter(|(key, value)| key.len() <= 64 && value.len() <= 200).take(64).collect();
+    mapshare::create(&app, &id, labels, unix_now())?;
+    record_audit(&app, &id, "Server", "Map shared", "");
+    Ok(map_share_view(&app, &id))
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn map_share_remove(app: AppHandle, id: String) -> Result<MapShareView, String> {
+    mapshare::remove(&app, &id)?;
+    record_audit(&app, &id, "Server", "Map sharing stopped", "");
+    Ok(map_share_view(&app, &id))
 }
 
 fn forget_chunk_stats(state: &AppState, id: &str) {
@@ -8517,14 +8653,13 @@ async fn chunk_folder(app: &AppHandle, state: &AppState, instance: &ServerInstan
     }
     let mut found = ChunkFolder::default();
     for candidate in candidates {
-        let regions: HashSet<String> = trim_list(app, instance, &format!("{candidate}/region"))
+        let regions: HashMap<String, (u64, u64)> = stamp_list(app, instance, &format!("{candidate}/region"))
             .await
             .into_iter()
-            .map(|(name, _)| name)
-            .filter(|name| trim::region_coords(name).is_some())
+            .filter(|(name, _)| trim::region_coords(name).is_some())
             .collect();
         if !regions.is_empty() {
-            let entities = trim_list(app, instance, &format!("{candidate}/entities")).await.into_iter().map(|(name, _)| name).collect();
+            let entities = stamp_list(app, instance, &format!("{candidate}/entities")).await.into_iter().collect();
             found = ChunkFolder { folder: candidate, regions, entities };
             break;
         }
@@ -8550,18 +8685,52 @@ async fn chunk_stats(
     let instance = instance_by_id(&app, &id)?;
     let realm = worldmap::realm_key(&realm);
     let realm = realm.strip_suffix("-cave").unwrap_or(&realm).to_string();
+    let key = (id.clone(), realm.clone(), rx, rz);
+    let cached_grid = |state: &AppState| -> Option<Vec<Option<f64>>> {
+        if metric == "entities" {
+            state.chunk_entities.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&key).map(|grid| grid.as_ref().clone())
+        } else {
+            state.chunk_stats.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&key).and_then(|one| one.get(&metric).cloned())
+        }
+    };
+    if let Some(grid) = cached_grid(state.inner()) {
+        return Ok(Some(grid));
+    }
+    let tried = key.clone();
+    {
+        let file = format!("{realm}/r.{rx}.{rz}.mst");
+        let app_for = app.clone();
+        let instance_for = instance.clone();
+        let read = tauri::async_runtime::spawn_blocking(move || off_runtime(move || map_file_bytes(&app_for, &instance_for, &file)))
+            .await
+            .map_err(|error| error.to_string())?;
+        if let Ok(Some(bytes)) = read {
+            if let Some((stats, entities)) = chunkstats::read_mst(&bytes) {
+                state.chunk_stats.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(tried.clone(), Arc::new(stats));
+                state.chunk_entities.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(tried, Arc::new(entities));
+                return Ok(cached_grid(state.inner()));
+            }
+        }
+    }
     let found = chunk_folder(&app, state.inner(), &instance, &realm).await;
     let name = format!("r.{rx}.{rz}.mca");
-    let key = (id.clone(), realm.clone(), rx, rz);
     if metric == "entities" {
         if let Some(grid) = state.chunk_entities.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&key) {
             return Ok(Some(grid.as_ref().clone()));
         }
-        if !found.entities.contains(&name) {
+        let Some(stamp) = found.entities.get(&name).copied() else {
             return Ok(None);
-        }
-        let Some(bytes) = trim_read(&app, &instance, &format!("{}/entities/{name}", found.folder)).await else { return Ok(None) };
-        let grid = Arc::new(tauri::async_runtime::spawn_blocking(move || chunkstats::read_entities(&bytes)).await.map_err(|error| error.to_string())?);
+        };
+        let cache = stats_cache_file(&app, &id, &realm, &format!("{name}.entities"));
+        let grid = match read_cached::<chunkstats::Grid>(&cache, stamp) {
+            Some(grid) => Arc::new(grid),
+            None => {
+                let Some(bytes) = trim_read(&app, &instance, &format!("{}/entities/{name}", found.folder)).await else { return Ok(None) };
+                let grid = tauri::async_runtime::spawn_blocking(move || chunkstats::read_entities(&bytes)).await.map_err(|error| error.to_string())?;
+                write_cached(&cache, stamp, &grid);
+                Arc::new(grid)
+            }
+        };
         state.chunk_entities.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, grid.clone());
         return Ok(Some(grid.as_ref().clone()));
     }
@@ -8569,11 +8738,19 @@ async fn chunk_stats(
     let stats = match held {
         Some(one) => one,
         None => {
-            if !found.regions.contains(&name) {
+            let Some(stamp) = found.regions.get(&name).copied() else {
                 return Ok(None);
-            }
-            let Some(bytes) = trim_read(&app, &instance, &format!("{}/region/{name}", found.folder)).await else { return Ok(None) };
-            let one = Arc::new(tauri::async_runtime::spawn_blocking(move || chunkstats::read_region(&bytes)).await.map_err(|error| error.to_string())?);
+            };
+            let cache = stats_cache_file(&app, &id, &realm, &name);
+            let one = match read_cached::<chunkstats::RegionStats>(&cache, stamp) {
+                Some(stats) => Arc::new(stats),
+                None => {
+                    let Some(bytes) = trim_read(&app, &instance, &format!("{}/region/{name}", found.folder)).await else { return Ok(None) };
+                    let stats = tauri::async_runtime::spawn_blocking(move || chunkstats::read_region(&bytes)).await.map_err(|error| error.to_string())?;
+                    write_cached(&cache, stamp, &stats);
+                    Arc::new(stats)
+                }
+            };
             state.chunk_stats.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, one.clone());
             one
         }
@@ -13148,7 +13325,22 @@ struct PlayerSpot {
 async fn list_player_spots(app: AppHandle, id: String) -> Result<Vec<PlayerSpot>, String> {
     let instance = instance_by_id(&app, &id)?;
     if is_far(&instance) {
-        return Ok(Vec::new());
+        let people = list_players(app.clone(), id.clone()).await?;
+        let mut found = Vec::new();
+        for player in people.into_iter().filter(|one| one.uuid.len() == 36).take(60) {
+            let Ok(snapshot) = read_player_nbt(app.clone(), id.clone(), player.uuid.clone()).await else {
+                continue;
+            };
+            found.push(PlayerSpot {
+                name: player.name,
+                uuid: player.uuid,
+                dimension: snapshot.dimension,
+                x: snapshot.position[0],
+                z: snapshot.position[2],
+                saved_at: snapshot.modified_at,
+            });
+        }
+        return Ok(found);
     }
     let people = list_players(app.clone(), id.clone()).await?;
     off_runtime(move || {
@@ -13218,6 +13410,57 @@ fn trim_candidates(level: &str, realm: &str) -> Vec<String> {
             format!("{level}_the_end/DIM1"),
         ],
         _ => vec![format!("{level}/dimensions/minecraft/overworld"), level.to_string()],
+    }
+}
+
+/// Files in a folder with (size, modified time), used to tell when a cached reading is stale.
+async fn stamp_list(app: &AppHandle, instance: &ServerInstance, relative: &str) -> Vec<(String, (u64, u64))> {
+    if is_far(instance) {
+        return far_list(app, instance, relative)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|one| !one.directory)
+            .map(|one| (one.name, (one.size_bytes, one.modified_at)))
+            .collect();
+    }
+    fs::read_dir(Path::new(&instance.path).join(relative))
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|one| one.file_type().is_ok_and(|kind| kind.is_file()))
+                .map(|one| {
+                    let meta = one.metadata().ok();
+                    let size = meta.as_ref().map(|meta| meta.len()).unwrap_or(0);
+                    let modified = meta
+                        .and_then(|meta| meta.modified().ok())
+                        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|time| time.as_secs())
+                        .unwrap_or(0);
+                    (one.file_name().to_string_lossy().to_string(), (size, modified))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn stats_cache_file(app: &AppHandle, id: &str, realm: &str, name: &str) -> Option<PathBuf> {
+    Some(instance_data_dir(app, id).ok()?.join("chunk-stats").join(realm).join(format!("{name}.json")))
+}
+
+fn read_cached<T: serde::de::DeserializeOwned>(path: &Option<PathBuf>, stamp: (u64, u64)) -> Option<T> {
+    let text = fs::read_to_string(path.as_ref()?).ok()?;
+    let (saved, value): ((u64, u64), T) = serde_json::from_str(&text).ok()?;
+    (saved == stamp).then_some(value)
+}
+
+fn write_cached<T: Serialize>(path: &Option<PathBuf>, stamp: (u64, u64), value: &T) {
+    let Some(path) = path else { return };
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(text) = serde_json::to_string(&(stamp, value)) {
+        let _ = fs::write(path, text);
     }
 }
 
@@ -13293,7 +13536,18 @@ async fn trim_chunks(
     max_minutes: u32,
     keep_radius: u32,
     apply: bool,
+    area: Option<Vec<i32>>,
 ) -> Result<TrimReport, String> {
+    let area = match area.as_deref() {
+        Some([x0, z0, x1, z1]) => Some((
+            (*x0.min(x1)).div_euclid(16),
+            (*z0.min(z1)).div_euclid(16),
+            (*x0.max(x1)).div_euclid(16),
+            (*z0.max(z1)).div_euclid(16),
+        )),
+        Some(_) => return Err("The area is malformed.".into()),
+        None => None,
+    };
     let instance = instance_by_id(&app, &id)?;
     if !instance.panel_host.is_empty() {
         return Err("Chunk cleanup isn't available for panel servers yet.".into());
@@ -13324,11 +13578,19 @@ async fn trim_chunks(
     let Some((folder, regions)) = folder else {
         return Err("This dimension has no region files yet.".into());
     };
-    let regions: Vec<(String, u64)> = regions.into_iter().filter(|(name, _)| trim::region_coords(name).is_some()).collect();
+    let regions: Vec<(String, u64)> = regions
+        .into_iter()
+        .filter(|(name, _)| match (trim::region_coords(name), area) {
+            (None, _) => false,
+            (Some(_), None) => true,
+            (Some((rx, rz)), Some((x0, z0, x1, z1))) => rx * 32 + 31 >= x0 && rx * 32 <= x1 && rz * 32 + 31 >= z0 && rz * 32 <= z1,
+        })
+        .collect();
     let rule = trim::Rule {
         max_minutes,
         spawn: (spawn[0].div_euclid(16), spawn[2].div_euclid(16)),
         keep_radius: keep_radius.min(512) as i32,
+        area,
     };
     let mut backup = String::new();
     if apply {
@@ -13344,7 +13606,7 @@ async fn trim_chunks(
                 .map_err(|error| error.to_string())??
                 .file_name;
         }
-        record_audit(&app, &id, "Server", "Chunk cleanup", &format!("{folder} · {backup}"));
+        record_audit(&app, &id, "Server", if area.is_some() { "Area chunks deleted" } else { "Chunk cleanup" }, &format!("{folder} · {backup}"));
     }
     let mut sides = Vec::new();
     if apply {
@@ -15253,6 +15515,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             clean_disk,
             chunky_status,
             chunky_run,
+            map_share_state,
+            map_share_create,
+            map_share_remove,
             chunk_stats,
             list_runs,
             trim_chunks,

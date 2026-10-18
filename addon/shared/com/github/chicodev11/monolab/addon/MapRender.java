@@ -25,7 +25,11 @@ final class MapRender {
     static final int SPAN = 512;
     private static final byte[] MAGIC = "MNM2".getBytes(StandardCharsets.US_ASCII);
     private static final long PAUSE_MS = 60_000L;
-    private static final String RULES = "3";
+    private static final String RULES = "4";
+    private static final byte[] STATS_MAGIC = "MST1".getBytes(StandardCharsets.US_ASCII);
+    private static final List<String> STATUSES = List.of(
+            "empty", "structure_starts", "structure_references", "biomes", "noise", "surface", "carvers",
+            "liquid_carvers", "features", "initialize_light", "light", "spawn", "heightmaps", "full");
     static final int CAVE_Y = 32;
     private static final int OPEN = Integer.MAX_VALUE;
     private static final int VOID = -2;
@@ -138,6 +142,7 @@ final class MapRender {
         Path rules = out.resolve("rules.txt");
         boolean redo = !Files.isRegularFile(rules) || !RULES.equals(Files.readString(rules).trim());
         List<Integer> cutoffs = new ArrayList<>();
+        List<Path[]> extras = new ArrayList<>();
         for (Map.Entry<String, Path> realm : realms.entrySet()) {
             List<String> layers = realm.getKey().equals("overworld") ? List.of("overworld", "overworld-cave") : List.of(realm.getKey());
             for (String layer : layers) {
@@ -150,11 +155,17 @@ final class MapRender {
                             continue;
                         }
                         total++;
-                        Path tile = dir.resolve(name.substring(0, name.length() - 4) + ".mnm");
-                        if (!redo && Files.isRegularFile(tile) && !changedSince(mca, Files.getLastModifiedTime(tile).toMillis())) {
+                        String base = name.substring(0, name.length() - 4);
+                        Path tile = dir.resolve(base + ".mnm");
+                        boolean withStats = !layer.endsWith("-cave");
+                        Path stats = withStats ? dir.resolve(base + ".mst") : null;
+                        Path entities = withStats ? realm.getValue().resolveSibling("entities").resolve(name) : null;
+                        boolean statsFresh = stats == null || (Files.isRegularFile(stats) && !newer(entities, stats));
+                        if (!redo && statsFresh && Files.isRegularFile(tile) && !changedSince(mca, Files.getLastModifiedTime(tile).toMillis())) {
                             continue;
                         }
                         todo.add(new Path[] {mca, tile});
+                        extras.add(new Path[] {stats, entities});
                         cutoffs.add(cutoff);
                     }
                 }
@@ -168,7 +179,7 @@ final class MapRender {
                 return;
             }
             try {
-                renderRegion(one[0], one[1], cutoffs.get(i));
+                renderRegion(one[0], one[1], cutoffs.get(i), extras.get(i)[0], extras.get(i)[1]);
             } catch (IOException error) {
                 onTrouble.accept("Couldn't draw region " + one[0].getFileName(), error);
             }
@@ -180,6 +191,75 @@ final class MapRender {
             Files.createDirectories(out);
             Files.writeString(rules, RULES);
         }
+    }
+
+    private static boolean newer(Path file, Path than) throws IOException {
+        return file != null && Files.isRegularFile(file) && Files.getLastModifiedTime(file).toMillis() > Files.getLastModifiedTime(than).toMillis();
+    }
+
+    private static Map<String, Object> summary(Map<String, Object> chunk) {
+        Map<?, ?> level = chunk.get("Level") instanceof Map<?, ?> old ? old : chunk;
+        Map<String, Object> out = new HashMap<>();
+        out.put("DataVersion", chunk.get("DataVersion"));
+        out.put("InhabitedTime", level.get("InhabitedTime"));
+        out.put("Status", level.get("Status"));
+        Object list = level.get("block_entities") != null ? level.get("block_entities") : level.get("TileEntities");
+        out.put("be", list instanceof List<?> items ? items.size() : -1);
+        return out;
+    }
+
+    /** Per-chunk numbers the app shows as map views, so it doesn't have to download whole region files. */
+    private static void writeStats(Path target, byte[] raw, Map<String, Object>[] chunks, Path entities) throws IOException {
+        int[] entityCount = new int[1024];
+        java.util.Arrays.fill(entityCount, -1);
+        if (entities != null && Files.isRegularFile(entities)) {
+            byte[] other = Files.readAllBytes(entities);
+            if (other.length >= 8192) {
+                for (int index = 0; index < 1024; index++) {
+                    try {
+                        Map<String, Object> chunk = readChunk(other, index);
+                        if (chunk != null) {
+                            entityCount[index] = chunk.get("Entities") instanceof List<?> list ? list.size() : 0;
+                        }
+                    } catch (IOException | RuntimeException broken) {
+                        // Leave it unknown.
+                    }
+                }
+            }
+        }
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(16 * 1024);
+        try (java.io.DataOutputStream out = new java.io.DataOutputStream(new GZIPOutputStream(bytes))) {
+            out.write(STATS_MAGIC);
+            for (int index = 0; index < 1024; index++) {
+                int at = index * 4;
+                int offset = ((raw[at] & 0xFF) << 16) | ((raw[at + 1] & 0xFF) << 8) | (raw[at + 2] & 0xFF);
+                int sectors = raw[at + 3] & 0xFF;
+                if (offset == 0 || sectors == 0) {
+                    out.writeByte(0);
+                    continue;
+                }
+                out.writeByte(1);
+                int stampAt = 4096 + index * 4;
+                int updated = ((raw[stampAt] & 0xFF) << 24) | ((raw[stampAt + 1] & 0xFF) << 16) | ((raw[stampAt + 2] & 0xFF) << 8) | (raw[stampAt + 3] & 0xFF);
+                Map<String, Object> chunk = chunks[index];
+                Map<String, Object> level = chunk;
+                long inhabited = level != null && level.get("InhabitedTime") instanceof Number value ? value.longValue() : -1L;
+                int blockEntities = level != null && level.get("be") instanceof Integer count ? count : -1;
+                int status = -1;
+                if (level != null && level.get("Status") instanceof String text) {
+                    status = STATUSES.indexOf(text.substring(text.indexOf(':') + 1));
+                }
+                int version = chunk != null && chunk.get("DataVersion") instanceof Number value ? value.intValue() : -1;
+                out.writeLong(inhabited);
+                out.writeInt(updated);
+                out.writeInt(sectors * 4096);
+                out.writeInt(blockEntities);
+                out.writeByte(status);
+                out.writeInt(version);
+                out.writeInt(entityCount[index]);
+            }
+        }
+        write(target, bytes.toByteArray());
     }
 
     private static boolean changedSince(Path mca, long tileMillis) throws IOException {
@@ -296,13 +376,15 @@ final class MapRender {
         }
     }
 
-    private void renderRegion(Path mca, Path tile, int cutoff) throws IOException {
+    @SuppressWarnings("unchecked")
+    private void renderRegion(Path mca, Path tile, int cutoff, Path stats, Path entities) throws IOException {
         Region region = new Region();
         readTile(tile, region);
         byte[] raw = Files.readAllBytes(mca);
         if (raw.length < 8192) {
             return;
         }
+        Map<String, Object>[] chunks = stats == null ? null : new Map[1024];
         for (int index = 0; index < 1024; index++) {
             Map<String, Object> chunk;
             try {
@@ -312,6 +394,9 @@ final class MapRender {
             }
             if (chunk == null) {
                 continue;
+            }
+            if (chunks != null) {
+                chunks[index] = summary(chunk);
             }
             Object status = chunk.get("Status");
             if (status instanceof String text && !DRAWN_STATUS.contains(text.substring(text.indexOf(':') + 1))) {
@@ -357,6 +442,9 @@ final class MapRender {
             }
         }
         write(tile, bytes.toByteArray());
+        if (stats != null) {
+            writeStats(stats, raw, chunks, entities);
+        }
     }
 
     private static void readTile(Path tile, Region region) {

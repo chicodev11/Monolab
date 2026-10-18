@@ -29,7 +29,7 @@ fn world_of(line: &str, verb: &str) -> Option<String> {
 
 /// Reads one Chunky console line, if it is a progress or state line.
 pub fn read_line(line: &str, now: u64) -> Option<ChunkyProgress> {
-    if !line.contains("Chunky") && !line.contains("Task ") {
+    if (!line.contains("Chunky") && !line.contains("Task ")) || line.contains(" regions (") {
         return None;
     }
     let states = [
@@ -79,6 +79,20 @@ pub fn is_chunky_jar(name: &str) -> bool {
     lower.starts_with("chunky") && !lower.starts_with("chunkyborder") && (lower.ends_with(".jar"))
 }
 
+pub fn is_chunksmith_jar(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    lower.starts_with("chunksmith") && lower.ends_with(".jar")
+}
+
+/// The console command root for a pre-generation tool.
+pub fn command_root(tool: &str) -> &'static str {
+    if tool == "chunksmith" {
+        "cs"
+    } else {
+        "chunky"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,6 +114,10 @@ mod tests {
         assert_eq!(read_line("[Chunky] Task paused for world_nether.", 7).unwrap().state, "paused");
         assert_eq!(read_line("[Chunky] Task cancelled for world.", 7).unwrap().world, "world");
         assert!(read_line("[12:00:01 INFO]: Done (3.2s)!", 1).is_none());
+        let smith = read_line("[Chunksmith] Task running for minecraft:overworld. Processed: 1,024 chunks (3.20%), ETA: 0:04:10, Rate: 43.9 cps, Current: 4, -2 -- 300 already generated (skipped), 724 newly generated", 9).unwrap();
+        assert_eq!(smith.chunks, 1024);
+        assert!((smith.rate - 43.9).abs() < 0.001);
+        assert!(read_line("[Chunksmith] Task running for world. Processed: 12 regions (40.00%)", 9).is_none());
     }
 
     #[test]
@@ -109,5 +127,9 @@ mod tests {
         assert!(is_chunky_jar("Chunky-Bukkit-1.4.40.jar"));
         assert!(!is_chunky_jar("ChunkyBorder-1.2.jar"));
         assert!(!is_chunky_jar("Chunky-1.4.jar.disabled"));
+        assert!(is_chunksmith_jar("Chunksmith-NeoForge-4.6.0.jar"));
+        assert!(!is_chunky_jar("Chunksmith-NeoForge-4.6.0.jar"));
+        assert_eq!(command_root("chunksmith"), "cs");
+        assert_eq!(command_root("chunky"), "chunky");
     }
 }

@@ -106,6 +106,9 @@ import { DragScroll } from "./components/ui/DragScroll";
 import { DependencyDialog } from "./components/dialogs/DependencyDialog";
 import { VersionDialog, type AddonVersion } from "./components/dialogs/VersionDialog";
 import { CompareDialog } from "./components/dialogs/CompareDialog";
+import type { MapArea } from "./components/map/WorldMap";
+import { WorldSide } from "./components/map/WorldSide";
+import { MapShareDialog } from "./components/dialogs/MapShareDialog";
 import { TrimDialog } from "./components/dialogs/TrimDialog";
 import { DiskDialog } from "./components/dialogs/DiskDialog";
 import { PregenDialog } from "./components/dialogs/PregenDialog";
@@ -489,7 +492,6 @@ const addonKind = (core: string): "mod" | "plugin" | null => {
 
 const SLASH_TAIL = /[\\/][^\\/]*$/;
 
-const SHOW_WORLD_MAP = true;
 
 function realmFolder(dimension: string): string {
   if (dimension.endsWith("the_nether")) return "w_nether";
@@ -606,16 +608,28 @@ function App() {
     if (onWeb) return;
     let unlisten: (() => void) | undefined;
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
-      getCurrentWindow().onCloseRequested((event) => {
+      getCurrentWindow().onCloseRequested(async (event) => {
         const alive = instancesRef.current.filter(
           (instance) =>
             !instance.remoteHost &&
             !instance.panelHost &&
             (instance.status === "running" || instance.status === "stopping"),
         );
-        if (!alive.length) return;
-        event.preventDefault();
-        setCloseBlockedBy(alive);
+        if (alive.length) {
+          event.preventDefault();
+          setCloseBlockedBy(alive);
+          return;
+        }
+        const panel = await commands.webPanelState().catch(() => null);
+        if (!panel?.on) return;
+        const ok = await confirmAction(
+          tr("The web panel is on"),
+          panel.tunnel
+            ? tr("Closing the app turns off the web panel and its outside address. People using it, and anyone with a map share link, will lose access.")
+            : tr("Closing the app turns off the web panel. People using it will lose access."),
+          tr("Close anyway"),
+        );
+        if (!ok) event.preventDefault();
       }).then((stop) => { unlisten = stop; }),
     );
     return () => unlisten?.();
@@ -939,6 +953,7 @@ function App() {
   const [trimOpen, setTrimOpen] = useState(false);
   const [diskOpen, setDiskOpen] = useState(false);
   const [pregenOpen, setPregenOpen] = useState(false);
+  const [pregenArea, setPregenArea] = useState<{ x: number; z: number; rx: number; rz: number } | null>(null);
   const [logQuery, setLogQuery] = useState("");
   const logLevel = "All";
   const [command, setCommand] = useState("");
@@ -1070,7 +1085,10 @@ function App() {
   }, [addons, addonCards, addonUpdates]);
 
   const [addon, setAddon] = useState<AddonStatus | null>(null);
-  const [worldView, setWorldView] = useState<"list" | "marks">("list");
+  const [marksOpen, setMarksOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [mapFocus, setMapFocus] = useState<{ x: number; z: number; n: number } | null>(null);
+  const [mapSpawn, setMapSpawn] = useState<[number, number] | null>(null);
   const [backupList, setBackupList] = useState<BackupFile[]>([]);
   const [backupBusy, setBackupBusy] = useState(false);
   const [findings, setFindings] = useState<Finding[] | null>(null);
@@ -2402,7 +2420,7 @@ function App() {
       setFileQuery("");
       setPickedFiles(new Set());
       setMapOpen(false);
-      setWorldView("list");
+      setMarksOpen(false);
       setWorldSettings(null);
       setWorldDraft(null);
       setOpenCrash(null);
@@ -2491,15 +2509,30 @@ function App() {
         tabBuffers.current.clear();
       }
       if (next === "worlds") {
-        setWorldView("list");
         void commands.listBookmarks(instance.id)
           .then(setBookmarks)
           .catch(() => setBookmarks([]));
         setAddon(null);
-        void commands.addonStatus(instance.id).then(setAddon).catch(() => {});
-        setWorlds(await commands.listWorlds(instance.id));
+        setMapStart(null);
+        setMapSpawn(null);
+        const checking = commands.addonStatus(instance.id).catch(() => null);
+        const list = await commands.listWorlds(instance.id);
+        setWorlds(list);
         setWorldSettings(null);
         setWorldDraft(null);
+        const home = list.find((one) => one.hasLevelData && (one.realm || "overworld") === "overworld") ?? list.find((one) => one.hasLevelData);
+        if (home) {
+          void commands.readWorldSettings(instance.id, home.name)
+            .then((found) => setMapSpawn([found.spawn[0], found.spawn[2]]))
+            .catch(() => setMapSpawn(null));
+        }
+        const realms = list.map((one) => one.realm || "overworld");
+        const first = realms.includes(mapRealm) ? mapRealm : realms.includes("overworld") ? "overworld" : realms[0] ?? "overworld";
+        setMapRealm(first);
+        void checking.then((status) => {
+          setAddon(status ?? { supported: false, reason: "", kind: "", installed: false, installedVersion: null, latestVersion: 0, needsUpdate: false, running: false, folder: "" });
+          if (status?.installed && list.length) void openMap(first, instance);
+        });
       }
       if (next === "addons") {
         setAddon(
@@ -4519,9 +4552,10 @@ function App() {
       setError(String(cause));
     }
   }
-  async function openMap(realm = mapRealm) {
+  async function openMap(realm = mapRealm, inst = selected) {
+    if (!inst) return;
     setMapOpen(true);
-    void commands.listPlayerSpots(selected!.id)
+    void commands.listPlayerSpots(inst.id)
       .then((spots) => {
         setPlayerSpots(spots);
         const uuids = spots
@@ -4533,7 +4567,7 @@ function App() {
             .catch(() => undefined);
       })
       .catch(() => setPlayerSpots([]));
-    await drawMap(realm);
+    await drawMap(realm, inst);
   }
   async function loadPerfHistory(day = "") {
     if (!selected) return;
@@ -4582,24 +4616,24 @@ function App() {
       setSharingLog(false);
     }
   }
-  async function drawMap(realm = mapRealm) {
-    if (!selected) return;
+  async function drawMap(realm = mapRealm, inst = selected) {
+    if (!inst) return;
     setMapRealm(realm);
     setMapBusy(true);
-    void commands.listBookmarks(selected.id)
+    void commands.listBookmarks(inst.id)
       .then(setBookmarks)
       .catch(() => {});
     try {
       setError(null);
       setMapCave(null);
       if (realm === "overworld") {
-        const id = selected.id;
+        const id = inst.id;
         void commands.worldMapBounds(id, "overworld-cave").then(
           () => setMapCave(false),
           () => setMapCave(null),
         );
       }
-      const [minX, minZ, maxX, maxZ] = await commands.worldMapBounds(selected.id, realm);
+      const [minX, minZ, maxX, maxZ] = await commands.worldMapBounds(inst.id, realm);
       const box = 900;
       const level = Math.max(
         0,
@@ -4620,6 +4654,83 @@ function App() {
     if (!selected) throw new Error(tr("No servers found."));
     const layer = mapCave && mapRealm === "overworld" ? "overworld-cave" : mapRealm;
     return await commands.renderMapTile(selected.id, layer, z, tx, ty, night);
+  }
+  const mapPins: MapPin[] = [
+    ...(mapSpawn && mapRealm === "overworld"
+      ? [{ key: "spawn", x: mapSpawn[0], z: mapSpawn[1], label: tr("Spawn"), kind: "spawn" }]
+      : []),
+    ...(live?.players ?? [])
+      .filter((one) => inRealm(one.world, mapRealm))
+      .map((one) => ({
+        key: `p-${one.name}`,
+        x: one.x,
+        z: one.z,
+        label: one.name,
+        kind: "player",
+        icon: liveHeads[one.name] || null,
+        online: true,
+      })),
+    ...playerSpots
+      .filter((one) => inRealm(realmFolder(one.dimension), mapRealm) && !(live?.players ?? []).some((who) => who.name === one.name))
+      .map((one) => ({
+        key: `away-${one.uuid}`,
+        x: one.x,
+        z: one.z,
+        label: one.name,
+        kind: "player",
+        icon: heads[one.uuid] || null,
+        online: false,
+        savedAt: one.savedAt,
+      })),
+    ...bookmarks
+      .filter((one) => one.dimension === mapRealm)
+      .map((one) => ({ key: `mark-${one.id}`, x: one.x, z: one.z, label: one.name, kind: "mark" })),
+  ] as MapPin[];
+  async function deleteAreaChunks(area: MapArea) {
+    if (!selected) return;
+    if (selected.status !== "stopped" && selected.status !== "crashed") {
+      setError(tr("Stop the server first. Chunks can only be deleted while it's off."));
+      return;
+    }
+    const box = [area.minX, area.minZ, area.maxX, area.maxZ];
+    let preview: Awaited<ReturnType<typeof commands.trimChunks>>;
+    try {
+      setError(null);
+      preview = await commands.trimChunks(selected.id, mapRealm, 0, 0, false, box);
+    } catch (cause) {
+      setError(trBack(String(cause)));
+      return;
+    }
+    if (!preview.removed) {
+      setNotice(tr("There are no saved chunks in this area."));
+      return;
+    }
+    const first = await confirmAction(
+      tr("Delete {0} chunks in this area?", [preview.removed.toLocaleString()]),
+      tr("X {0} ~ {1}, Z {2} ~ {3}. Everything built there is lost, and Minecraft makes fresh terrain the next time someone goes there. A backup of the server is made first.", [area.minX, area.maxX, area.minZ, area.maxZ]),
+      tr("Continue"),
+      true,
+    );
+    if (!first) return;
+    const typed = (
+      await askText(
+        tr("Type the server name to delete"),
+        tr("This can only be undone by restoring the backup. Type {0} to delete {1} chunks.", [selected.name, preview.removed.toLocaleString()]),
+        "",
+        tr("Delete chunks"),
+        true,
+      )
+    )?.trim();
+    if (typed === undefined) return;
+    if (typed !== selected.name) {
+      setError(tr("The server name didn't match, so nothing was deleted."));
+      return;
+    }
+    const done = await call(
+      () => commands.trimChunks(selected.id, mapRealm, 0, 0, true, box),
+      tr("Deleted the chunks. A backup was made first."),
+    );
+    if (done) void openMap(mapRealm);
   }
   async function fetchChunkStats(metric: string, rx: number, rz: number) {
     if (!selected) return null;
@@ -6851,11 +6962,6 @@ function App() {
                         }]),
                   ]}
                 />
-                {!selected.panelHost && (
-                  <button className="icon-button" aria-label={tr("Disk usage")} data-tip={tr("Disk usage")} onClick={() => setDiskOpen(true)}>
-                    <Icon name="disk" />
-                  </button>
-                )}
                 <button
                   className="icon-button"
                   aria-label={tr("Trash")}
@@ -7142,108 +7248,129 @@ function App() {
         </div>
         );
       })()}
-      {!toolLoading && tool === "worlds" && mapOpen && (
-        <div className="tool-content map-page">
-          <div className="map-head">
-            <button className="rail-back page-back" onClick={() => setMapOpen(false)}>
-              <Icon name="arrow" />
-              {tr("Back")}</button>
-          </div>
-          {mapBusy ? (
-            <div className="map-loading">
-              <p>{tr("Rendering the map…")}</p>
-              <div className="booting-bar">
-                <span />
-              </div>
-            </div>
-          ) : mapStart ? (
-            <Suspense fallback={<div className="tool-loading"><div className="skeleton-row" /></div>}>
-            <WorldMap
-              start={mapStart}
-              fetchTile={fetchMapTile}
-              pins={
-                [
-                  ...(worldSettings
-                    ? [
-                        {
-                          key: "spawn",
-                          x: worldSettings.spawn[0],
-                          z: worldSettings.spawn[2],
-                          label: tr("Spawn"),
-                          kind: "spawn",
-                        },
-                      ]
-                    : []),
-                  ...(live?.players ?? [])
-                    .filter((one) => inRealm(one.world, mapRealm))
-                    .map((one) => ({
-                      key: `p-${one.name}`,
-                      x: one.x,
-                      z: one.z,
-                      label: one.name,
-                      kind: "player",
-                      icon: liveHeads[one.name] || null,
-                      online: true,
-                    })),
-                  ...bookmarks
-                    .filter((one) => one.dimension === mapRealm)
-                    .map((one) => ({
-                      key: `mark-${one.id}`,
-                      x: one.x,
-                      z: one.z,
-                      label: one.name,
-                      kind: "mark",
-                    })),
-                  ...playerSpots
-                    .filter(
-                      (one) =>
-                        inRealm(realmFolder(one.dimension), mapRealm) &&
-                        !(live?.players ?? []).some(
-                          (who) => who.name === one.name,
-                        ),
-                    )
-                    .map((one) => ({
-                      key: `away-${one.uuid}`,
-                      x: one.x,
-                      z: one.z,
-                      label: one.name,
-                      kind: "player",
-                      icon: heads[one.uuid] || null,
-                      online: false,
-                      savedAt: one.savedAt,
-                    })),
-                ] as MapPin[]
-              }
-              onPick={(x, z) => void bookmarkSpot(x, z)}
-              onExport={(png) => void saveMapPng(png)}
-              chunks={mapChunks && { ...mapChunks, on: mapChunksOn, toggle: () => setMapChunksOn((was) => !was) }}
-              cave={mapCave === null ? null : { on: mapCave, toggle: () => setMapCave((was) => !was) }}
-              stats={selected.panelHost ? null : fetchChunkStats}
+      {!toolLoading && tool === "worlds" && (
+        <div className="tool-content world-page">
+          <div className="world-stage map-page">
+            <WorldSide
+              worlds={worldTree.map(({ world, sizeMib }) => ({
+                key: world.name,
+                realm: world.realm || "overworld",
+                folder: world.name,
+                sizeMib,
+                modifiedAt: world.modifiedAt,
+                hasLevelData: world.hasLevelData,
+              }))}
+              realm={mapRealm}
+              showSize={!selected.panelHost}
+              onRealm={(realm) => (addon?.installed ? void openMap(realm) : setMapRealm(realm))}
+              onSettings={(key) => {
+                const found = worlds.find((one) => one.name === key);
+                if (found) void loadWorldSettings(found);
+              }}
+              onRefresh={() => void loadTool("worlds")}
+              spots={mapPins.map((pin) => ({
+                key: pin.key,
+                label: pin.label,
+                x: Math.round(pin.x),
+                z: Math.round(pin.z),
+                kind: pin.kind === "spawn" ? "spawn" : pin.kind === "mark" ? "mark" : "player",
+                online: pin.online,
+                icon: pin.icon,
+                id: pin.kind === "mark" ? pin.key.slice("mark-".length) : undefined,
+              }))}
+              onFocus={(x, z) => setMapFocus((was) => ({ x, z, n: (was?.n ?? 0) + 1 }))}
+              onRemoveMark={(id) => {
+                const mark = bookmarks.find((one) => one.id === id);
+                if (mark) void removeBookmark(mark);
+              }}
+              onManageMarks={() => {
+                setMarkForm((was) => ({ ...was, dimension: mapRealm }));
+                setMarksOpen(true);
+              }}
+              onPregen={selected.core !== "Pumpkin" && selected.core !== "Vanilla" ? () => { setPregenArea(null); setPregenOpen(true); } : null}
+              onTrim={!selected.panelHost && worlds.length > 0 ? () => setTrimOpen(true) : null}
+              onShare={!onWeb && addon?.installed && worlds.length > 0 ? () => setShareOpen(true) : null}
             />
-            </Suspense>
-          ) : (
-            <p className="muted tool-empty">
-              {tr("This dimension hasn't been generated yet.")}</p>
-          )}
+            {addon === null ? (
+              <div className="tool-loading">
+                <div className="skeleton-row" />
+              </div>
+            ) : !addon.installed ? (
+              <EmptyState
+                icon="map"
+                title={tr("The map needs the Monolab addon")}
+                hint={tr("The addon draws the map inside the server. Install it from the Monitor tab, then restart the server.")}
+                action={
+                  <button className="button primary" onClick={() => void loadTool("monitor")}>
+                    {tr("Open Monitor")}
+                  </button>
+                }
+              />
+            ) : !worlds.length ? (
+              <EmptyState
+                icon="map"
+                title={tr("No world folders found.")}
+                hint={tr("Start the server once to create a world. For imported servers, the folder containing level.dat must be directly inside the server folder.")}
+              />
+            ) : mapBusy ? (
+              <div className="map-loading">
+                <p>{tr("Rendering the map…")}</p>
+                <div className="booting-bar">
+                  <span />
+                </div>
+              </div>
+            ) : mapStart ? (
+              <Suspense fallback={<div className="tool-loading"><div className="skeleton-row" /></div>}>
+                <WorldMap
+                  key={`${selected.id}/${mapRealm}`}
+                  cacheKey={`${selected.id}/${mapRealm}`}
+                  start={mapStart}
+                  fetchTile={fetchMapTile}
+                  pins={mapPins}
+                  focus={mapFocus}
+                  onPick={(x, z) => void bookmarkSpot(x, z)}
+                  onExport={(png) => void saveMapPng(png)}
+                  chunks={mapChunks && { ...mapChunks, on: mapChunksOn, toggle: () => setMapChunksOn((was) => !was) }}
+                  cave={mapCave === null ? null : { on: mapCave, toggle: () => setMapCave((was) => !was) }}
+                  stats={selected.panelHost ? null : fetchChunkStats}
+                  onDeleteArea={!selected.panelHost && ["overworld", "nether", "end"].includes(mapRealm) ? (area) => void deleteAreaChunks(area) : null}
+                  onPregenArea={
+                    selected.core !== "Pumpkin" && selected.core !== "Vanilla" && ["overworld", "nether", "end"].includes(mapRealm)
+                      ? (area) => {
+                          setPregenArea({
+                            x: Math.round((area.minX + area.maxX + 1) / 2),
+                            z: Math.round((area.minZ + area.maxZ + 1) / 2),
+                            rx: Math.ceil((area.maxX - area.minX + 1) / 2),
+                            rz: Math.ceil((area.maxZ - area.minZ + 1) / 2),
+                          });
+                          setPregenOpen(true);
+                        }
+                      : null
+                  }
+                />
+              </Suspense>
+            ) : (
+              <EmptyState icon="map" title={tr("This dimension hasn't been generated yet.")} hint={tr("Players need to visit it first, or pre-generate it.")} />
+            )}
+          </div>
         </div>
       )}
-      {!toolLoading && tool === "worlds" && !mapOpen && (
-        <div className="tool-content">
-          <div className="event-tabs">
-            {[
-              { id: "list" as const, label: tr("Worlds") },
-              { id: "marks" as const, label: tr("Coordinates") },
-            ].map((one) => (
-              <button
-                key={one.id}
-                className={worldView === one.id ? "chosen" : ""}
-                onClick={() => setWorldView(one.id)}
-              >
-                {one.label}
-              </button>
-            ))}
-          </div>
-          {worldView === "marks" ? (
+      {shareOpen && selected && (
+        <MapShareDialog server={selected} onClose={() => setShareOpen(false)} onNotice={setNotice} onOpen={(url) => void openExternal(url)} />
+      )}
+      {marksOpen && selected && (
+        <div className="modal-backdrop roomy" onClick={() => setMarksOpen(false)}>
+          <div className="add-modal marks-dialog" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="tool-top">
+              <p>
+                <strong>{tr("Bookmarks")}</strong> · {selected.name}
+              </p>
+              <div className="modal-top-actions">
+                <button className="close in-flow" aria-label={tr("Close")} onClick={() => setMarksOpen(false)}>
+                  <Icon name="close" />
+                </button>
+              </div>
+            </div>
             <MarksPanel
               bookmarks={bookmarks}
               markForm={markForm}
@@ -7251,87 +7378,7 @@ function App() {
               onSave={() => void saveBookmark()}
               onRemove={(mark) => void removeBookmark(mark)}
             />
-          ) : (
-          <>
-          <div className="tool-top">
-            <p>
-              {tr("Detected world and dimension folders.")}</p>
-            {selected.core !== "Pumpkin" && selected.core !== "Vanilla" && (
-              <button className="button ghost" onClick={() => setPregenOpen(true)}>
-                <Icon name="layers" />
-                {tr("Pre-generate")}
-              </button>
-            )}
-            {!selected.panelHost && worlds.length > 0 && (
-              <button className="button ghost" onClick={() => setTrimOpen(true)}>
-                <Icon name="grid" />
-                {tr("Clean up chunks")}
-              </button>
-            )}
-            <button
-              className="button secondary"
-              onClick={() => void loadTool("worlds")}
-            >
-              <Icon name="refresh" />
-              {tr("Refresh")}</button>
           </div>
-          {worlds.length ? (
-            <article className="world-card world-flat">
-              {worldTree.map(({ world, sizeMib }) => {
-                  const label = world.realm === "nether"
-                    ? tr("Nether")
-                    : world.realm === "end"
-                      ? tr("End")
-                      : world.realm === "overworld"
-                        ? tr("Overworld")
-                        : world.realm.replace(".", ":");
-                  return (
-                    <div className="world-row is-world" key={world.name}>
-                      <Icon name={world.hasLevelData ? "folder" : "map"} />
-                      <div className="world-text">
-                        <strong>{label}</strong>
-                        <small>
-                          <code>{world.name}</code>
-                          {" · "}
-                          {!selected.panelHost && <>{`${sizeMib.toFixed(1)} MB`}{" · "}</>}
-                          <span data-tip={date(world.modifiedAt)}>{relativeTime(world.modifiedAt)}</span>
-                        </small>
-                      </div>
-                      {SHOW_WORLD_MAP && (
-                        <span
-                          className="tip-host"
-                          data-tip={addon?.installed ? undefined : tr("The map requires the Monolab mod or plugin. Install it from the Monitor tab.")}
-                        >
-                          <IconButton
-                            label={tr("Open {0} map", [label])}
-                            icon="map"
-                            disabled={!addon?.installed}
-                            onClick={() => void openMap(world.realm)}
-                          />
-                        </span>
-                      )}
-                      {world.hasLevelData ? (
-                        <button className="button secondary small" onClick={() => void loadWorldSettings(world)}>
-                          {tr("Open settings")}
-                        </button>
-                      ) : (
-                        <button className="button secondary small world-settings-gap" tabIndex={-1} aria-hidden="true">
-                          {tr("Open settings")}
-                        </button>
-                      )}
-                    </div>
-                  );
-              })}
-            </article>
-          ) : (
-            <EmptyState
-              icon="map"
-              title={tr("No world folders found.")}
-              hint={tr("Start the server once to create a world. For imported servers, the folder containing level.dat must be directly inside the server folder.")}
-            />
-          )}
-          </>
-          )}
         </div>
       )}
       {!toolLoading && tool === "logs" && (
@@ -7702,6 +7749,12 @@ function App() {
                     ? tr("Data appears once the add-on sends it.")
                     : tr("TPS and player data require Monolab {0}.", [addon?.kind ?? tr("plugin")])}
             </p>
+            {!selected.panelHost && (
+              <button className="button secondary" onClick={() => setDiskOpen(true)}>
+                <Icon name="disk" />
+                {tr("Disk usage")}
+              </button>
+            )}
           </div>
           <div className="monitor-grid">
             <div>
@@ -8027,17 +8080,28 @@ function App() {
       {trimOpen && selected && (
         <TrimDialog
           server={selected}
-          realms={["overworld", "nether", "end"].filter((one) => worlds.some((world) => (world.realm || "overworld") === one))}
+          realms={(() => {
+            const found = ["overworld", "nether", "end"].filter((one) => worlds.some((world) => (world.realm || "overworld") === one));
+            const list = found.length ? found : ["overworld"];
+            return list.includes(mapRealm) ? [mapRealm, ...list.filter((one) => one !== mapRealm)] : list;
+          })()}
           confirm={confirmAction}
           onClose={() => setTrimOpen(false)}
           onDone={(message) => {
             setNotice(message);
-            void loadTool("worlds");
+            if (mapOpen) void openMap(mapRealm);
+            else void loadTool("worlds");
           }}
         />
       )}
       {pregenOpen && selected && (
-        <PregenDialog server={selected} onClose={() => setPregenOpen(false)} onNotice={setNotice} />
+        <PregenDialog
+          server={selected}
+          realm={Math.max(0, ["overworld", "nether", "end"].indexOf(mapRealm))}
+          area={pregenArea}
+          onClose={() => setPregenOpen(false)}
+          onNotice={setNotice}
+        />
       )}
       {diskOpen && selected && (
         <DiskDialog
@@ -11065,7 +11129,6 @@ function App() {
                       value={createWhere}
                       onChange={(next) => {
                         setCreateWhere(next);
-                        if (next !== "local" && isNative(form.core)) setForm({ ...form, core: "" });
                       }}
                       options={[{ value: "local", label: tr("Local") }, ...sshHostViews.map((one) => ({ value: one.id, label: one.name }))]}
                     />
@@ -11075,7 +11138,6 @@ function App() {
                   <span>{tr("Core")}</span>
                   <div className="core-chips">
                     {cores
-                      .filter((core) => createWhere === "local" || !isNative(core))
                       .map((core) => (
                         <button
                           type="button"
@@ -11088,6 +11150,12 @@ function App() {
                           {core}
                         </button>
                       ))}
+                    {createWhere === "local" && (
+                      <button type="button" className="core-chip core-chip-custom" data-tip={tr("Use a server jar you already have")} onClick={() => void createFromJar()}>
+                        <Icon name="folder" />
+                        {tr("Choose a file")}
+                      </button>
+                    )}
                   </div>
                 </div>
                 {form.core && !isProxy(form.core) && (
@@ -11130,19 +11198,15 @@ function App() {
                 )}
                 <div className="create-actions">
                   <span className="create-more">
-                    {createWhere === "local" && (
-                      <button type="button" className="link-button" onClick={() => void createFromJar()}>
-                        {tr("From my own jar")}
-                      </button>
-                    )}
                     <button
                       type="button"
-                      className="link-button"
+                      className="button secondary small"
                       onClick={() => {
                         setCreateStep("modpack");
                         if (!packHits.length) void searchPacks("");
                       }}
                     >
+                      <Icon name="package" />
                       {tr("From a modpack")}
                     </button>
                   </span>

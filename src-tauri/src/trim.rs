@@ -8,10 +8,15 @@ pub struct Rule {
     pub max_minutes: u32,
     pub spawn: (i32, i32),
     pub keep_radius: i32,
+    /// When set, every chunk inside these chunk bounds (min x, min z, max x, max z) is removed and nothing else.
+    pub area: Option<(i32, i32, i32, i32)>,
 }
 
 impl Rule {
     fn keeps(&self, cx: i32, cz: i32, inhabited: Option<i64>) -> bool {
+        if let Some((x0, z0, x1, z1)) = self.area {
+            return !(cx >= x0 && cx <= x1 && cz >= z0 && cz <= z1);
+        }
         if (cx - self.spawn.0).abs() <= self.keep_radius && (cz - self.spawn.1).abs() <= self.keep_radius {
             return true;
         }
@@ -116,6 +121,19 @@ pub fn strip(bytes: &[u8], removed: &[usize]) -> Option<Vec<u8>> {
 }
 
 #[cfg(test)]
+mod area_tests {
+    use super::*;
+
+    #[test]
+    fn an_area_removes_only_what_is_inside() {
+        let rule = Rule { max_minutes: 0, spawn: (0, 0), keep_radius: 50, area: Some((2, 2, 4, 4)) };
+        assert!(!rule.keeps(3, 3, Some(1_000_000)));
+        assert!(rule.keeps(5, 3, Some(0)));
+        assert!(!rule.keeps(2, 4, None));
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
@@ -150,17 +168,17 @@ mod tests {
     #[test]
     fn removes_chunks_nobody_stayed_in() {
         let bytes = region(&[(0, 0), (1, 20 * 60 * 10), (40, 5), (1023, 0)]);
-        let rule = Rule { max_minutes: 1, spawn: (0, 0), keep_radius: 0 };
+        let rule = Rule { max_minutes: 1, spawn: (0, 0), keep_radius: 0, area: None };
         let found = plan(&bytes, 0, 0, &rule);
         assert_eq!(found.total, 4);
         assert_eq!(found.removed, vec![40, 1023]);
-        let rule = Rule { max_minutes: 1, spawn: (100, 100), keep_radius: 0 };
+        let rule = Rule { max_minutes: 1, spawn: (100, 100), keep_radius: 0, area: None };
         let found = plan(&bytes, 0, 0, &rule);
         assert_eq!(found.removed, vec![0, 40, 1023]);
 
         let smaller = strip(&bytes, &found.removed).unwrap();
         assert_eq!(smaller.len(), SECTOR * 3);
-        let after = plan(&smaller, 0, 0, &Rule { max_minutes: 0, spawn: (100, 100), keep_radius: 0 });
+        let after = plan(&smaller, 0, 0, &Rule { max_minutes: 0, spawn: (100, 100), keep_radius: 0, area: None });
         assert_eq!(after.total, 1);
         assert!(after.removed.is_empty());
         assert_eq!(smaller[SECTOR + 7], 7);
@@ -171,7 +189,7 @@ mod tests {
     #[ignore]
     fn plans_a_real_world() {
         let dir = std::env::var("SE_TRIM_DIR").expect("SE_TRIM_DIR");
-        let rule = Rule { max_minutes: 0, spawn: (0, 0), keep_radius: 8 };
+        let rule = Rule { max_minutes: 0, spawn: (0, 0), keep_radius: 8, area: None };
         let (mut total, mut removed, mut before, mut after) = (0, 0, 0, 0);
         for entry in std::fs::read_dir(&dir).unwrap().flatten() {
             let name = entry.file_name().to_string_lossy().to_string();

@@ -146,10 +146,13 @@ export const commands = {
 	diskUsage: (id: string) => __TAURI_INVOKE<DiskReport>("disk_usage", { id }),
 	cleanDisk: (id: string, kind: string) => __TAURI_INVOKE<number>("clean_disk", { id, kind }),
 	chunkyStatus: (id: string) => __TAURI_INVOKE<ChunkyStatus>("chunky_status", { id }),
-	chunkyRun: (id: string, action: string, world: string, x: number, z: number, radius: number, shape: string) => __TAURI_INVOKE<null>("chunky_run", { id, action, world, x, z, radius, shape }),
+	chunkyRun: (id: string, action: string, world: string, x: number, z: number, radius: number, radiusZ: number, shape: string) => __TAURI_INVOKE<null>("chunky_run", { id, action, world, x, z, radius, radiusZ, shape }),
+	mapShareState: (id: string) => __TAURI_INVOKE<MapShareView>("map_share_state", { id }),
+	mapShareCreate: (id: string, labels: { [key in string]: string }) => __TAURI_INVOKE<MapShareView>("map_share_create", { id, labels }),
+	mapShareRemove: (id: string) => __TAURI_INVOKE<MapShareView>("map_share_remove", { id }),
 	chunkStats: (id: string, realm: string, metric: string, rx: number, rz: number) => __TAURI_INVOKE<(number | null)[] | null>("chunk_stats", { id, realm, metric, rx, rz }),
 	listRuns: (id: string) => __TAURI_INVOKE<RunEntry[]>("list_runs", { id }),
-	trimChunks: (id: string, realm: string, maxMinutes: number, keepRadius: number, apply: boolean) => __TAURI_INVOKE<TrimReport>("trim_chunks", { id, realm, maxMinutes, keepRadius, apply }),
+	trimChunks: (id: string, realm: string, maxMinutes: number, keepRadius: number, apply: boolean, area: number[] | null) => __TAURI_INVOKE<TrimReport>("trim_chunks", { id, realm, maxMinutes, keepRadius, apply, area }),
 	diagnoseLag: (id: string) => __TAURI_INVOKE<LagDiagnosis>("diagnose_lag", { id }),
 	getServerPing: (id: string) => __TAURI_INVOKE<PingSnapshot>("get_server_ping", { id }),
 	listPlayers: (id: string) => __TAURI_INVOKE<PlayerEntry[]>("list_players", { id }),
@@ -504,6 +507,7 @@ export type ChunkyProgress = {
 
 export type ChunkyStatus = {
 	installed: boolean,
+	tool: string,
 	folder: string,
 	worlds: string[],
 	spawn: [number, number] | null,
@@ -927,6 +931,14 @@ export type LogFile = {
 	sizeBytes: number,
 	modifiedAt: number,
 	compressed: boolean,
+};
+
+export type MapShareView = {
+	shared: boolean,
+	url: string,
+	panelOn: boolean,
+	tunnelOn: boolean,
+	createdAt: number,
 };
 
 export type Masked = {

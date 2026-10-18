@@ -53,6 +53,7 @@ export function LogLines({
   const userMoved = useRef(false);
   const box = useRef<HTMLDivElement | null>(null);
   const glide = useRef(0);
+  const born = useRef(performance.now());
   const virtualizer = useVirtualizer({
     count: chunks.length,
     getScrollElement: () => box.current,
@@ -75,7 +76,8 @@ export function LogLines({
       const target = node.scrollHeight - node.clientHeight;
       const gap = target - node.scrollTop;
       if (gap <= 1 || (userMoved.current && gap > 60 && gap < node.clientHeight * 2)) return;
-      node.scrollTop = gap > node.clientHeight * 2 ? target : node.scrollTop + Math.max(1, gap * 0.35);
+      const settling = performance.now() - born.current < 1500;
+      node.scrollTop = settling || gap > node.clientHeight * 2 ? target : node.scrollTop + Math.max(1, gap * 0.35);
       glide.current = requestAnimationFrame(step);
     };
     glide.current = requestAnimationFrame(step);
@@ -84,6 +86,20 @@ export function LogLines({
       glide.current = 0;
     };
   }, [chunks, followTail, total]);
+  const followRef = useRef(followTail);
+  followRef.current = followTail;
+  useEffect(() => {
+    const node = box.current;
+    if (!node) return;
+    let lastHeight = node.clientHeight;
+    const watch = new ResizeObserver(() => {
+      const shrunk = node.clientHeight !== lastHeight;
+      lastHeight = node.clientHeight;
+      if (shrunk && followRef.current && !userMoved.current) node.scrollTop = node.scrollHeight - node.clientHeight;
+    });
+    watch.observe(node);
+    return () => watch.disconnect();
+  }, []);
   const onScroll = (node: HTMLDivElement) => {
     const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 60;
     if (atBottom) {
