@@ -69,5 +69,12 @@
   "Chunk cleanup couldn't be applied to a server that had crashed.": "크래시로 꺼진 서버에서 청크 정리를 할 수 없던 문제를 고쳤어요.",
   "Mod update warnings said a needed mod was missing when it was installed by hand.": "직접 넣은 모드를 업데이트 경고가 없다고 하던 문제를 고쳤어요.",
   "Dragging the world map, or right-clicking it, could open the bookmark window.": "월드 지도를 끌거나 오른쪽 단추로 누르면 북마크 창이 뜨던 문제를 고쳤어요.",
-  "The loaded chunk list no longer gets in the way on servers that can't provide it, such as Folia.": "Folia처럼 로드된 청크 목록을 줄 수 없는 서버에서 방해되지 않아요."
+  "The loaded chunk list no longer gets in the way on servers that can't provide it, such as Folia.": "Folia처럼 로드된 청크 목록을 줄 수 없는 서버에서 방해되지 않아요.",
+  "Pre-generate chunks with Chunky from the Worlds tab — install, start, pause and follow progress in the app.": "월드 칸에서 Chunky로 청크를 미리 생성해요. 설치·시작·멈춤·진행률까지 앱에서 다 돼요.",
+  "Disk usage for a server: what takes up space, plus one-click cleanup of old logs, crash reports and memory dumps.": "서버 디스크 사용량을 봐요. 무엇이 공간을 차지하는지 보여 주고, 오래된 로그·크래시 리포트·메모리 덤프를 한 번에 정리해요.",
+  "World map views: time players stayed, last saved, entities, block entities, size, generation status and data version per chunk.": "월드 지도 보기: 청크마다 플레이어가 머문 시간·마지막 저장·개체·블록 개체·크기·생성 단계·데이터 버전을 색으로 보여 줘요.",
+  "Scheduled restarts can warn players in game: choose when, how (chat, tellraw or title) and what to say.": "정기 재시작 전에 게임 안에 안내를 보낼 수 있어요. 언제, 어떻게(채팅·tellraw·타이틀), 무슨 말을 할지 골라요.",
+  "The agent screen shows which Claude and Codex account is signed in (name, email and plan).": "에이전트 화면에 로그인된 Claude·Codex 계정(이름·이메일·요금제)이 보여요.",
+  "The Worlds tab lists every world and dimension in one flat list.": "월드 칸이 모든 월드와 차원을 한 줄로 나열해요.",
+  "The agent uses much less of your plan: start and restart wait for the server and return a short summary, and console reads only return new lines.": "에이전트가 사용량을 훨씬 덜 써요. 시작·재시작이 서버를 기다렸다가 짧은 요약만 주고, 콘솔은 새 줄만 읽어요."
 }

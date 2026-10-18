@@ -1,6 +1,22 @@
 [
   {
     "kind": "app",
+    "version": "1.1.0",
+    "date": "2026-10-18",
+    "added": [
+      "Pre-generate chunks with Chunky from the Worlds tab — install, start, pause and follow progress in the app.",
+      "Disk usage for a server: what takes up space, plus one-click cleanup of old logs, crash reports and memory dumps.",
+      "World map views: time players stayed, last saved, entities, block entities, size, generation status and data version per chunk.",
+      "Scheduled restarts can warn players in game: choose when, how (chat, tellraw or title) and what to say.",
+      "The agent screen shows which Claude and Codex account is signed in (name, email and plan)."
+    ],
+    "changed": [
+      "The Worlds tab lists every world and dimension in one flat list.",
+      "The agent uses much less of your plan: start and restart wait for the server and return a short summary, and console reads only return new lines."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.0.2",
     "date": "2026-10-18",
     "changed": [
