@@ -29,6 +29,7 @@ mod mcp;
 mod properties;
 mod pumpkin;
 mod chunky;
+mod games;
 mod mapshare;
 mod chunkstats;
 mod crash;
@@ -376,6 +377,31 @@ struct ManagedProcess {
     stop_when_ready: bool,
     stop_from_log: bool,
     crash_seen: bool,
+    game: Option<&'static games::Game>,
+}
+
+impl ManagedProcess {
+    /// Asks the server to stop the way it understands: a console command, or Ctrl+C for some games.
+    fn send_stop(&mut self) -> Result<(), String> {
+        match self.game.map(|game| game.stop) {
+            Some(games::Stop::CtrlC) => {
+                if games::ctrl_c(self.pid) {
+                    Ok(())
+                } else {
+                    Err("Could not send Ctrl+C to the server.".into())
+                }
+            }
+            other => {
+                let line = match other {
+                    Some(games::Stop::Input(text)) => text,
+                    _ => "stop\n",
+                };
+                let stdin = self.child.stdin.as_mut().ok_or("The server's console is closed.")?;
+                stdin.write_all(line.as_bytes()).map_err(|error| format!("Could not send the stop command: {error}"))?;
+                stdin.flush().map_err(|error| error.to_string())
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
@@ -4290,6 +4316,9 @@ fn level_name_of(instance: &ServerInstance) -> String {
 }
 
 fn port_from_properties(instance: &ServerInstance) -> u16 {
+    if games::is_game(&instance.core) {
+        return instance.port;
+    }
     if pumpkin::is_pumpkin(&instance.core) {
         return pumpkin::port(Path::new(&instance.path)).unwrap_or(instance.port);
     }
@@ -5297,6 +5326,9 @@ fn create_instance(
     if !input.eula_accepted {
         return Err("Creating a server requires accepting the Minecraft EULA.".into());
     }
+    if let Some(game) = games::find(&input.core) {
+        return create_game_server(&app, &state, game, name, &input.operation_id);
+    }
     let folder = free_folder(&managed_servers_root(&app)?, &name);
     fs::create_dir_all(&folder)
         .map_err(|error| format!("Could not create the server folder: {error}"))?;
@@ -5380,6 +5412,74 @@ fn create_instance(
     save_instances(&app, &instances)?;
     drop(_store);
     Ok(instance_view(instance, &state))
+}
+
+fn create_game_server(app: &AppHandle, state: &AppState, game: &'static games::Game, name: String, operation: &str) -> Result<InstanceView, String> {
+    let folder = free_folder(&managed_servers_root(app)?, &name);
+    fs::create_dir_all(&folder).map_err(|error| format!("Could not create the server folder: {error}"))?;
+    let folder = folder.canonicalize().map(plain_path).map_err(|error| format!("Could not verify the server folder: {error}"))?;
+    if !operation.is_empty() {
+        state.cancelled_downloads.lock().expect("download state poisoned").remove(operation);
+    }
+    let password = web::make_key()[..10].to_string();
+    let setup = games::Setup { name: &name, password: &password, port: game.port };
+    let cancelled = || !operation.is_empty() && state.cancelled_downloads.lock().expect("download state poisoned").contains(operation);
+    let progress = |received: u64, total: u64| games::report(app, game, received, total);
+    let installed = off_runtime(|| games::install(app, game, &folder, &setup, true, &progress, &cancelled));
+    if let Err(error) = installed {
+        let _ = fs::remove_dir_all(&folder);
+        return Err(error);
+    }
+    let instance = ServerInstance {
+        id: instance_id(),
+        name,
+        path: folder.to_string_lossy().to_string(),
+        core: game.id.to_string(),
+        version: "latest".into(),
+        launch_mode: "game".into(),
+        server_jar: Some(folder.join(game.exe).to_string_lossy().to_string()),
+        java_path: String::new(),
+        max_memory_mib: 4096,
+        min_memory_mib: 4096,
+        jvm_args: String::new(),
+        port: game.port,
+        sort_order: 0,
+        start_with_app: false,
+        crash_restart: false,
+        core_build: String::new(),
+        created_at: unix_now(),
+        last_run_at: 0,
+        custom_command: String::new(),
+        start_script: String::new(),
+        start_script_hash: String::new(),
+        remote_host: String::new(),
+        linked: false,
+        panel_host: String::new(),
+        panel_server: String::new(),
+        panel_daemon: String::new(),
+    };
+    let _store = lock_instance_store();
+    let mut instances = load_instances(app)?;
+    instances.push(instance.clone());
+    save_instances(app, &instances)?;
+    drop(_store);
+    Ok(instance_view(instance, state))
+}
+
+/// Downloads the latest files for a game server again (SteamCMD update or a fresh official download).
+#[tauri::command(async)]
+#[specta::specta]
+fn update_game_server(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let instance = instance_by_id(&app, &id)?;
+    let game = games::find(&instance.core).ok_or("This isn't a game server.")?;
+    if is_running(&state, &id) {
+        return Err("Stop the server first.".into());
+    }
+    let setup = games::Setup { name: &instance.name, password: "", port: instance.port };
+    let progress = |received: u64, total: u64| games::report(&app, game, received, total);
+    off_runtime(|| games::install(&app, game, Path::new(&instance.path), &setup, false, &progress, &|| false))?;
+    record_audit(&app, &id, "Server", "Server files updated", game.id);
+    Ok(())
 }
 
 #[tauri::command(async)]
@@ -5860,7 +5960,7 @@ fn publish_log(
     mut event: ServerLogEvent,
 ) {
     event.noise = doctor::harmless(&event.line.to_ascii_lowercase());
-    if is_ready_line(&event.line) {
+    if is_ready_line(&event.line) || game_ready_line(app, &event.server_id, &event.line) {
         mark_ready(app, &event.server_id);
     }
     if is_stop_line(&event.line) {
@@ -6012,10 +6112,18 @@ fn mark_ready(app: &AppHandle, server_id: &str) {
         return;
     }
     process.stop_when_ready = false;
-    if let Some(stdin) = process.child.stdin.as_mut() {
-        let _ = stdin.write_all(b"stop\n");
-        let _ = stdin.flush();
+    let _ = process.send_stop();
+}
+
+fn game_ready_line(app: &AppHandle, server_id: &str, line: &str) -> bool {
+    let state = app.state::<AppState>();
+    let processes = state.processes.lock().expect("process state poisoned");
+    let Some(process) = processes.get(server_id) else { return false };
+    if process.ready {
+        return false;
     }
+    let low = line.to_ascii_lowercase();
+    process.game.is_some_and(|game| game.ready.iter().any(|mark| low.contains(&mark.to_ascii_lowercase())))
 }
 
 #[cfg(test)]
@@ -6261,6 +6369,15 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
         command.args(CONSOLE_FLAGS);
         command.args(rest);
         command
+    } else if let Some(game) = games::find(&instance.core) {
+        let folder = Path::new(&instance.path);
+        let (program, front) = games::program(game, folder)?;
+        let mut command = hidden_command(program);
+        command.current_dir(folder).args(front).args(games::launch_args(folder)?);
+        for (key, value) in game.env {
+            command.env(key, value);
+        }
+        command
     } else if instance.core == "Pumpkin" {
         let exe = instance
             .server_jar
@@ -6393,8 +6510,18 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
                 stop_when_ready: false,
                 stop_from_log: false,
                 crash_seen: false,
+                game: games::find(&instance.core),
             },
         );
+    if let Some(game) = games::find(&instance.core) {
+        let handle = app.clone();
+        let id = instance.id.clone();
+        let wait = if game.ready.is_empty() { 5 } else { 90 };
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(wait));
+            mark_ready(&handle, &id);
+        });
+    }
     let _ = app.emit(
         "server-status",
         serde_json::json!({ "serverId": instance.id, "status": "running" }),
@@ -6851,11 +6978,8 @@ fn request_stop(app: &AppHandle, state: &AppState, id: &str) -> Result<bool, Str
     let deferred = !process.ready;
     if deferred {
         process.stop_when_ready = true;
-    } else if let Some(stdin) = process.child.stdin.as_mut() {
-        stdin
-            .write_all(b"stop\n")
-            .map_err(|error| format!("Could not send the stop command: {error}"))?;
-        stdin.flush().map_err(|error| error.to_string())?;
+    } else {
+        process.send_stop()?;
     }
     process.stop_requested_at = Some(SystemTime::now());
     let _ = app.emit(
@@ -15515,6 +15639,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             clean_disk,
             chunky_status,
             chunky_run,
+            update_game_server,
             map_share_state,
             map_share_create,
             map_share_remove,

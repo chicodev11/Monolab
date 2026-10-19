@@ -13,6 +13,9 @@ const HOSTS: &[&str] = &[
     "adoptium.net",
     "github.com",
     "githubusercontent.com",
+    "akamaihd.net",
+    "terraria.org",
+    "fivem.net",
 ];
 
 fn https_only() -> reqwest::redirect::Policy {
