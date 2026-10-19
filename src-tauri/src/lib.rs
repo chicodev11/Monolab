@@ -4823,7 +4823,7 @@ fn import_instance_archive(
         .map_err(|_| "Only zip archives can be imported.".to_string())?;
     let names = archive
         .file_names()
-        .map(str::to_owned)
+        .filter_map(|name| name.ok().map(|name| name.into_owned()))
         .collect::<Vec<String>>();
     if names.is_empty() {
         return Err("The archive is empty.".into());
@@ -12529,7 +12529,7 @@ fn mrpack_has_overrides(pack: &Path) -> Result<bool, String> {
     let archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
     let found = archive
         .file_names()
-        .any(|name| name.starts_with("overrides/") || name.starts_with("server-overrides/"));
+        .any(|name| name.is_ok_and(|name| name.starts_with("overrides/") || name.starts_with("server-overrides/")));
     Ok(found)
 }
 
@@ -15825,7 +15825,7 @@ mod tests {
         super::zip_into(&mut writer, &dir, &target, &target, options).unwrap();
         writer.finish().unwrap().flush().unwrap();
         let mut archive = zip::ZipArchive::new(std::fs::File::open(&target).unwrap()).unwrap();
-        let names: Vec<String> = (0..archive.len()).map(|at| archive.by_index(at).unwrap().name().to_string()).collect();
+        let names: Vec<String> = (0..archive.len()).map(|at| archive.by_index(at).unwrap().name().unwrap().to_string()).collect();
         assert!(names.contains(&"plugins/a.jar".to_string()), "{names:?}");
         assert!(names.contains(&"plugins/sub/b.yml".to_string()), "{names:?}");
         assert!(names.contains(&"server.properties".to_string()), "{names:?}");

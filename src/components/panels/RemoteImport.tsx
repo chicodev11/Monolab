@@ -4,6 +4,7 @@ import { commands, type Sent } from "../../lib/ipc";
 import type { RemoteEntry, SshHostView } from "../../lib/bindings";
 import { tr } from "../../lib/i18n";
 import { Icon } from "../ui/Icon";
+import { Dropdown } from "../ui/Dropdown";
 
 type Host = Sent<SshHostView>;
 
@@ -111,13 +112,12 @@ export function RemoteImport({
   return (
     <div className="remote-pick">
       <div className="remote-pick-head">
-        <select value={hostId} onChange={(event) => setHostId(event.target.value)}>
-          {hosts.map((one) => (
-            <option key={one.id} value={one.id}>
-              {one.name} ({one.address})
-            </option>
-          ))}
-        </select>
+        <Dropdown
+          className="remote-host-pick"
+          value={hostId}
+          options={hosts.map((one) => ({ value: one.id, label: one.name, hint: one.address }))}
+          onChange={setHostId}
+        />
         <button
           className="button ghost small"
           type="button"
@@ -183,20 +183,14 @@ export function RemoteImport({
           </button>
         </div>
         <div className="remote-send-row">
-          <select
+          <Dropdown
+            className="remote-local-pick"
             value={localId}
             disabled={busy || !!sending || locals.length === 0}
-            onChange={(event) => setLocalId(event.target.value)}
-          >
-            <option value="">
-              {locals.length === 0 ? tr("No local servers") : tr("Local server")}
-            </option>
-            {locals.map((one) => (
-              <option key={one.id} value={one.id}>
-                {one.name}
-              </option>
-            ))}
-          </select>
+            placeholder={locals.length === 0 ? tr("No local servers") : tr("Local server")}
+            options={locals.map((one) => ({ value: one.id, label: one.name }))}
+            onChange={setLocalId}
+          />
           <button
             className="button secondary small"
             type="button"

@@ -8196,7 +8196,7 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus, text
 .import-choice.on { border-color: var(--line-strong); background: var(--raise-hover); }
 .remote-pick { display: grid; gap: 10px; margin-top: 12px; padding: 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--raise); }
 .remote-pick-head { display: flex; gap: 8px; align-items: center; }
-.remote-pick-head select { flex: 1; min-width: 0; }
+.remote-pick-head .remote-host-pick { flex: 1; min-width: 0; }
 .remote-pick-head .button svg { transform: rotate(-90deg); }
 .remote-path { padding: 7px 10px; border-radius: var(--r-sm); background: var(--inset); }
 .remote-path code { font-family: var(--code); font-size: 12.5px; color: var(--text-2); overflow-wrap: anywhere; }
@@ -9053,7 +9053,7 @@ button.sftp-crumb:hover { background: var(--raise); color: var(--text); }
 .pt-when { display: grid; gap: 10px; }
 .pt-when-body { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 40px; font-size: 14px; }
 .pt-when-body .pt-cron { flex: 1; }
-.pt-time, .pt-num { width: auto; min-width: 96px; height: 38px; }
+.pt-num { width: auto; min-width: 84px; }
 .pt-days { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-right: 6px; }
 .pt-days button { padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r-full); background: var(--panel); color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; }
 .pt-days button.on { border-color: var(--line-strong); background: var(--primary); color: var(--primary-ink); }
@@ -10260,3 +10260,9 @@ button.sftp-crumb:hover { background: var(--raise-hover); }
 .chip-button.on { background: var(--primary); color: var(--primary-ink); }
 .map-float-top { left: auto; right: 64px; justify-items: end; transform: none; }
 .create-more .button svg { width: 15px; height: 15px; }
+
+/* Time picker made of two app dropdowns */
+.time-pick { display: inline-flex; align-items: center; gap: 6px; }
+.time-pick > b { color: var(--text-3); font-weight: 600; }
+.time-pick .time-pick-part { width: 76px; min-width: 76px; font-variant-numeric: tabular-nums; }
+.remote-send-row .remote-local-pick { flex: 1; min-width: 0; }

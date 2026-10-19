@@ -7,6 +7,7 @@ import type { Sent } from "../../lib/sent";
 import { EmptyState, SegmentedControl, Switch } from "../primitives";
 import { Dropdown } from "../ui/Dropdown";
 import { Icon } from "../ui/Icon";
+import { TimePicker } from "../ui/TimePicker";
 
 export type Task = Sent<GenTask>;
 type Kind = "command" | "backup" | "restart" | "start" | "stop" | "notify";
@@ -320,7 +321,7 @@ function TaskForm({
       ) : (
         <label className="field-inline">
           <span>{tr("Time")}</span>
-          <input type="time" value={draft.dailyTime} onChange={(event) => set({ dailyTime: event.target.value })} />
+          <TimePicker value={draft.dailyTime} onChange={(dailyTime) => set({ dailyTime })} />
         </label>
       )}
       <div className="modal-actions">

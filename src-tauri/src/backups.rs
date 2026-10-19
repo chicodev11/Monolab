@@ -320,7 +320,7 @@ mod tests {
         let zip = fs::File::open(kept.join(&made.file_name)).unwrap();
         let mut archive = ZipArchive::new(zip).unwrap();
         let names: Vec<String> = (0..archive.len())
-            .map(|at| archive.by_index(at).unwrap().name().to_string())
+            .map(|at| archive.by_index(at).unwrap().name().unwrap().to_string())
             .collect();
         assert!(names.iter().any(|one| one.contains("world/level.dat")), "{names:?}");
         assert!(names.iter().any(|one| one.contains("world_nether/")), "{names:?}");
@@ -341,7 +341,7 @@ mod tests {
         let zip = fs::File::open(kept.join(&whole.file_name)).unwrap();
         let mut archive = ZipArchive::new(zip).unwrap();
         let names: Vec<String> = (0..archive.len())
-            .map(|at| archive.by_index(at).unwrap().name().to_string())
+            .map(|at| archive.by_index(at).unwrap().name().unwrap().to_string())
             .collect();
         assert!(names.iter().any(|one| one.contains("mods/big.jar")), "{names:?}");
 
@@ -366,7 +366,7 @@ mod tests {
         let zip = fs::File::open(vault.join(&made.file_name)).unwrap();
         let mut archive = ZipArchive::new(zip).unwrap();
         let names: Vec<String> = (0..archive.len())
-            .map(|at| archive.by_index(at).unwrap().name().to_string())
+            .map(|at| archive.by_index(at).unwrap().name().unwrap().to_string())
             .collect();
         assert!(
             !names.iter().any(|one| one.contains("garbage.zip")),

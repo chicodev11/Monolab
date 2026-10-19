@@ -21,7 +21,7 @@ pub fn check_budget<R: Read + Seek>(
     for index in 0..archive.len() {
         let entry = archive.by_index_raw(index).map_err(|error| error.to_string())?;
         if entry.is_symlink() {
-            return Err(format!("The archive contains a symbolic link, so it was not unpacked: {}", entry.name()));
+            return Err(format!("The archive contains a symbolic link, so it was not unpacked: {}", entry.name().unwrap_or_default()));
         }
         total = total.saturating_add(entry.size());
         if total > max_unpacked {

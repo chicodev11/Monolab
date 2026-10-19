@@ -7,6 +7,8 @@ import { DAYS, describeCron, fromCron, toCron, type Cron, type Easy } from "../.
 import { Badge, Banner, Button, EmptyState, IconButton, Select, SegmentedControl, Skeleton } from "../primitives";
 import { Icon } from "../ui/Icon";
 import { PanelStartupCard } from "./PanelStartupCard";
+import { TimePicker } from "../ui/TimePicker";
+import { Dropdown } from "../ui/Dropdown";
 
 export type PanelView = "databases" | "network" | "subusers" | "startup" | "schedules" | "psettings" | "activity" | "software";
 
@@ -254,12 +256,10 @@ function WhenPicker({ value, onChange }: { value: Cron; onChange: (cron: Cron) =
     if (next.kind !== "custom") onChange(toCron(next, value));
   };
   const time = (hour: number, minute: number, patch: (hour: number, minute: number) => Easy) => (
-    <input
-      type="time"
-      className="pt-time"
+    <TimePicker
       value={`${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`}
-      onChange={(event) => {
-        const [h, m] = event.target.value.split(":").map(Number);
+      onChange={(next) => {
+        const [h, m] = next.split(":").map(Number);
         if (!Number.isNaN(h) && !Number.isNaN(m)) set(patch(h, m));
       }}
     />
@@ -310,25 +310,23 @@ function WhenPicker({ value, onChange }: { value: Cron; onChange: (cron: Cron) =
         )}
         {easy.kind === "hours" && (
           <>
-            <select className="pt-num" value={easy.every} onChange={(event) => set({ kind: "hours", every: Number(event.target.value) })}>
-              {[1, 2, 3, 4, 6, 8, 12].map((one) => (
-                <option key={one} value={one}>
-                  {one}
-                </option>
-              ))}
-            </select>
+            <Dropdown
+              className="pt-num"
+              value={String(easy.every)}
+              options={[1, 2, 3, 4, 6, 8, 12].map((one) => ({ value: String(one), label: String(one) }))}
+              onChange={(value) => set({ kind: "hours", every: Number(value) })}
+            />
             {tr("hours (on the hour)")}
           </>
         )}
         {easy.kind === "minutes" && (
           <>
-            <select className="pt-num" value={easy.every} onChange={(event) => set({ kind: "minutes", every: Number(event.target.value) })}>
-              {[5, 10, 15, 20, 30].map((one) => (
-                <option key={one} value={one}>
-                  {one}
-                </option>
-              ))}
-            </select>
+            <Dropdown
+              className="pt-num"
+              value={String(easy.every)}
+              options={[5, 10, 15, 20, 30].map((one) => ({ value: String(one), label: String(one) }))}
+              onChange={(value) => set({ kind: "minutes", every: Number(value) })}
+            />
             {tr("minutes")}
           </>
         )}
