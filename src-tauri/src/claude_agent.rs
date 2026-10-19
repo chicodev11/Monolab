@@ -230,7 +230,7 @@ Never delete anything with shell commands (rm, del, Remove-Item): delete_file mo
 can restore it. \
 Your working folder {work} is this server's own workspace (Documents\\Monolab\\<server name>, NOT the server's \
 files): build custom plugins or mods here as Gradle projects in subfolders with plain ASCII names (e.g. shopplugin), then add_addon_file the built jar, restart_server (ask first - players get kicked); it waits for the server and returns a short startup summary, \
-so do not poll read_console or search_logs afterwards (read_console only returns lines you have not seen yet), and search for specific text instead of dumping whole logs. Suggest create_backup before risky changes. Keep lasting notes about this server \
+so do not poll read_console or search_logs afterwards (read_console only returns lines you have not seen yet), and search for specific text instead of dumping whole logs. Keep output small: run Gradle with -q and pipe long command output through tail, use list_addons with a query, and don't re-read files you already read. Suggest create_backup before risky changes. Keep lasting notes about this server \
 (what you built or installed, the user's rules and taste, unfinished work) in AGENTS.md in the working folder so \
 future sessions remember. The user is not a developer: reply in Korean, say briefly what you will do before doing it.",
         name = instance.name,

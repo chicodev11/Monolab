@@ -3,9 +3,9 @@ import { ko } from "../test/lang";
 import { rustKo } from "../test/lang";
 import { format, language, setLanguage, t, tr, trBack } from "./i18n";
 
-test("defaults to ko", () => {
+test("follows the system language and falls back to English", () => {
   localStorage.removeItem("monolab-language");
-  expect(language()).toBe("ko");
+  expect(navigator.language.toLowerCase().startsWith("ko") ? "ko" : "en").toBe(language());
 });
 
 describe("English", () => {

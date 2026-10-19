@@ -204,7 +204,7 @@ fn handle(app: &AppHandle, message: &Value, locked: Option<&str>) -> Option<Valu
 fn pretty(value: Value) -> String {
     match value {
         Value::String(text) => text,
-        other => serde_json::to_string_pretty(&slim(other)).unwrap_or_default(),
+        other => serde_json::to_string(&slim(other)).unwrap_or_default(),
     }
 }
 
@@ -324,6 +324,23 @@ fn last_line(app: &AppHandle, id: &str) -> Option<String> {
     console_lines(app, id).ok().and_then(|lines| lines.last().map(|(line, _)| line.clone()))
 }
 
+fn human_size(bytes: u64) -> String {
+    match bytes {
+        0..=1023 => format!("{bytes} B"),
+        1024..=1_048_575 => format!("{:.1} KB", bytes as f64 / 1024.0),
+        _ => format!("{:.1} MB", bytes as f64 / 1_048_576.0),
+    }
+}
+
+fn span_of(list: Option<&Value>) -> Value {
+    let all: Vec<&str> = list.and_then(Value::as_array).map(|one| one.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+    match all.len() {
+        0 => Value::Null,
+        1..=3 => Value::String(all.join(", ")),
+        n => Value::String(format!("{} ~ {} ({n} versions)", all[0], all[n - 1])),
+    }
+}
+
 fn clip(text: &str) -> String {
     const MAX: usize = 24_000;
     if text.len() <= MAX {
@@ -364,7 +381,7 @@ const TOOLS: &[Tool] = &[
     Tool { name: "list_crash_reports", description: "Crash reports with description, exception and suspected mods/plugins.", args: &[SERVER], read_only: true, destructive: false },
     Tool { name: "diagnose_lag", description: "Lag diagnosis: TPS, entity hotspots, memory, view distance hints (best with the Monolab addon installed).", args: &[SERVER], read_only: true, destructive: false },
     Tool { name: "precheck", description: "Check common start problems before starting: server jar, EULA, port in use, Java version, memory.", args: &[SERVER], read_only: true, destructive: false },
-    Tool { name: "list_files", description: "List a folder inside the server folder.", args: &[SERVER, ("path", "string", "Folder path relative to the server folder, empty for the top.", false)], read_only: true, destructive: false },
+    Tool { name: "list_files", description: "List a folder inside the server folder, one line per entry (folders end with /).", args: &[SERVER, ("path", "string", "Folder path relative to the server folder, empty for the top.", false)], read_only: true, destructive: false },
     Tool { name: "read_file", description: "Read a text file (config, yml, json, properties, toml, txt…) inside the server folder.", args: &[SERVER, ("path", "string", "File path relative to the server folder.", true)], read_only: true, destructive: false },
     Tool { name: "write_file", description: "Write a text file inside the server folder (creates it if missing, replaces the whole content). Read it first and keep what you do not intend to change.", args: &[SERVER, ("path", "string", "File path relative to the server folder.", true), ("content", "string", "Full new file content.", true)], read_only: false, destructive: true },
     Tool { name: "delete_file", description: "Delete a file or folder inside the server folder. It is NOT erased: it goes to the server trash, where the user can restore it from the Files tab. Always use this instead of shell commands (rm, del, Remove-Item) for anything in the server folder.", args: &[SERVER, ("path", "string", "File or folder path relative to the server folder.", true)], read_only: false, destructive: true },
@@ -372,7 +389,7 @@ const TOOLS: &[Tool] = &[
     Tool { name: "add_addon_file", description: "Put a mod/plugin file that exists on THIS computer (e.g. a jar you just built with Gradle) into the server's mods or plugins folder. Works for local, SSH and panel servers. If a local server is running it is queued for the next start; SSH/panel servers must be stopped first. Restart the server afterwards so it loads.", args: &[SERVER, ("localPath", "string", "Absolute path of the .jar (or .wasm for Pumpkin) on this computer.", true)], read_only: false, destructive: false },
     Tool { name: "read_properties", description: "Read server.properties (or pumpkin.toml for Pumpkin) as key/value list.", args: &[SERVER], read_only: true, destructive: false },
     Tool { name: "set_properties", description: "Change some server.properties values; other keys stay as they are. Applied on next start.", args: &[SERVER, ("values", "object", "Map of key to new value, e.g. {\"view-distance\":\"8\"}.", true)], read_only: false, destructive: false },
-    Tool { name: "list_addons", description: "Installed mods and plugins with file name, version, enabled state and compatibility notes.", args: &[SERVER], read_only: true, destructive: false },
+    Tool { name: "list_addons", description: "Installed mods and plugins, one line each: file name, version, and notes if disabled or not compatible. Use query to narrow it down.", args: &[SERVER, ("query", "string", "Only list files whose name contains this text (optional).", false)], read_only: true, destructive: false },
     Tool { name: "search_modrinth", description: "Search Modrinth for mods/plugins that fit this server's core and Minecraft version.", args: &[SERVER, ("query", "string", "Search words (empty = popular).", false), ("page", "integer", "Page number from 0.", false)], read_only: true, destructive: false },
     Tool { name: "list_addon_versions", description: "Versions of a Modrinth project with which ones fit this server.", args: &[SERVER, ("projectId", "string", "Modrinth project id.", true)], read_only: true, destructive: false },
     Tool { name: "install_addon", description: "Download and install a Modrinth mod/plugin (hash checked). Omit versionId for the newest fitting version. If the server is running it applies on next start.", args: &[SERVER, ("projectId", "string", "Modrinth project id.", true), ("versionId", "string", "Specific version id (optional).", false)], read_only: false, destructive: false },
@@ -535,7 +552,14 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
         "server_status" => {
             let resources = invoke(app, "get_resource_snapshot", with(json!({}))).unwrap_or(Value::Null);
             let tps = invoke(app, "get_tps_snapshot", with(json!({}))).unwrap_or(Value::Null);
-            let live = invoke(app, "read_live", with(json!({}))).unwrap_or(Value::Null);
+            let mut live = invoke(app, "read_live", with(json!({}))).unwrap_or(Value::Null);
+            if let Some(map) = live.as_object_mut() {
+                for (key, keep) in [("entityKinds", 8), ("hotspots", 3), ("players", 20)] {
+                    if let Some(list) = map.get_mut(key).and_then(Value::as_array_mut) {
+                        list.truncate(keep);
+                    }
+                }
+            }
             Ok(json!({
                 "name": server.get("name"), "core": core, "version": server.get("version"),
                 "status": server.get("status"), "ready": server.get("ready"), "crashReason": server.get("crashReason"),
@@ -604,7 +628,24 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
         "precheck" => invoke(app, "precheck_instance", with(json!({}))),
         "list_files" => {
             let page = invoke(app, "browse_server_files", with(json!({ "path": text(args, "path").unwrap_or(""), "offset": null, "limit": null })))?;
-            Ok(page)
+            let entries = page.get("entries").and_then(Value::as_array).cloned().unwrap_or_default();
+            let total = page.get("total").and_then(Value::as_u64).unwrap_or(entries.len() as u64);
+            let mut lines: Vec<String> = entries
+                .iter()
+                .map(|one| {
+                    let name = one.get("name").and_then(Value::as_str).unwrap_or("");
+                    if one.get("isDir").and_then(Value::as_bool).unwrap_or(false) {
+                        format!("{name}/")
+                    } else {
+                        let size = one.get("sizeBytes").and_then(Value::as_u64).unwrap_or(0);
+                        format!("{name}  {}", human_size(size))
+                    }
+                })
+                .collect();
+            if total as usize > entries.len() {
+                lines.push(format!("… {} more not shown", total as usize - entries.len()));
+            }
+            Ok(Value::String(if lines.is_empty() { "(empty folder)".into() } else { lines.join("\n") }))
         }
         "read_file" => invoke(app, "read_editable_file", with(json!({ "path": need(args, "path")? }))),
         "write_file" => {
@@ -686,19 +727,30 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
         }
         "list_addons" => {
             let all = invoke(app, "scan_addons", with(json!({})))?;
-            Ok(Value::Array(
-                all.as_array()
-                    .cloned()
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|one| {
-                        json!({
-                            "fileName": one.get("fileName"), "name": one.get("name"), "kind": one.get("kind"),
-                            "version": one.get("version"), "enabled": one.get("enabled"), "compatibility": one.get("compatibility"),
-                        })
-                    })
-                    .collect(),
-            ))
+            let needle = text(args, "query").unwrap_or("").to_lowercase();
+            let list = all.as_array().cloned().unwrap_or_default();
+            let lines: Vec<String> = list
+                .iter()
+                .filter(|one| {
+                    needle.is_empty()
+                        || one.get("fileName").and_then(Value::as_str).unwrap_or("").to_lowercase().contains(&needle)
+                        || one.get("name").and_then(Value::as_str).unwrap_or("").to_lowercase().contains(&needle)
+                })
+                .map(|one| {
+                    let file = one.get("fileName").and_then(Value::as_str).unwrap_or("");
+                    let version = one.get("version").and_then(Value::as_str).unwrap_or("");
+                    let mut line = if version.is_empty() { file.to_string() } else { format!("{file} · {version}") };
+                    if !one.get("enabled").and_then(Value::as_bool).unwrap_or(true) {
+                        line.push_str(" · disabled");
+                    }
+                    let fit = one.get("compatibility").and_then(Value::as_str).unwrap_or("");
+                    if !fit.is_empty() && !fit.eq_ignore_ascii_case("ok") && !fit.eq_ignore_ascii_case("compatible") {
+                        line.push_str(&format!(" · {fit}"));
+                    }
+                    line
+                })
+                .collect();
+            Ok(Value::String(format!("{} of {} installed\n{}", lines.len(), list.len(), lines.join("\n"))))
         }
         "search_modrinth" => {
             let page = invoke(
@@ -730,7 +782,7 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
                     .take(30)
                     .map(|one| json!({
                         "versionId": one.get("id"), "name": one.get("name"), "fits": one.get("fits"), "channel": one.get("channel"),
-                        "gameVersions": one.get("gameVersions"), "loaders": one.get("loaders"), "published": one.get("published"),
+                        "gameVersions": span_of(one.get("gameVersions")), "loaders": one.get("loaders"),
                     }))
                     .collect(),
             ))

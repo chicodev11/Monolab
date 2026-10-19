@@ -105,12 +105,22 @@ export function loadLanguage(lang: Language = current): Promise<void> {
 }
 
 const LANGUAGE_KEY = "monolab-language";
+function systemLanguage(): Language {
+  const codes = languageCodes();
+  const wanted = typeof navigator === "undefined" ? [] : [...(navigator.languages ?? []), navigator.language];
+  for (const one of wanted) {
+    const code = (one ?? "").toLowerCase().split("-")[0];
+    if (codes.includes(code)) return code;
+  }
+  return "en";
+}
+
 function rememberedLanguage(): Language {
   try {
     const saved = localStorage.getItem(LANGUAGE_KEY);
-    return saved && languageCodes().includes(saved) ? saved : "ko";
+    return saved && languageCodes().includes(saved) ? saved : systemLanguage();
   } catch {
-    return "ko";
+    return systemLanguage();
   }
 }
 let current: Language = rememberedLanguage();

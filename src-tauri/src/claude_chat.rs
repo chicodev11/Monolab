@@ -96,6 +96,10 @@ pub fn open(app: &AppHandle, server: &str, fresh: bool, mode: &str, model: &str)
     if let Some(account) = crate::claude_accounts::config_for_server(app, server) {
         command.env("CLAUDE_CONFIG_DIR", account);
     }
+    if std::env::var_os("CLAUDE_CODE_AUTO_COMPACT_WINDOW").is_none() {
+        // Long chats re-read their whole history every turn; compact well before the 1M window fills.
+        command.env("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "120000");
+    }
     command.env_remove("CLAUDECODE");
     command.env_remove("CLAUDE_CODE_ENTRYPOINT");
     command.env_remove("CLAUDE_CODE_CHILD_SESSION");
