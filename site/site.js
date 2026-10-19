@@ -8,7 +8,7 @@ function pickLanguage() {
     const saved = localStorage.getItem("monolab-site-lang");
     if (LANGUAGES.includes(saved)) return saved;
   } catch {}
-  return (navigator.language || "").toLowerCase().startsWith("ko") ? "ko" : "en";
+  return "en";
 }
 
 function table(lang) {
