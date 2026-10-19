@@ -235,7 +235,7 @@ fn fetch(url: &str, target: &Path, progress: Progress, cancelled: Cancelled) -> 
         if cancelled() {
             drop(file);
             let _ = fs::remove_file(target);
-            return Err("Cancelled.".into());
+            return Err("Download cancelled.".into());
         }
         let read = answer.read(&mut buffer).map_err(|error| error.to_string())?;
         if read == 0 {
@@ -287,7 +287,7 @@ fn steam_install(app: &AppHandle, id: u32, folder: &Path, progress: Progress, ca
     for line in BufReader::new(stdout).lines().map_while(Result::ok) {
         if cancelled() {
             let _ = child.kill();
-            return Err("Cancelled.".into());
+            return Err("Download cancelled.".into());
         }
         if let Some(percent) = steam_progress(&line) {
             progress((percent * 100.0) as u64, 10_000);

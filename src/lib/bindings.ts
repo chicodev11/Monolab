@@ -147,6 +147,7 @@ export const commands = {
 	cleanDisk: (id: string, kind: string) => __TAURI_INVOKE<number>("clean_disk", { id, kind }),
 	chunkyStatus: (id: string) => __TAURI_INVOKE<ChunkyStatus>("chunky_status", { id }),
 	chunkyRun: (id: string, action: string, world: string, x: number, z: number, radius: number, radiusZ: number, shape: string) => __TAURI_INVOKE<null>("chunky_run", { id, action, world, x, z, radius, radiusZ, shape }),
+	updateGameServer: (id: string) => __TAURI_INVOKE<null>("update_game_server", { id }),
 	mapShareState: (id: string) => __TAURI_INVOKE<MapShareView>("map_share_state", { id }),
 	mapShareCreate: (id: string, labels: { [key in string]: string }) => __TAURI_INVOKE<MapShareView>("map_share_create", { id, labels }),
 	mapShareRemove: (id: string) => __TAURI_INVOKE<MapShareView>("map_share_remove", { id }),

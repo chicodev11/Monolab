@@ -191,7 +191,11 @@
     "The bindings have no invoke import line — did tauri-specta change?": "바인딩에 invoke 가져오는 줄이 없어요 — tauri-specta 판이 바뀌었나요?",
     "exit code {} · ran {} min": "종료 코드 $1 · $2분 동안 켜져 있었어요",
     "Ran {} min": "$1분 동안 켜져 있었어요",
-    "Stopped without a stop request (crash or stopped outside the app)": "정지 요청 없이 꺼졌어요 (크래시이거나 앱 밖에서 끔)"
+    "Stopped without a stop request (crash or stopped outside the app)": "정지 요청 없이 꺼졌어요 (크래시이거나 앱 밖에서 끔)",
+    "Could not send Ctrl+C to the server.": "서버에 Ctrl+C를 보낼 수 없어요.",
+    "The server's console is closed.": "서버 콘솔이 닫혀 있어요.",
+    "The game server files are missing": "게임 서버 파일이 없어요",
+    "{exe} isn't in the server folder. Press Update server files on the Overview tab to download them again.": "서버 폴더에 $1이(가) 없어요. 개요 탭에서 서버 파일 업데이트를 눌러 다시 내려받아주세요."
   },
   "lib.rs · 서버 설정": {
     "config.yml": "설정.yml",
@@ -530,7 +534,9 @@
     "The previous jar path is malformed.": "이전 jar 파일의 경로가 형식이 맞지 않아요.",
     "Could not keep the current jar: {error}": "현재 jar 파일을 보관할 수 없어요: $1",
     "Could not restore the previous jar: {error}": "이전 jar 파일을 복원할 수 없어요: $1",
-    "Upgrade rolled back": "업그레이드 복원"
+    "Upgrade rolled back": "업그레이드 복원",
+    "This isn't a game server.": "게임 서버가 아니에요.",
+    "Server files updated": "서버 파일 업데이트"
   },
   "lib.rs · SSH·패널": {
     "This isn't an SSH server.": "SSH 서버가 아니에요.",
@@ -566,7 +572,8 @@
     "Start via panel": "패널로 시작",
     "Stop via panel": "패널로 정지",
     "Restart via panel": "패널로 다시 시작",
-    "End task via panel": "패널로 작업 끝내기"
+    "End task via panel": "패널로 작업 끝내기",
+    "Game servers can only run on this PC for now.": "게임 서버는 아직 이 PC에서만 돌릴 수 있어요."
   },
   "lib.rs · 작업": {
     "Failed: {error}": "하지 못했어요: $1",
@@ -822,6 +829,21 @@
     "Player": "플레이어",
     "World": "월드",
     "Plugin": "플러그인"
+  },
+  "games.rs": {
+    "{LAUNCH_FILE} is malformed: {error}": "$1 형식이 맞지 않아요: $2",
+    "{} was not found in the server folder. Update the server files and try again.": "서버 폴더에서 $1을(를) 찾을 수 없어요. 서버 파일을 업데이트한 뒤 다시 해보세요.",
+    "The download finished but {} is missing.": "다운로드는 끝났는데 $1이(가) 없어요.",
+    "Could not download {url}: {error}": "$1을(를) 내려받을 수 없어요: $2",
+    "SteamCMD could not be set up.": "SteamCMD를 설치할 수 없어요.",
+    "Could not start SteamCMD: {error}": "SteamCMD를 실행할 수 없어요: $1",
+    "Could not read SteamCMD's output.": "SteamCMD 출력을 읽을 수 없어요.",
+    "SteamCMD couldn't download the server files.\n{}": "SteamCMD가 서버 파일을 내려받지 못했어요.\n$1",
+    "Could not get the Terraria server list: {error}": "Terraria 서버 목록을 가져올 수 없어요: $1",
+    "No Terraria server download was found.": "Terraria 서버 다운로드를 찾을 수 없어요.",
+    "Could not get the FiveM server version: {error}": "FiveM 서버 버전을 가져올 수 없어요: $1",
+    "The FiveM version list is malformed.": "FiveM 버전 목록 형식이 맞지 않아요.",
+    "Could not unpack the FiveM server: {error}": "FiveM 서버 압축을 풀 수 없어요: $1"
   },
   "hashes.rs": {
     "Could not open the downloaded file: {error}": "다운로드한 파일을 열 수 없어요: $1",

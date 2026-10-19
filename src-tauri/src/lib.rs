@@ -1674,7 +1674,8 @@ async fn precheck_instance(
     }
     let instance = instance_by_id(&app, &id)?;
     let root = Path::new(&instance.path);
-    let native = pumpkin::is_pumpkin(&instance.core);
+    let game = games::find(&instance.core);
+    let native = pumpkin::is_pumpkin(&instance.core) || game.is_some();
     let jar = instance
         .server_jar
         .as_ref()
@@ -1701,7 +1702,9 @@ async fn precheck_instance(
     };
     let _ = &state;
     let max_memory = if native { 0 } else { instance.max_memory_mib };
+    let game_missing = game.filter(|game| !root.join(game.exe).is_file()).map(|game| game.exe);
     let exe_missing = native
+        && game.is_none()
         && !instance
             .server_jar
             .as_ref()
@@ -1714,6 +1717,12 @@ async fn precheck_instance(
             findings.push(doctor::Finding::stop(
                 "The Pumpkin executable is missing",
                 "There is no pumpkin.exe in the server folder. Create the server again, or download the release again from the Upgrade tab.",
+            ));
+        }
+        if let Some(exe) = game_missing {
+            findings.push(doctor::Finding::stop(
+                "The game server files are missing",
+                &format!("{exe} isn't in the server folder. Press Update server files on the Overview tab to download them again."),
             ));
         }
         findings.extend(doctor::precheck(
@@ -3338,6 +3347,9 @@ async fn move_instance_to_host(
     host_id: String,
 ) -> Result<InstanceView, String> {
     let instance = instance_by_id(&app, &id)?;
+    if games::is_game(&instance.core) {
+        return Err("Game servers can only run on this PC for now.".into());
+    }
     if pumpkin::is_pumpkin(&instance.core) {
         let conn = remote::connect(&app, &host_id).await?;
         let arch = conn.run("uname -m").await?.stdout;

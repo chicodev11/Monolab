@@ -91,6 +91,8 @@ import { SftpPage } from "./components/panels/SftpPage";
 import { AgentPage } from "./components/panels/AgentPage";
 import { TasksPage } from "./components/panels/TasksPage";
 import { PanelStartupCard } from "./components/panels/PanelStartupCard";
+import { GameLaunchCard } from "./components/panels/GameLaunchCard";
+import { games, isGame } from "./lib/games";
 import { SshHosts } from "./components/panels/SshHosts";
 import { CommandPalette } from "./components/dialogs/CommandPalette";
 import { MarksPanel } from "./components/panels/MarksPanel";
@@ -396,7 +398,8 @@ const cores = [
   "Pumpkin",
 ];
 
-const isNative = (core: string) => core === "Pumpkin";
+const isNative = (core: string) => core === "Pumpkin" || isGame(core);
+const gameHidden: Tool[] = ["properties", "worlds", "addons", "players"];
 
 function isClientOnly(
   one: { compatibility: string },
@@ -1161,6 +1164,7 @@ function App() {
   const [coreBuilds, setCoreBuilds] = useState<CoreBuild[]>([]);
   const [buildNews, setBuildNews] = useState<CoreBuildNews | null>(null);
   const [versionOpen, setVersionOpen] = useState(false);
+  const [gameUpdating, setGameUpdating] = useState(false);
   const [upgradeBuilds, setUpgradeBuilds] = useState<CoreBuild[]>([]);
   const [upgradeBuild, setUpgradeBuild] = useState("");
   const [upgradeBuildsBusy, setUpgradeBuildsBusy] = useState(false);
@@ -1750,9 +1754,9 @@ function App() {
     }
   }
   async function chooseCore(core: string) {
-    setForm({ ...form, core, version: isProxy(core) ? "latest" : "", coreBuild: "" });
+    setForm({ ...form, core, version: isProxy(core) || isGame(core) ? "latest" : "", coreBuild: "" });
     setCoreBuilds([]);
-    if (isProxy(core)) return;
+    if (isProxy(core) || isGame(core)) return;
     setVersionsBusy(true);
     try {
       const list = await commands.listCoreVersions(core);
@@ -2413,6 +2417,7 @@ function App() {
   }
   async function loadTool(next: Tool, instance = selected, keepBrowse = false) {
     if (!instance) return;
+    if (isGame(instance.core) && gameHidden.includes(next)) next = "overview";
     if (!keepBrowse) {
       setBrowseOpen(false);
       setProjectView(null);
@@ -3245,6 +3250,13 @@ function App() {
         commands.removeAddon(instance.id).then(setAddon),
       tr("Removed Monolab {0}.", [addon?.kind ?? tr("add-on")]),
     );
+  }
+  async function updateGameFiles() {
+    if (!selected) return;
+    const instance = selected;
+    setGameUpdating(true);
+    await call(() => commands.updateGameServer(instance.id), tr("Updated the {0} server files.", [instance.core]));
+    setGameUpdating(false);
   }
   async function openVersionDialog() {
     if (!selected) return;
@@ -5087,7 +5099,7 @@ function App() {
       const low = typed.toLowerCase();
       const pool = flat.length
         ? flat.map((one) => ({ name: one.name, hint: describe(one.name, one.from ?? one.usage) }))
-        : (isNative(selected?.core ?? "")
+        : (selected?.core === "Pumpkin"
             ? [...consoleCommands, ...pumpkinCommands]
             : consoleCommands
           ).map((one) => ({ name: one.name, hint: one.hint }));
@@ -6141,8 +6153,29 @@ function App() {
           <div className="setting-card core-card">
             <span className="setting-title">{tr("Core")}</span>
             <strong className="strip-core core-value">
-              {`${selected.core} ${selected.version}${selected.coreBuild ? ` · ${selected.coreBuild}` : ""}`}
+              {isGame(selected.core) ? selected.core : `${selected.core} ${selected.version}${selected.coreBuild ? ` · ${selected.coreBuild}` : ""}`}
             </strong>
+            {isGame(selected.core) ? (
+            <>
+            <span className="title-actions">
+              <button
+                type="button"
+                className="button secondary small"
+                disabled={gameUpdating || selected.status !== "stopped"}
+                data-tip={tr("Downloads the newest server files. Your worlds and settings stay.")}
+                onClick={() => void updateGameFiles()}
+              >
+                <Icon name="refresh" />
+                {gameUpdating ? tr("Updating…") : tr("Update server files")}
+              </button>
+            </span>
+            <p className="memory-note core-note">
+              <Icon name="gamepad" />
+              {tr("Game server · runs on this PC only")}
+            </p>
+            </>
+            ) : (
+            <>
             <span className="title-actions">
               <button
                 type="button"
@@ -6165,13 +6198,21 @@ function App() {
                     ? tr("Can't check for updates without the build number")
                     : tr("Latest build")}
             </p>
+            </>
+            )}
           </div>
           </div>
           <fieldset
             className="overview-lock"
             disabled={selected.status !== "stopped"}
           >
-          {isNative(selected.core) ? (
+          {isGame(selected.core) ? (
+            <GameLaunchCard
+              id={selected.id}
+              onError={(message) => setError(message)}
+              onNotice={(message) => setNotice(message)}
+            />
+          ) : isNative(selected.core) ? (
             <div className="setting-card">
               <span className="setting-title">{tr("Launch settings")}</span>
               <p>
@@ -9284,6 +9325,7 @@ function App() {
                 aria-hidden
               />
               {(selected.panelHost ? panelNav : instanceNav).map((item) => {
+                if (isGame(selected.core) && gameHidden.includes(item.id)) return null;
                 if (
                   item.id === "addons" &&
                   !addonKind(selected.core) &&
@@ -11129,6 +11171,7 @@ function App() {
                       value={createWhere}
                       onChange={(next) => {
                         setCreateWhere(next);
+                        if (next !== "local" && isGame(form.core)) setForm({ ...form, core: "", version: "" });
                       }}
                       options={[{ value: "local", label: tr("Local") }, ...sshHostViews.map((one) => ({ value: one.id, label: one.name }))]}
                     />
@@ -11158,10 +11201,28 @@ function App() {
                     )}
                   </div>
                 </div>
-                {form.core && !isProxy(form.core) && (
+                {createWhere === "local" && (
+                  <div className="create-field">
+                    <span>{tr("Games")}</span>
+                    <div className="core-chips">
+                      {games.map((game) => (
+                        <button
+                          type="button"
+                          key={game}
+                          className={`core-chip ${form.core === game ? "on" : ""}`}
+                          onClick={() => void chooseCore(game)}
+                        >
+                          <Icon name="gamepad" />
+                          {game}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {form.core && !isProxy(form.core) && !isGame(form.core) && (
                   <div className="create-two">
                     <label className="create-field">
-                      <span>{isNative(form.core) ? tr("Release") : tr("Minecraft version")}</span>
+                      <span>{form.core === "Pumpkin" ? tr("Release") : tr("Minecraft version")}</span>
                       <Dropdown
                         value={form.version}
                         disabled={versionsBusy}
@@ -11190,7 +11251,7 @@ function App() {
                     )}
                   </div>
                 )}
-                {isNative(form.core) && (
+                {form.core === "Pumpkin" && (
                   <p className="create-warn">
                     <Icon name="alert" />
                     <span>{tr("This server is still in development. Don't use it with a world you care about.")}</span>
@@ -11210,7 +11271,7 @@ function App() {
                       {tr("From a modpack")}
                     </button>
                   </span>
-                  <span className="consent-note">{isProxy(form.core) ? tr("Creating a server means you accept its terms.") : tr("Creating a server means you accept the Minecraft EULA.")}</span>
+                  <span className="consent-note">{isGame(form.core) ? tr("Creating a server means you accept the game's server terms. Large games can take a while to download.") : isProxy(form.core) ? tr("Creating a server means you accept its terms.") : tr("Creating a server means you accept the Minecraft EULA.")}</span>
                   <button
                     className="button primary"
                     disabled={creating || !form.core || versionsBusy || (!isProxy(form.core) && !form.version)}
