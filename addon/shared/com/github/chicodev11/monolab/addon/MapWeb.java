@@ -1,12 +1,21 @@
 package com.github.chicodev11.monolab.addon;
 
+import java.awt.image.BufferedImage;
 import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.Base64;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,6 +32,7 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
+import javax.imageio.ImageIO;
 
 /**
  * Serves the world map on a port of its own, so friends open it straight from the server (forward the port on the
@@ -41,7 +51,7 @@ final class MapWeb {
     private final Path status;
     private final Path live;
     private final BiConsumer<String, Throwable> onTrouble;
-    private final Semaphore drawing = new Semaphore(2);
+    private final Semaphore drawing = new Semaphore(Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2)));
     private final Object loading = new Object();
     private final Map<String, Object[]> tiles = new LinkedHashMap<>(64, 0.75f, true) {
         @Override
@@ -56,6 +66,10 @@ final class MapWeb {
         }
     };
     private final Map<String, Object[]> indexes = new HashMap<>();
+    private final Map<String, Object[]> heads = new HashMap<>();
+    private final Map<String, Integer> warmed = new HashMap<>();
+    private volatile long lastTile;
+    private HttpClient web;
 
     private volatile boolean running;
     private Thread thread;
@@ -90,6 +104,10 @@ final class MapWeb {
         thread = new Thread(this::watch, "Monolab web");
         thread.setDaemon(true);
         thread.start();
+        Thread warming = new Thread(this::warm, "Monolab web warm");
+        warming.setDaemon(true);
+        warming.setPriority(Thread.MIN_PRIORITY);
+        warming.start();
     }
 
     void stop() {
@@ -238,28 +256,42 @@ final class MapWeb {
         }
     }
 
+    /** One connection carries many requests (keep-alive): a new TCP handshake per tile is what made far viewers slow. */
     private void handle(Socket client) {
         try (client) {
-            client.setSoTimeout(10_000);
+            client.setSoTimeout(15_000);
+            client.setTcpNoDelay(true);
             InputStream in = new BufferedInputStream(client.getInputStream());
-            String first = line(in);
-            if (first == null) {
-                return;
-            }
-            for (int i = 0; i < 80; i++) {
-                String header = line(in);
-                if (header == null || header.isEmpty()) {
-                    break;
+            for (int served = 0; served < 1000 && running; served++) {
+                String first = line(in);
+                if (first == null) {
+                    return;
+                }
+                String match = "";
+                boolean close = false;
+                for (int i = 0; i < 80; i++) {
+                    String header = line(in);
+                    if (header == null || header.isEmpty()) {
+                        break;
+                    }
+                    String lower = header.toLowerCase(Locale.ROOT);
+                    if (lower.startsWith("if-none-match:")) {
+                        match = header.substring(14).trim();
+                    } else if (lower.startsWith("connection:") && lower.contains("close")) {
+                        close = true;
+                    }
+                }
+                String[] parts = first.split(" ");
+                if (parts.length < 2 || !(parts[0].equals("GET") || parts[0].equals("HEAD"))) {
+                    reply(client, 405, "text/plain; charset=utf-8", "no".getBytes(StandardCharsets.UTF_8), "no-store");
+                    return;
+                }
+                if (!route(client, parts[0].equals("HEAD"), parts[1], match) || close) {
+                    return;
                 }
             }
-            String[] parts = first.split(" ");
-            if (parts.length < 2 || !(parts[0].equals("GET") || parts[0].equals("HEAD"))) {
-                reply(client, 405, "text/plain; charset=utf-8", "no".getBytes(StandardCharsets.UTF_8), "no-store");
-                return;
-            }
-            route(client, parts[0].equals("HEAD"), parts[1]);
         } catch (IOException | RuntimeException ignored) {
-            // A viewer that went away mid-reply.
+            // A viewer that went away, or an idle connection timing out.
         }
     }
 
@@ -279,7 +311,8 @@ final class MapWeb {
         throw new IOException("line too long");
     }
 
-    private void route(Socket client, boolean head, String target) throws IOException {
+    /** Answers one request; false when the connection should close afterwards. */
+    private boolean route(Socket client, boolean head, String target, String match) throws IOException {
         Settings settings = now;
         String path = target;
         String query = "";
@@ -292,13 +325,20 @@ final class MapWeb {
             String prefix = "/" + settings.token;
             if (path.equals(prefix)) {
                 redirect(client, prefix + "/");
-                return;
+                return false;
             }
             if (!path.startsWith(prefix + "/")) {
                 reply(client, 404, "text/plain; charset=utf-8", "This map is not shared.".getBytes(StandardCharsets.UTF_8), "no-store");
-                return;
+                return true;
             }
             path = path.substring(prefix.length());
+        }
+        if (path.startsWith("/tile/") && path.endsWith(".png")) {
+            String[] bits = path.substring(6, path.length() - 4).split("/");
+            if (bits.length == 5) {
+                query = "realm=" + bits[0] + "&night=" + ("n".equals(bits[1]) ? 1 : 0) + "&z=" + bits[2] + "&tx=" + bits[3] + "&ty=" + bits[4];
+                path = "/tile";
+            }
         }
         switch (path) {
             case "/", "/index.html" -> send(client, head, 200, "text/html; charset=utf-8", MapPage.HTML.getBytes(StandardCharsets.UTF_8), "no-cache");
@@ -312,12 +352,22 @@ final class MapWeb {
                 }
             }
             case "/players" -> send(client, head, 200, "application/json; charset=utf-8", players(settings).getBytes(StandardCharsets.UTF_8), "no-store");
-            case "/tile" -> tile(client, head, query);
+            case "/tile" -> tile(client, head, query, match);
+            case "/head" -> {
+                byte[] face = settings.players ? head(param(query, "name")) : null;
+                if (face == null) {
+                    send(client, head, 404, "text/plain; charset=utf-8", "none".getBytes(StandardCharsets.UTF_8), "max-age=600");
+                } else {
+                    send(client, head, 200, "image/png", face, "max-age=86400");
+                }
+            }
             default -> send(client, head, 404, "text/plain; charset=utf-8", "no".getBytes(StandardCharsets.UTF_8), "no-store");
         }
+        return true;
     }
 
-    private void tile(Socket client, boolean head, String query) throws IOException {
+    private void tile(Socket client, boolean head, String query, String match) throws IOException {
+        lastTile = System.currentTimeMillis();
         String realm = param(query, "realm");
         if (!realmOk(realm)) {
             send(client, head, 404, "text/plain; charset=utf-8", "none".getBytes(StandardCharsets.UTF_8), "no-store");
@@ -327,6 +377,16 @@ final class MapWeb {
         int tx = number(param(query, "tx"));
         int ty = number(param(query, "ty"));
         boolean night = param(query, "night").equals("1");
+        boolean[] any = {false};
+        String tag = "\"" + signature(realm, z, tx, ty, night, any) + "\"";
+        if (!any[0]) {
+            send(client, head, 404, "text/plain; charset=utf-8", "none".getBytes(StandardCharsets.UTF_8), "max-age=15");
+            return;
+        }
+        if (tag.equals(match)) {
+            reply(client, 304, "image/png", new byte[0], "max-age=120", 0, tag);
+            return;
+        }
         byte[] png = null;
         try {
             if (!drawing.tryAcquire(25, TimeUnit.SECONDS)) {
@@ -347,7 +407,7 @@ final class MapWeb {
         if (png == null) {
             send(client, head, 404, "text/plain; charset=utf-8", "none".getBytes(StandardCharsets.UTF_8), "max-age=15");
         } else {
-            send(client, head, 200, "image/png", png, "max-age=20");
+            reply(client, 200, "image/png", head ? new byte[0] : png, "max-age=120", png.length, tag);
         }
     }
 
@@ -364,10 +424,16 @@ final class MapWeb {
     }
 
     private static void reply(Socket client, int code, String kind, byte[] body, String cache, int length) {
+        reply(client, code, kind, body, cache, length, null);
+    }
+
+    private static void reply(Socket client, int code, String kind, byte[] body, String cache, int length, String tag) {
         try {
             OutputStream stream = client.getOutputStream();
-            String head = "HTTP/1.1 " + code + " OK\r\nContent-Type: " + kind + "\r\nContent-Length: " + length
-                    + "\r\nCache-Control: " + cache + "\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";
+            String head = "HTTP/1.1 " + code + (code == 304 ? " Not Modified" : " OK") + "\r\nContent-Type: " + kind
+                    + (code == 304 ? "" : "\r\nContent-Length: " + length)
+                    + (tag == null ? "" : "\r\nETag: " + tag)
+                    + "\r\nCache-Control: " + cache + "\r\nX-Content-Type-Options: nosniff\r\nConnection: keep-alive\r\nKeep-Alive: timeout=15\r\n\r\n";
             stream.write(head.getBytes(StandardCharsets.ISO_8859_1));
             stream.write(body);
             stream.flush();
@@ -479,6 +545,14 @@ final class MapWeb {
         return "[" + minX * MapView.SPAN + "," + minZ * MapView.SPAN + "," + (maxX + 1) * MapView.SPAN + "," + (maxZ + 1) * MapView.SPAN + "]";
     }
 
+    static String realmOf(String world) {
+        int colon = world.indexOf(':');
+        if (colon > 0 && !world.startsWith("minecraft:")) {
+            return world.substring(0, colon) + "." + world.substring(colon + 1).replace('/', '.');
+        }
+        return world.contains("nether") ? "nether" : world.contains("the_end") || world.endsWith("_end") || world.equals("end") ? "end" : "overworld";
+    }
+
     private String players(Settings settings) {
         if (!settings.players) {
             return "[]";
@@ -491,8 +565,7 @@ final class MapWeb {
                     if (!(one instanceof Map<?, ?> player) || !(player.get("x") instanceof Number x) || !(player.get("z") instanceof Number z)) {
                         continue;
                     }
-                    String world = String.valueOf(player.get("world")).toLowerCase(Locale.ROOT);
-                    String realm = world.contains("nether") ? "nether" : world.contains("the_end") || world.endsWith("_end") || world.equals("end") ? "end" : "overworld";
+                    String realm = realmOf(String.valueOf(player.get("world")).toLowerCase(Locale.ROOT));
                     if (list.length() > 1) {
                         list.append(',');
                     }
@@ -670,6 +743,190 @@ final class MapWeb {
             tiles.put(id, new Object[] {sig, bytes});
         }
         return bytes;
+    }
+
+    // ---- drawing ahead ------------------------------------------------------------------------------------
+
+    /**
+     * Draws the zoomed-out levels in the background so the first look at a big world doesn't wait for hundreds of
+     * regions. Steps aside whenever someone is loading tiles, and only redraws what changed.
+     */
+    private void warm() {
+        while (running) {
+            try {
+                Thread.sleep(8_000L);
+                if (now.enabled && socket != null) {
+                    for (String realm : realms()) {
+                        warmRealm(realm);
+                    }
+                }
+            } catch (InterruptedException stopped) {
+                return;
+            } catch (Throwable trouble) {
+                onTrouble.accept("Couldn't draw the web map ahead", trouble);
+            }
+        }
+    }
+
+    private void warmRealm(String realm) throws InterruptedException, IOException {
+        Map<Long, Long> known = index(realm);
+        int stamp = known.hashCode();
+        synchronized (warmed) {
+            Integer done = warmed.get(realm);
+            if (done != null && done == stamp) {
+                return;
+            }
+        }
+        for (int z : new int[] {DIRECT_Z, DIRECT_Z + 1, MOST_Z, DIRECT_Z - 1}) {
+            long span = (long) (MapView.TILE * Math.pow(2, z));
+            java.util.Set<Long> todo = new java.util.LinkedHashSet<>();
+            for (long one : known.keySet()) {
+                long rx = one >> 32;
+                long rz = (int) one;
+                long x0 = Math.floorDiv(rx * MapView.SPAN, span);
+                long x1 = Math.floorDiv(rx * MapView.SPAN + MapView.SPAN - 1, span);
+                long z0 = Math.floorDiv(rz * MapView.SPAN, span);
+                long z1 = Math.floorDiv(rz * MapView.SPAN + MapView.SPAN - 1, span);
+                for (long tz = z0; tz <= z1; tz++) {
+                    for (long tx = x0; tx <= x1; tx++) {
+                        todo.add(key((int) tx, (int) tz));
+                    }
+                }
+            }
+            for (long one : todo) {
+                int tx = (int) (one >> 32);
+                int ty = (int) one;
+                boolean[] any = {false};
+                String sig = signature(realm, z, tx, ty, false, any);
+                Path mark = out.resolve("web").resolve(realm).resolve("d" + z + "_" + tx + "_" + ty + ".sig");
+                if (!any[0] || (Files.isRegularFile(mark) && sig.equals(Files.readString(mark).trim()))) {
+                    continue;
+                }
+                while (System.currentTimeMillis() - lastTile < 1_500L) {
+                    Thread.sleep(400L);
+                }
+                if (!running || !now.enabled) {
+                    return;
+                }
+                drawing.acquire();
+                try {
+                    tile(realm, z, tx, ty, false);
+                } finally {
+                    drawing.release();
+                }
+            }
+        }
+        synchronized (warmed) {
+            warmed.put(realm, stamp);
+        }
+    }
+
+    // ---- player faces -------------------------------------------------------------------------------------
+
+    /** An 8x8 face (with the hat layer) for someone online, looked up once a day; null when unknown. */
+    private byte[] head(String name) {
+        if (!name.matches("[A-Za-z0-9_]{1,16}") || !online(name)) {
+            return null;
+        }
+        String id = name.toLowerCase(Locale.ROOT);
+        long nowMs = System.currentTimeMillis();
+        synchronized (heads) {
+            Object[] held = heads.get(id);
+            if (held != null && nowMs - (Long) held[0] < (held[1] == null ? 600_000L : 86_400_000L)) {
+                return (byte[]) held[1];
+            }
+        }
+        Path file = out.resolve("web").resolve("heads").resolve(id + ".png");
+        byte[] face = null;
+        try {
+            if (Files.isRegularFile(file) && nowMs - Files.getLastModifiedTime(file).toMillis() < 86_400_000L) {
+                face = Files.readAllBytes(file);
+            } else {
+                face = fetchFace(name);
+                if (face != null) {
+                    Files.createDirectories(file.getParent());
+                    Files.write(file, face);
+                }
+            }
+        } catch (Exception unreachable) {
+            face = null;
+        }
+        synchronized (heads) {
+            heads.put(id, new Object[] {nowMs, face});
+        }
+        return face;
+    }
+
+    private boolean online(String name) {
+        try {
+            if (Files.isRegularFile(live) && MiniJson.parse(Files.readString(live)) instanceof Map<?, ?> map
+                    && map.get("players") instanceof List<?> people) {
+                for (Object one : people) {
+                    if (one instanceof Map<?, ?> player && name.equalsIgnoreCase(String.valueOf(player.get("name")))) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception unreadable) {
+            return false;
+        }
+        return false;
+    }
+
+    private byte[] fetchFace(String name) throws Exception {
+        if (web == null) {
+            web = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).followRedirects(HttpClient.Redirect.NORMAL).build();
+        }
+        if (!(MiniJson.parse(fetchText("https://api.mojang.com/users/profiles/minecraft/" + name)) instanceof Map<?, ?> profile)
+                || !(profile.get("id") instanceof String uuid) || !uuid.matches("[0-9a-fA-F]{32}")) {
+            return null;
+        }
+        if (!(MiniJson.parse(fetchText("https://sessionserver.mojang.com/session/minecraft/profile/" + uuid)) instanceof Map<?, ?> session)
+                || !(session.get("properties") instanceof List<?> properties)) {
+            return null;
+        }
+        String skin = null;
+        for (Object one : properties) {
+            if (one instanceof Map<?, ?> property && "textures".equals(property.get("name")) && property.get("value") instanceof String value
+                    && MiniJson.parse(new String(Base64.getDecoder().decode(value), StandardCharsets.UTF_8)) instanceof Map<?, ?> textures
+                    && textures.get("textures") instanceof Map<?, ?> kinds && kinds.get("SKIN") instanceof Map<?, ?> of
+                    && of.get("url") instanceof String url) {
+                skin = url.replace("http://", "https://");
+            }
+        }
+        if (skin == null || !skin.startsWith("https://textures.minecraft.net/")) {
+            return null;
+        }
+        HttpResponse<byte[]> got = web.send(HttpRequest.newBuilder(URI.create(skin)).timeout(Duration.ofSeconds(8)).build(), HttpResponse.BodyHandlers.ofByteArray());
+        BufferedImage picture = got.statusCode() == 200 ? ImageIO.read(new ByteArrayInputStream(got.body())) : null;
+        if (picture == null || picture.getWidth() < 64 || picture.getHeight() < 32) {
+            return null;
+        }
+        boolean hatShown = picture.getHeight() >= 64;
+        for (int y = 0; y < 8 && !hatShown; y++) {
+            for (int x = 0; x < 8; x++) {
+                if ((picture.getRGB(40 + x, 8 + y) >>> 24) < 128) {
+                    hatShown = true;
+                    break;
+                }
+            }
+        }
+        BufferedImage face = new BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                int base = picture.getRGB(8 + x, 8 + y) | 0xFF000000;
+                int hat = picture.getRGB(40 + x, 8 + y);
+                face.setRGB(x, y, hatShown && (hat >>> 24) > 0 ? hat | 0xFF000000 : base);
+            }
+        }
+        ByteArrayOutputStream png = new ByteArrayOutputStream();
+        ImageIO.write(face, "png", png);
+        return png.toByteArray();
+    }
+
+    private String fetchText(String url) throws Exception {
+        HttpResponse<String> got = web.send(HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(8)).build(), HttpResponse.BodyHandlers.ofString());
+        return got.statusCode() == 200 ? got.body() : "";
     }
 
     private int[] draw(String realm, int z, int tx, int ty, boolean night) throws IOException {

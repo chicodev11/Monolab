@@ -1,6 +1,42 @@
 [
   {
     "kind": "app",
+    "version": "1.3.0",
+    "date": "2026-10-21",
+    "added": [
+      "Servers for other games: Terraria, Valheim, Palworld, Project Zomboid, Rust, Satisfactory, 7 Days to Die, ARK and FiveM, with install size and free space shown before creating.",
+      "Custom program servers: run any server program from a folder you choose.",
+      "The world map web page now runs inside the Monolab add-on on its own port, like BlueMap, with player faces and a button that copies a link to the spot you're looking at.",
+      "Datapacks: browse and install from Modrinth, add a zip, and remove what a world has.",
+      "Server numbers next to the console: CPU, memory, TPS, players, disk use and the players online.",
+      "Pterodactyl and Pelican panels work next to Hydrodactyl. The panel type is detected when you test or save.",
+      "A compact list option in Settings."
+    ],
+    "changed": [
+      "A more readable look: higher contrast, larger text and a calmer monochrome theme.",
+      "Creating a server goes step by step: game, core, then version.",
+      "The web map loads much faster: tiles are drawn ahead in the background, connections are reused and unchanged tiles aren't sent again. Zooming glides smoothly.",
+      "The agent uses less of your plan and follows the system language.",
+      "Bigger sidebar icons."
+    ],
+    "fixed": [
+      "Status dots on collapsed sidebar tiles are no longer cut off.",
+      "Requests to Pterodactyl and Pelican panels used Hydrodactyl-only paths, so starting servers, the console and files failed."
+    ],
+    "removed": [
+      "Sharing the map through the web panel's Cloudflare address. The add-on serves the map itself now."
+    ]
+  },
+  {
+    "kind": "addon",
+    "version": "28",
+    "date": "2026-10-21",
+    "added": [
+      "Serves the world map web page on its own port, draws zoomed-out views ahead of time and shows the faces of players online."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.2.0",
     "date": "2026-10-19",
     "added": [

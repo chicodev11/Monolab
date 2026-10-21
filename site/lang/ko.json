@@ -95,5 +95,21 @@
   "Checking the addon on SSH servers no longer hashes every mod file.": "SSH 서버에서 애드온을 확인할 때 모드 파일을 전부 해시하지 않아요.",
   "Map tiles drawn without colors were sometimes saved and showed as black squares.": "색 없이 그려진 지도 조각이 저장돼 검은 네모로 보이던 문제를 고쳤어요.",
   "Loaded chunks are visible when the map is zoomed far out.": "지도를 많이 축소해도 불러온 청크가 보여요.",
-  "Writes small per-region stats files (time players stayed, entities, generation status and more) next to the map tiles, so map views load quickly.": "지도 조각 옆에 지역마다 작은 통계 파일(머문 시간·엔티티·생성 단계 등)을 만들어 지도 보기가 빨리 떠요."
+  "Writes small per-region stats files (time players stayed, entities, generation status and more) next to the map tiles, so map views load quickly.": "지도 조각 옆에 지역마다 작은 통계 파일(머문 시간·엔티티·생성 단계 등)을 만들어 지도 보기가 빨리 떠요.",
+  "Servers for other games: Terraria, Valheim, Palworld, Project Zomboid, Rust, Satisfactory, 7 Days to Die, ARK and FiveM, with install size and free space shown before creating.": "다른 게임 서버: Terraria, Valheim, Palworld, Project Zomboid, Rust, Satisfactory, 7 Days to Die, ARK, FiveM. 만들기 전에 설치 크기와 남은 공간을 보여 줘요.",
+  "Custom program servers: run any server program from a folder you choose.": "직접 실행 서버: 고른 폴더의 서버 프로그램을 그대로 실행해요.",
+  "The world map web page now runs inside the Monolab add-on on its own port, like BlueMap, with player faces and a button that copies a link to the spot you're looking at.": "웹 지도가 BlueMap처럼 Monolab 애드온 안에서 따로 포트를 열어 실행돼요. 플레이어 얼굴이 보이고, 보고 있는 위치의 링크를 복사할 수 있어요.",
+  "Datapacks: browse and install from Modrinth, add a zip, and remove what a world has.": "데이터팩: Modrinth에서 찾아 설치하고, zip을 추가하고, 월드에 있는 것을 삭제할 수 있어요.",
+  "Server numbers next to the console: CPU, memory, TPS, players, disk use and the players online.": "콘솔 옆에 서버 수치가 보여요: CPU, 메모리, TPS, 플레이어, 디스크 사용량, 접속 중인 플레이어.",
+  "Pterodactyl and Pelican panels work next to Hydrodactyl. The panel type is detected when you test or save.": "Hydrodactyl과 함께 Pterodactyl·Pelican 패널도 쓸 수 있어요. 연결 시험이나 저장할 때 패널 종류를 알아봐요.",
+  "A compact list option in Settings.": "설정에 촘촘하게 보기가 생겼어요.",
+  "A more readable look: higher contrast, larger text and a calmer monochrome theme.": "더 잘 읽히는 화면: 대비를 높이고 글자를 키우고, 차분한 무채색으로 정리했어요.",
+  "Creating a server goes step by step: game, core, then version.": "서버 생성이 게임 → 코어 → 버전 순서로 한 단계씩 진행돼요.",
+  "The web map loads much faster: tiles are drawn ahead in the background, connections are reused and unchanged tiles aren't sent again. Zooming glides smoothly.": "웹 지도가 훨씬 빨라졌어요: 조각을 미리 그려 두고, 연결을 다시 쓰고, 안 바뀐 조각은 다시 보내지 않아요. 확대·축소도 부드러워요.",
+  "The agent uses less of your plan and follows the system language.": "에이전트가 사용량을 덜 쓰고, 시스템 언어를 따라가요.",
+  "Bigger sidebar icons.": "사이드바 아이콘을 키웠어요.",
+  "Status dots on collapsed sidebar tiles are no longer cut off.": "접은 사이드바에서 서버 상태 점이 잘리지 않아요.",
+  "Requests to Pterodactyl and Pelican panels used Hydrodactyl-only paths, so starting servers, the console and files failed.": "Pterodactyl·Pelican 패널에 Hydrodactyl 전용 주소로 요청해서 서버 켜기, 콘솔, 파일이 안 되던 문제를 고쳤어요.",
+  "Sharing the map through the web panel's Cloudflare address. The add-on serves the map itself now.": "웹 패널의 Cloudflare 주소로 지도를 공유하던 기능을 뺐어요. 이제 애드온이 지도를 직접 보여 줘요.",
+  "Serves the world map web page on its own port, draws zoomed-out views ahead of time and shows the faces of players online.": "웹 지도 페이지를 따로 포트로 열고, 멀리서 보는 화면을 미리 그려 두고, 접속 중인 플레이어 얼굴을 보여 줘요."
 }

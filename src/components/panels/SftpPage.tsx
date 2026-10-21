@@ -275,7 +275,7 @@ export function SftpPage({
       <EmptyState
         icon="plug"
         title={tr("No connections available")}
-        hint={tr("Add an SSH connection or Pterodactyl panel using Add session above the server list. Panel servers appear here once they're in your list.")}
+        hint={tr("Add an SSH connection or a panel using Add session above the server list. Panel servers appear here once they're in your list.")}
       />
     );
   }

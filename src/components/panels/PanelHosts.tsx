@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import type { PanelHost, PanelHostView, PanelProbe, PanelRole } from "../../lib/bindings";
+import type { PanelHost, PanelHostView, PanelKind, PanelProbe, PanelRole } from "../../lib/bindings";
 import { tr } from "../../lib/i18n";
 import { commands } from "../../lib/ipc";
+import { panelKindName } from "../../lib/panelKind";
 import { SegmentedControl } from "../primitives";
 import { Icon } from "../ui/Icon";
 import { PanelCreate } from "./PanelCreate";
@@ -15,11 +16,13 @@ const NEEDS: { of: string; label: string }[] = [
   { of: "backup.read", label: "Backups" },
 ];
 
-type Draft = Omit<PanelHost, "role"> & { role: PanelRole; key: string; appKey: string };
+type Draft = Omit<PanelHost, "role" | "kind"> & { role: PanelRole; kind: PanelKind | "auto"; key: string; appKey: string };
 
 function blank(): Draft {
-  return { id: "", name: "", url: "", role: "user", key: "", appKey: "" };
+  return { id: "", name: "", url: "", role: "user", kind: "auto", key: "", appKey: "" };
 }
+
+const KINDS: PanelKind[] = ["pterodactyl", "pelican", "hydrodactyl"];
 
 export function PanelHosts({
   startAdding,
@@ -56,7 +59,7 @@ export function PanelHosts({
   }
 
   function startEdit(one: PanelHostView) {
-    setDraft({ id: one.id, name: one.name, url: one.url, role: one.role ?? "user", key: "", appKey: "" });
+    setDraft({ id: one.id, name: one.name, url: one.url, role: one.role ?? "user", kind: one.kind ?? "hydrodactyl", key: "", appKey: "" });
     setProbe(null);
     setEditing(one.id);
   }
@@ -65,15 +68,15 @@ export function PanelHosts({
     setBusy("test");
     setProbe(null);
     try {
-      setProbe(
-        await commands.testPanelHost(
-          draft.url,
-          draft.key.trim() || null,
-          draft.role === "admin" ? draft.appKey.trim() || null : null,
-          draft.role,
-          draft.id || null,
-        ),
+      const got = await commands.testPanelHost(
+        draft.url,
+        draft.key.trim() || null,
+        draft.role === "admin" ? draft.appKey.trim() || null : null,
+        draft.role,
+        draft.id || null,
       );
+      setProbe(got);
+      setDraft((now) => ({ ...now, kind: got.kind }));
     } catch (cause) {
       onError(String(cause));
     } finally {
@@ -86,9 +89,10 @@ export function PanelHosts({
     try {
       const id = draft.id || `panel-${Date.now().toString(36)}`;
       await commands.savePanelHost(
-        { id, name: draft.name, url: draft.url, role: draft.role },
+        { id, name: draft.name, url: draft.url, role: draft.role, kind: draft.kind === "auto" ? "hydrodactyl" : draft.kind },
         draft.key.trim() ? draft.key : null,
         draft.role === "admin" && draft.appKey.trim() ? draft.appKey : null,
+        draft.kind === "auto",
       );
       onNotice(tr("Panel saved."));
       setEditing(null);
@@ -148,6 +152,19 @@ export function PanelHosts({
           onChange={(event) => setDraft({ ...draft, url: event.target.value })}
         />
       </label>
+      <div className="field-block">
+        <span>{tr("Panel type")}</span>
+        <SegmentedControl
+          className="even"
+          value={draft.kind}
+          options={[
+            { value: "auto" as const, label: tr("Auto") },
+            ...KINDS.map((kind) => ({ value: kind, label: panelKindName(kind) })),
+          ]}
+          onChange={(kind) => setDraft({ ...draft, kind })}
+        />
+        {draft.kind === "auto" && <small className="panel-role-note">{tr("Detected when you test or save.")}</small>}
+      </div>
       <div className="field-block">
         <span>{tr("Role")}</span>
         <SegmentedControl
@@ -221,6 +238,7 @@ export function PanelHosts({
             <Icon name="check" />
             {tr("Valid key · {0, plural, one {# server} other {# servers}}", [probe.servers.length])}
             {probe.username && ` · ${probe.username}${probe.admin ? tr(" (admin)") : ""}`}
+            {` · ${panelKindName(probe.kind)}`}
             {probe.daemon && ` · ${probe.daemon}`}
           </strong>
           {!probe.accountKey && (
@@ -266,6 +284,7 @@ export function PanelHosts({
             <div>
               <strong>
                 {one.name}
+                <em className="panel-role">{panelKindName(one.kind)}</em>
                 <em className="panel-role">{one.role === "admin" ? tr("Admin") : tr("User")}</em>
               </strong>
               <span>{one.url}</span>

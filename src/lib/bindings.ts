@@ -228,7 +228,7 @@ export const commands = {
 	saveMapPng: (target: string, png: string) => __TAURI_INVOKE<null>("save_map_png", { target, png }),
 	importSettings: (source: string) => __TAURI_INVOKE<ImportSummary>("import_settings", { source }),
 	listPanelHosts: () => __TAURI_INVOKE<PanelHostView[]>("list_panel_hosts"),
-	savePanelHost: (host: PanelHost, key: string | null, appKey: string | null) => __TAURI_INVOKE<null>("save_panel_host", { host, key, appKey }),
+	savePanelHost: (host: PanelHost, key: string | null, appKey: string | null, detect: boolean) => __TAURI_INVOKE<null>("save_panel_host", { host, key, appKey, detect }),
 	deletePanelHost: (id: string) => __TAURI_INVOKE<number>("delete_panel_host", { id }),
 	testPanelHost: (url: string, key: string | null, appKey: string | null, role: PanelRole, hostId: string | null) => __TAURI_INVOKE<PanelProbe>("test_panel_host", { url, key, appKey, role, hostId }),
 	panelCreateOptions: (hostId: string) => __TAURI_INVOKE<PanelCreateOptions>("panel_create_options", { hostId }),
@@ -1064,6 +1064,7 @@ export type PanelHost = {
 	url: string,
 	role?: PanelRole,
 	hidden?: string[],
+	kind?: PanelKind,
 };
 
 export type PanelHostView = {
@@ -1075,6 +1076,8 @@ export type PanelImage = {
 	label: string,
 	image: string,
 };
+
+export type PanelKind = "hydrodactyl" | "pterodactyl" | "pelican";
 
 export type PanelNewServer = {
 	name: string,
@@ -1096,6 +1099,7 @@ export type PanelNode = {
 
 export type PanelProbe = {
 	servers: PanelServer[],
+	kind: PanelKind,
 	daemon: string,
 	permissions: string[],
 	username: string,

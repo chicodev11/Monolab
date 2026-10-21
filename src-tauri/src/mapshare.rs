@@ -8,7 +8,7 @@ pub const DEFAULT_PORT: u16 = 8100;
 /// The first add-on version that carries the web map.
 pub const FIRST_ADDON: u32 = 28;
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub enabled: bool,
@@ -18,6 +18,12 @@ pub struct Settings {
     pub players: bool,
     pub name: String,
     pub labels: HashMap<String, String>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self { enabled: false, port: DEFAULT_PORT, token: String::new(), players: true, name: String::new(), labels: HashMap::new() }
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]

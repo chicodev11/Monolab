@@ -20,8 +20,17 @@
 .sidebar.compact .nav-item svg,
 .sidebar.compact .instance-nav button svg,
 .sidebar.compact .rail-back svg {
-  width: 19px;
-  height: 19px;
+  width: 24px;
+  height: 24px;
+}
+.sidebar .nav-item svg,
+.sidebar .instance-nav button svg {
+  width: 20px;
+  height: 20px;
+}
+.sidebar .rail-back svg {
+  width: 17px;
+  height: 17px;
 }
 .sidebar.compact .rail-collapse {
   width: 40px;
@@ -47,7 +56,7 @@
 .share-port .input { width: 92px; text-align: center; font-variant-numeric: tabular-nums; }
 .share-state { display: flex; align-items: center; gap: 8px; margin: 8px 4px 2px; color: var(--text-2); font-size: 13px; }
 .share-state i { width: 8px; height: 8px; border-radius: 50%; background: var(--text-4); flex: none; }
-.share-state.ok i { background: var(--ok); animation: share-beat 2.4s ease-out infinite; }
+.share-state.ok i { background: var(--ok); }
 .share-state.wait i { background: var(--warn); }
 .share-state.bad { color: var(--danger); }
 .share-state.bad i { background: var(--danger); }
@@ -60,7 +69,6 @@
 .share-result { margin: 0 4px; font-size: 12.5px; line-height: 1.5; }
 .share-result.ok { color: var(--ok); }
 .share-result.bad { color: var(--warn); }
-@keyframes share-beat { 0% { box-shadow: 0 0 0 0 var(--ok-line); } 70%, 100% { box-shadow: 0 0 0 7px transparent; } }
 
 /* Datapacks in the browse page */
 .datapacks { display: grid; gap: 22px; align-content: start; }
@@ -81,13 +89,13 @@
 /* Console with the server's numbers beside it, like a hosting panel */
 .overview-console .console-split { display: grid; flex: 1; min-height: 0; grid-template-columns: minmax(0, 1fr) 292px; gap: 14px; }
 .console-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
-.server-stats { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; padding: 1px 2px 2px 0; scrollbar-width: thin; }
+.server-stats { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; padding: 1px 2px 2px 0; }
 .stat-status { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line-soft); }
 .stat-status > div { display: grid; min-width: 0; flex: 1; gap: 1px; }
 .stat-status strong { font-size: 15px; font-weight: 640; letter-spacing: -.01em; }
 .stat-status small { overflow: hidden; color: var(--text-3); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
 .stat-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--text-4); }
-.stat-status.running .stat-dot { background: var(--ok); animation: share-beat 2.4s ease-out infinite; }
+.stat-status.running .stat-dot { background: var(--ok); }
 .stat-status.starting .stat-dot, .stat-status.stopping .stat-dot { background: var(--warn); animation: stat-blink 1s ease-in-out infinite; }
 .stat-status.crashed .stat-dot { background: var(--danger); }
 .stat-copy { display: inline-flex; align-items: center; flex: none; gap: 6px; height: 28px; padding: 0 9px; border: 0; border-radius: 9px; background: var(--raise); color: var(--text-3); cursor: pointer; transition: background 140ms var(--ease), color 140ms var(--ease), transform 140ms var(--ease); }
@@ -95,7 +103,7 @@
 .stat-copy svg { width: 13px; height: 13px; }
 .stat-copy:hover { background: var(--raise-hover); color: var(--text); }
 .stat-copy:active { transform: scale(.95); }
-.stat-copy.done { color: var(--ok); }
+.stat-copy.done { color: var(--text); }
 .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .stat-card { position: relative; display: grid; align-content: start; gap: 2px; min-width: 0; padding: 12px 14px 10px; overflow: hidden; border-radius: 14px; background: var(--panel); border: 1px solid var(--line-soft); animation: stat-in 320ms var(--ease) backwards; transition: border-color 160ms var(--ease), transform 160ms var(--ease); }
 .stat-card:hover { border-color: var(--line); transform: translateY(-1px); }
@@ -106,16 +114,25 @@
 .stat-card:nth-child(n + 3) .stat-value { font-size: 17px; }
 .stat-note { color: var(--text-4); font-size: 12px; font-variant-numeric: tabular-nums; }
 .stat-bar { display: block; height: 5px; margin-top: 8px; overflow: hidden; border-radius: 99px; background: var(--raise); }
-.stat-bar i { display: block; height: 100%; border-radius: inherit; background: var(--ok); transition: width 500ms var(--ease), background 200ms; }
+.stat-bar i { display: block; height: 100%; border-radius: inherit; background: var(--text-2); transition: width 500ms var(--ease), background 200ms; }
 .stat-card.warn .stat-bar i { background: var(--warn); }
 .stat-card.danger .stat-bar i { background: var(--danger); }
 .stat-card.warn .stat-value { color: var(--warn); }
 .stat-card.danger .stat-value { color: var(--danger); }
-.stat-trace { display: block; width: calc(100% + 28px); height: 30px; margin: 8px -14px -10px; color: var(--ok); }
+.stat-trace { display: block; width: calc(100% + 28px); height: 30px; margin: 8px -14px -10px; color: var(--text-3); }
 .stat-trace.warn { color: var(--warn); }
 .stat-trace.danger { color: var(--danger); }
 .stat-trace .area { fill: currentColor; opacity: .13; }
 .stat-trace .line { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+.stat-players { display: flex; flex: 1; flex-direction: column; gap: 8px; min-height: 120px; padding: 12px 10px 10px 14px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line-soft); }
+.stat-player-list { display: grid; align-content: start; gap: 2px; min-height: 0; overflow-y: auto; margin-left: -6px; }
+.stat-player { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px; border: 0; border-radius: 9px; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; transition: background 140ms var(--ease); }
+.stat-player:hover { background: var(--raise); }
+.stat-player img, .stat-player-face { width: 26px; height: 26px; flex: none; border-radius: 6px; image-rendering: pixelated; }
+.stat-player-face { display: grid; place-items: center; background: var(--raise); color: var(--text-3); font-size: 12px; font-weight: 600; }
+.stat-player strong { flex: 1; min-width: 0; overflow: hidden; font-size: 13.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.stat-player small { flex: none; color: var(--text-4); font-size: 12px; font-variant-numeric: tabular-nums; }
+.stat-players-none { margin: 2px 0 0; color: var(--text-4); font-size: 12.5px; }
 .stat-idle { margin: 6px 4px; color: var(--text-4); font-size: 12.5px; line-height: 1.5; }
 @keyframes stat-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
 @keyframes stat-blink { 50% { opacity: .35; } }
@@ -126,12 +143,13 @@
   .stat-grid { display: flex; gap: 10px; }
   .stat-card, .stat-card:nth-child(-n + 2), .stat-card:nth-child(n + 3):last-child:nth-child(odd) { flex: none; min-width: 156px; max-width: 200px; grid-column: auto; }
   .stat-idle { align-self: center; white-space: nowrap; }
+  .stat-players { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .stat-card, .stat-status .stat-dot, .stat-bar i { animation: none; transition: none; } }
 .stat-card:nth-child(n + 3):last-child:nth-child(odd) { grid-column: 1 / -1; }
 
 /* Sign-in page for the web panel */
-.web-login { background: radial-gradient(900px 460px at 50% -8%, color-mix(in srgb, var(--ok) 10%, transparent), transparent 70%), var(--bg); }
+.web-login { background: radial-gradient(900px 460px at 50% -8%, color-mix(in srgb, var(--text) 6%, transparent), transparent 70%), var(--bg); }
 .web-login-card { max-width: 360px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32); }
 .web-login-card .brand-mark { margin: 2px 0 6px; transform: scale(1.3); }
 .web-login-card .button, .web-login-card button[type="submit"] { justify-content: center; text-align: center; }
@@ -139,7 +157,6 @@
 /* Small motion: quick, springy and calm. Everything here is skipped for people who ask for less motion. */
 @keyframes modal-pop { from { opacity: 0; transform: translateY(14px) scale(0.955); } to { opacity: 1; transform: none; } }
 @keyframes tick-pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
-@keyframes bar-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 @keyframes float-mark { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3px; } }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -172,11 +189,6 @@
   .nav-item:hover .nav-icon, .instance-nav button:hover svg { transform: translateX(2px) scale(1.08); }
   .rail-back svg { transition: transform 200ms var(--pop); }
   .rail-back:hover svg { transform: translateX(-3px); }
-  .sidebar:not(.compact) .nav-item.active::before, .sidebar:not(.compact) .instance-nav button.selected::before {
-    content: ""; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px; border-radius: 0 3px 3px 0; background: var(--ok);
-    transform-origin: center; animation: bar-grow 260ms var(--pop) backwards;
-  }
-  .sidebar .status-dot.status-running { animation: share-beat 2.6s ease-out infinite; }
   .brand-mark img { transition: transform 260ms var(--pop); }
   .brand-mark:hover img { transform: rotate(-8deg) scale(1.08); }
 
@@ -190,7 +202,7 @@
 
   /* Inputs and menus. */
   .search { transition: box-shadow 180ms var(--ease), background 160ms var(--ease); }
-  .search:focus-within { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok) 40%, transparent); }
+  .search:focus-within { box-shadow: 0 0 0 2px var(--focus); }
   .dropdown-trigger svg { transition: transform 220ms var(--pop); }
   .dropdown-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
   .dropdown-menu { transform-origin: top; }
@@ -199,3 +211,10 @@
   .chip { transition: background 160ms var(--ease), color 160ms var(--ease), transform 160ms var(--pop); }
   .toast-spin svg { will-change: transform; }
 }
+
+/* Collapsed sidebar server tiles: room for the status dot, no scrollbar beside them. */
+.sidebar.compact .rail-servers { overflow-x: hidden; padding-block: 3px; gap: 4px; }
+.sidebar.compact .rail-servers::-webkit-scrollbar { width: 0; height: 0; }
+.sidebar.compact .rail-servers button { width: 44px; height: 44px; }
+.sidebar.compact .rail-tile { width: 36px; height: 36px; }
+.sidebar.compact .rail-tile > .status-dot { right: -2px; bottom: -2px; width: 11px; height: 11px; }

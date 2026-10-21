@@ -19,6 +19,26 @@ pub struct PanelHost {
     pub role: PanelRole,
     #[serde(default)]
     pub hidden: Vec<String>,
+    #[serde(default)]
+    pub kind: PanelKind,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum PanelKind {
+    #[default]
+    Hydrodactyl,
+    Pterodactyl,
+    Pelican,
+}
+
+impl PanelKind {
+    pub fn fallback_daemon(self) -> &'static str {
+        match self {
+            PanelKind::Hydrodactyl => "elytra",
+            _ => "",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
@@ -231,6 +251,7 @@ pub struct Api {
     key: Option<String>,
     app_key: Option<String>,
     role: PanelRole,
+    kind: PanelKind,
 }
 
 #[derive(Clone)]
@@ -255,7 +276,42 @@ impl Api {
             PanelRole::Admin if app_key.is_none() => return Err("Enter the Application API key.".into()),
             _ => {}
         }
-        Ok(Self { url: tidy_url(url)?, key, app_key, role })
+        Ok(Self { url: tidy_url(url)?, key, app_key, role, kind: PanelKind::default() })
+    }
+
+    pub fn with_kind(mut self, kind: PanelKind) -> Self {
+        self.kind = kind;
+        self
+    }
+
+    pub fn kind(&self) -> PanelKind {
+        self.kind
+    }
+
+    /// Hydrodactyl puts the daemon in client paths and says which one in `meta.daemonType`;
+    /// Pterodactyl and Pelican have neither, so the page title tells those apart.
+    pub async fn detect_kind(&self, servers: &[PanelServer]) -> PanelKind {
+        if let Some(first) = servers.first().filter(|_| self.key.is_some()) {
+            if let Ok(got) = self.get(&format!("/servers/{}", first.identifier)).await {
+                if got.pointer("/meta/daemonType").and_then(|one| one.as_str()).is_some_and(|one| !one.is_empty()) {
+                    return PanelKind::Hydrodactyl;
+                }
+            }
+        }
+        let page = match self.client() {
+            Ok(client) => match client.get(&self.url).send().await {
+                Ok(answer) => answer.text().await.unwrap_or_default().to_lowercase(),
+                Err(_) => String::new(),
+            },
+            Err(_) => String::new(),
+        };
+        if page.contains("hydrodactyl") || page.contains("pyrodactyl") {
+            PanelKind::Hydrodactyl
+        } else if page.contains("pelican") {
+            PanelKind::Pelican
+        } else {
+            PanelKind::Pterodactyl
+        }
     }
 
     pub async fn check_application(&self) -> Result<(), String> {
@@ -499,7 +555,7 @@ impl Api {
             .pointer("/meta/daemonType")
             .and_then(|one| one.as_str())
             .filter(|one| !one.is_empty())
-            .unwrap_or("elytra")
+            .unwrap_or(self.kind.fallback_daemon())
             .to_string())
     }
 
@@ -586,8 +642,11 @@ pub struct Target {
 
 impl Target {
     fn at(&self, path: &str) -> String {
-        let daemon = if self.daemon.is_empty() { "elytra" } else { &self.daemon };
-        format!("/api/client/servers/{daemon}/{}{path}", self.ident)
+        if self.daemon.is_empty() {
+            format!("/api/client/servers/{}{path}", self.ident)
+        } else {
+            format!("/api/client/servers/{}/{}{path}", self.daemon, self.ident)
+        }
     }
 }
 
@@ -1212,6 +1271,7 @@ pub fn api(app: &AppHandle, host_id: &str) -> Result<Api, String> {
         secrets.get(&app_slot(host_id)).map(String::as_str),
         one.role,
     )
+    .map(|api| api.with_kind(one.kind))
     .map_err(|_| "No panel API key. Register it again in Manage sessions.".to_string())
 }
 
@@ -1356,6 +1416,16 @@ use std::error::Error as _;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn puts_the_daemon_in_paths_only_for_hydrodactyl() {
+        let hydro = super::Target { ident: "abc".into(), daemon: "wings".into() };
+        assert_eq!(hydro.at("/power"), "/api/client/servers/wings/abc/power");
+        let ptero = super::Target { ident: "abc".into(), daemon: String::new() };
+        assert_eq!(ptero.at("/power"), "/api/client/servers/abc/power");
+        assert_eq!(super::PanelKind::Hydrodactyl.fallback_daemon(), "elytra");
+        assert_eq!(super::PanelKind::Pelican.fallback_daemon(), "");
+    }
+
     use super::*;
 
     #[test]

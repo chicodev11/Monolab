@@ -1,6 +1,7 @@
 import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import appIcon from "./assets/app-icon.png";
 import { commands } from "./lib/ipc";
+import { panelKindName, panelsName } from "./lib/panelKind";
 import { setServerNames, startJobEvents, useJobs } from "./lib/jobs";
 import type {
   PanelHostView,
@@ -914,7 +915,7 @@ function App() {
   useEffect(() => reloadPanelHosts(), [reloadPanelHosts]);
   const hostChip = (instance: { remoteHost: string; panelHost?: string }) =>
     instance.panelHost ? (
-      <span className="chip subtle host-chip" data-tip={tr("A server on a Pterodactyl panel")}>
+      <span className="chip subtle host-chip" data-tip={tr("A server on a {0} panel", [panelKindName(panelHostViews.find((one) => one.id === instance.panelHost)?.kind)])}>
         <Icon name="cloud" />
         {panelHosts[instance.panelHost] ?? tr("Panel")}
       </span>
@@ -6080,7 +6081,7 @@ function App() {
               {tr("Send")}</button>
           </form>
           </div>
-          <ServerStats server={{ id: selected.id, name: selected.name, panelHost: selected.panelHost, maxMemoryMib: selected.maxMemoryMib, port: selected.port, status: selected.status, uptimeSeconds: selected.uptimeSeconds }} />
+          <ServerStats server={{ id: selected.id, name: selected.name, panelHost: selected.panelHost, maxMemoryMib: selected.maxMemoryMib, port: selected.port, status: selected.status, uptimeSeconds: selected.uptimeSeconds }} onOpenPlayer={() => void loadTool("players")} />
           </div>
         </div>
       )}
@@ -9381,6 +9382,7 @@ function App() {
               {(selected.panelHost ? panelNav : instanceNav).map((item) => {
                 if (!toolAllowed(selected.core, item.id)) return null;
                 if (item.id === "claude" && onWeb) return null;
+                if (item.id === "software" && (panelHostViews.find((one) => one.id === selected.panelHost)?.kind ?? "hydrodactyl") !== "hydrodactyl") return null;
 
                 const live =
                   selected.status === "running" ||
@@ -9497,7 +9499,7 @@ function App() {
                 <span className="nav-icon">
                   <Icon name="blocks" />
                 </span>
-                <span className="nav-label">Pterodactyl</span>
+                <span className="nav-label">{panelsName(panelHostViews)}</span>
               </button>
             )}
             {!onWeb && (sshHostViews.length > 0 || panelHostViews.length > 0) && (
@@ -9849,7 +9851,7 @@ function App() {
             <EmptyState
               icon="cloud"
               title={filter ? tr("No matching servers") : tr("None of your servers are on this panel")}
-              hint={tr("Your servers and shared servers are added automatically (synced every 5 minutes). An account API key is required. Find other users' servers in the Pterodactyl tab.")}
+              hint={tr("Your servers and shared servers are added automatically (synced every 5 minutes). An account API key is required. Find other users' servers in the {0} tab.", [panelsName(panelHostViews)])}
               action={
                 <Button
                   variant="secondary"
@@ -10466,7 +10468,7 @@ function App() {
               <>
                 <div className="panel-head">
                   <div>
-                    <h2>Pterodactyl</h2>
+                    <h2>{panelsName(panelHostViews)}</h2>
                   </div>
                   <Button
                     variant="ghost"
@@ -11482,7 +11484,7 @@ function App() {
                 <strong>{sessionOpen.adding ? tr("New session") : tr("Manage sessions")}</strong> ·{" "}
                 {sessionOpen.tab === "ssh"
                   ? tr("Connect to servers on another computer, such as an Ubuntu machine, over SSH")
-                  : tr("Manage Pterodactyl servers here")}
+                  : tr("Pterodactyl, Pelican or Hydrodactyl panels")}
               </p>
               <div className="modal-top-actions">
                 <button className="close in-flow" data-tip={tr("Close")} aria-label={tr("Close")} onClick={() => setSessionOpen(null)}>
@@ -11495,7 +11497,7 @@ function App() {
               value={sessionOpen.tab}
               options={[
                 { value: "ssh", label: "SSH" },
-                { value: "panel", label: "Pterodactyl" },
+                { value: "panel", label: tr("Panel") },
               ]}
               onChange={(tab) => setSessionOpen({ ...sessionOpen, tab })}
             />

@@ -22,7 +22,7 @@ export async function plist(hostId: string, path: string): Promise<Json[]> {
 }
 
 export function serverBase(daemon: string, ident: string) {
-  return `/api/client/servers/${daemon || "elytra"}/${ident}`;
+  return daemon ? `/api/client/servers/${daemon}/${ident}` : `/api/client/servers/${ident}`;
 }
 
 export function isoSecs(value: unknown): number {

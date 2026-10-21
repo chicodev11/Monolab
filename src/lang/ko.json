@@ -105,7 +105,7 @@
     "Cancel": "취소",
     "Change": "변경",
     "{1}/{2}/{0}": "{0}년 {1}월 {2}일",
-    "A server on a Pterodactyl panel": "Pterodactyl 패널에 있는 서버"
+    "A server on a {0} panel": "{0} 패널에 있는 서버"
   },
   "서버 목록": {
     "Server 1": "서버 1",
@@ -184,7 +184,7 @@
     "Loading servers": "서버 목록을 불러오는 중이에요",
     "No matching servers": "찾는 서버가 없어요",
     "None of your servers are on this panel": "이 패널에 내 서버가 없어요",
-    "Your servers and shared servers are added automatically (synced every 5 minutes). An account API key is required. Find other users' servers in the Pterodactyl tab.": "내 서버는 자동으로 추가돼요. 계정 API 키가 필요해요.",
+    "Your servers and shared servers are added automatically (synced every 5 minutes). An account API key is required. Find other users' servers in the {0} tab.": "내 서버는 자동으로 추가돼요. 계정 API 키가 필요해요.",
     "Sync now": "지금 맞추기",
     "Running": "실행 중",
     "card.duplicate": "복제",
@@ -283,7 +283,7 @@
     "Saved the program settings. They apply on the next start.": "실행 설정을 저장했어요. 다음 시작부터 적용돼요.",
     "Server added.": "서버를 추가했어요.",
     "Type a command": "명령 입력",
-    "Manage Pterodactyl servers here": "Pterodactyl 패널의 서버를 이 앱에서 관리해요"
+    "Pterodactyl, Pelican or Hydrodactyl panels": "Pterodactyl·Pelican·Hydrodactyl 패널"
   },
   "개요": {
     "Choose the Java version to install": "설치할 Java 버전을 선택해주세요",
@@ -1594,6 +1594,9 @@
     "Password": "비밀번호",
     "At least 8 characters": "8자 이상",
     "Leave empty to keep the current password": "비워 두면 현재 비밀번호를 유지해요",
+    "Panel type": "패널 종류",
+    "Detected when you test or save.": "연결 시험이나 저장할 때 알아봐요.",
+    "Panels": "패널",
     "Role": "권한",
     "Admin": "관리자",
     "Admin · all servers": "관리자 · 모든 서버",
@@ -1667,7 +1670,7 @@
     "{0} skipped (same name)": "같은 이름이라 {0}개 건너뜀",
     "{0} failed": "{0}개 실패",
     "No connections available": "연결할 곳이 없어요",
-    "Add an SSH connection or Pterodactyl panel using Add session above the server list. Panel servers appear here once they're in your list.": "먼저 세션을 추가해주세요.",
+    "Add an SSH connection or a panel using Add session above the server list. Panel servers appear here once they're in your list.": "먼저 세션을 추가해주세요.",
     "Drop files from File Explorer onto the SSH or panel server pane.": "탐색기 파일은 SSH·패널 서버 쪽 창에 놓아주세요.",
     "Select items to transfer first.": "옮길 항목을 먼저 골라주세요.",
     "{0} in progress": "{0}개 진행 중",
@@ -1742,7 +1745,7 @@
     "Synced the server list · added {0} · removed {1}": "서버 목록을 맞췄어요 · 추가 {0} · 제외 {1}",
     "Sync server list": "서버 목록 맞추기",
     "No panels registered": "등록한 패널이 없어요",
-    "Add a Pterodactyl panel using Add session above the server list.": "먼저 패널을 추가해주세요.",
+    "Add a panel using Add session above the server list.": "먼저 패널을 추가해주세요.",
     "Node": "노드",
     "Egg": "에그",
     "My account": "내 계정",
@@ -2141,7 +2144,6 @@
     "Couldn't start: {0}": "시작하지 못했어요: {0}",
     "Datapack": "데이터팩",
     "Datapacks": "데이터팩",
-    "Disk free": "남은 디스크",
     "Find datapacks": "데이터팩 찾기",
     "Forward the port on your router": "공유기에서 포트 포워딩하기",
     "Forward this port on your router. 1024–65535.": "이 포트를 공유기에서 포트 포워딩해 주세요. 1024–65535.",
@@ -2176,6 +2178,9 @@
     "The map is served by the Monolab add-on inside the server, like BlueMap. Friends open a web page where they can move around, zoom and switch dimensions.": "지도는 BlueMap처럼 서버 안의 Monolab 애드온이 직접 제공해요. 친구들은 웹 페이지에서 움직이고, 확대하고, 차원을 바꿔 볼 수 있어요.",
     "The port answers from here.": "여기서 이 포트에 연결돼요.",
     "by {0}": "{0} 제작",
+    "Online players": "접속 중인 플레이어",
+    "No one is online.": "아무도 없어요.",
+    "Copy a link to this spot": "이 위치 링크 복사",
     "of {0}": "전체 {0}",
     "{0} chunks loaded": "청크 {0}개 로드됨"
   }

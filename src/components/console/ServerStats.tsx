@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { commands } from "../../lib/ipc";
-import type { PanelStats } from "../../lib/bindings";
+import type { LivePlayer, PanelStats } from "../../lib/bindings";
+import { useHead } from "../../lib/heads";
 import { fileSize } from "../../lib/format";
 import { tr } from "../../lib/i18n";
 import { period, useAttention } from "../../lib/polling";
@@ -20,6 +21,7 @@ type Stats = {
   players: number | null;
   entities: number | null;
   chunks: number | null;
+  roster: LivePlayer[] | null;
 };
 
 type Server = {
@@ -128,10 +130,20 @@ function statusText(status: string) {
   }
 }
 
-export function ServerStats({ server }: { server: Server }) {
+function PlayerRow({ player, onOpen }: { player: LivePlayer; onOpen: (name: string) => void }) {
+  const head = useHead(player.name);
+  return (
+    <button type="button" className="stat-player" onClick={() => onOpen(player.name)}>
+      {head ? <img src={head} alt="" /> : <span className="stat-player-face">{player.name.slice(0, 1).toUpperCase()}</span>}
+      <strong>{player.name}</strong>
+      <small>{player.ping} ms</small>
+    </button>
+  );
+}
+
+export function ServerStats({ server, onOpenPlayer }: { server: Server; onOpenPlayer: (name: string) => void }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [cpuTrace, setCpuTrace] = useState<number[]>([]);
-  const [memoryTrace, setMemoryTrace] = useState<number[]>([]);
   const [copied, setCopied] = useState(false);
   const attention = useAttention();
   const running = server.status === "running";
@@ -142,7 +154,6 @@ export function ServerStats({ server }: { server: Server }) {
     if (last.current !== server.id) {
       last.current = server.id;
       setCpuTrace([]);
-      setMemoryTrace([]);
     }
     if (!running) {
       setStats(null);
@@ -153,7 +164,7 @@ export function ServerStats({ server }: { server: Server }) {
     const read = async () => {
       try {
         let next: Stats;
-        const blank = { cpu: null, memory: 0, memoryLimit: server.maxMemoryMib * 1048576, disk: null, diskLimit: null, rx: null, tx: null, uptime: 0, tps: null, mspt: null, players: null, entities: null, chunks: null };
+        const blank = { cpu: null, memory: 0, memoryLimit: server.maxMemoryMib * 1048576, disk: null, diskLimit: null, rx: null, tx: null, uptime: 0, tps: null, mspt: null, players: null, entities: null, chunks: null, roster: null };
         if (panel) {
           const got = await commands.panelUsage(server.id);
           next = { ...blank, ...(got ? fromPanel(got) : {}) };
@@ -177,12 +188,12 @@ export function ServerStats({ server }: { server: Server }) {
             players: now?.players?.length ?? null,
             entities: now?.entities ?? null,
             chunks: now?.chunks ?? null,
+            roster: now?.players ?? null,
           };
         }
         if (!gone) {
           setStats(next);
           setCpuTrace((list) => [...list, Math.max(0, next.cpu ?? 0)].slice(-KEEP));
-          setMemoryTrace((list) => [...list, next.memory].slice(-KEEP));
         }
       } catch {
         // Keep the last numbers; the next round tries again.
@@ -213,7 +224,6 @@ export function ServerStats({ server }: { server: Server }) {
           label: tr("Memory"),
           value: stats.memoryLimit > 0 ? `${fileSize(stats.memory)} / ${fileSize(stats.memoryLimit)}` : fileSize(stats.memory),
           ratio: memoryRatio,
-          trace: memoryTrace,
           delay: 1,
         },
         stats.tps != null
@@ -226,9 +236,9 @@ export function ServerStats({ server }: { server: Server }) {
         stats.disk != null
           ? {
               icon: "disk",
-              label: panel ? tr("Disk") : tr("Disk free"),
-              value: fileSize(panel ? stats.disk : (stats.diskLimit ?? 0) - stats.disk),
-              note: stats.diskLimit ? tr("of {0}", [fileSize(stats.diskLimit)]) : undefined,
+              label: panel ? tr("Disk") : tr("Disk usage"),
+              value: fileSize(stats.disk),
+              note: !panel && stats.diskLimit ? tr("of {0}", [fileSize(stats.diskLimit)]) : undefined,
               ratio: !panel && stats.diskLimit ? stats.disk / stats.diskLimit : undefined,
               plain: !panel,
               tone: !panel && stats.diskLimit && stats.disk / stats.diskLimit >= 0.95 ? ("danger" as const) : undefined,
@@ -256,9 +266,28 @@ export function ServerStats({ server }: { server: Server }) {
         </button>
       </div>
       {running && stats ? (
-        <div className="stat-grid">
-          {cards.map((one) => (one ? <Card key={one.label} {...one} /> : null))}
-        </div>
+        <>
+          <div className="stat-grid">
+            {cards.map((one) => (one ? <Card key={one.label} {...one} /> : null))}
+          </div>
+          {stats.roster && (
+            <section className="stat-players">
+              <div className="stat-head">
+                <Icon name="users" />
+                <span>{tr("Online players")}</span>
+              </div>
+              {stats.roster.length ? (
+                <div className="stat-player-list">
+                  {stats.roster.map((one) => (
+                    <PlayerRow key={one.name} player={one} onOpen={onOpenPlayer} />
+                  ))}
+                </div>
+              ) : (
+                <p className="stat-players-none">{tr("No one is online.")}</p>
+              )}
+            </section>
+          )}
+        </>
       ) : (
         <p className="stat-idle">{running ? tr("Loading…") : tr("Numbers appear while the server runs.")}</p>
       )}

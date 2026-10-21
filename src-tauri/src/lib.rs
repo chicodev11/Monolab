@@ -2442,6 +2442,7 @@ fn set_web_tunnel(
 #[serde(rename_all = "camelCase")]
 struct PanelProbe {
     servers: Vec<panel::PanelServer>,
+    kind: panel::PanelKind,
     daemon: String,
     permissions: Vec<String>,
     username: String,
@@ -2457,12 +2458,21 @@ fn list_panel_hosts(app: AppHandle) -> Result<Vec<panel::PanelHostView>, String>
 
 #[tauri::command(async)]
 #[specta::specta]
-fn save_panel_host(
+async fn save_panel_host(
     app: AppHandle,
-    host: panel::PanelHost,
+    mut host: panel::PanelHost,
     key: Option<String>,
     app_key: Option<String>,
+    detect: bool,
 ) -> Result<(), String> {
+    if detect {
+        let (saved_key, saved_app) = panel::saved_keys(&app, &host.id);
+        let filled = |given: &Option<String>, saved: Option<String>| given.clone().filter(|one| !one.trim().is_empty()).or(saved);
+        if let Ok(api) = panel::Api::new(&host.url, filled(&key, saved_key).as_deref(), filled(&app_key, saved_app).as_deref(), host.role) {
+            let servers = if api.has_account_key() { api.servers().await.unwrap_or_default() } else { Vec::new() };
+            host.kind = api.detect_kind(&servers).await;
+        }
+    }
     panel::save_host(&app, host, key, app_key)
 }
 
@@ -2518,6 +2528,8 @@ async fn test_panel_host(
         }
     }
     let servers = api.servers().await?;
+    let kind = api.detect_kind(&servers).await;
+    let api = api.with_kind(kind);
     let (daemon, permissions) = match servers.first().filter(|_| api.has_account_key()) {
         Some(one) => (
             api.daemon(&one.identifier).await.unwrap_or_default(),
@@ -2527,6 +2539,7 @@ async fn test_panel_host(
     };
     Ok(PanelProbe {
         servers,
+        kind,
         daemon,
         permissions,
         account_key: account.is_some(),
@@ -2708,7 +2721,7 @@ fn is_game_version(text: &str) -> bool {
 
 async fn panel_new_instance(api: &panel::Api, host_id: &str, row: &panel::PanelServer) -> ServerInstance {
     let ident = row.identifier.clone();
-    let daemon = api.daemon(&ident).await.unwrap_or_else(|_| "elytra".into());
+    let daemon = api.daemon(&ident).await.unwrap_or_else(|_| api.kind().fallback_daemon().into());
     let target = panel::Target { ident: ident.clone(), daemon: daemon.clone() };
     let (core, version, jar) = panel_detect(api, &target).await;
     ServerInstance {
@@ -8727,6 +8740,7 @@ async fn map_web_view(app: &AppHandle, state: &AppState, instance: &ServerInstan
         lan_url: if is_far(instance) { String::new() } else { format!("http://{}:{}{}", lan_address(), settings.port, mapshare::path_of(&settings)) },
     }
 }
+
 
 #[tauri::command(async)]
 #[specta::specta]
