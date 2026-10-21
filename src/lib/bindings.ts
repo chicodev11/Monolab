@@ -155,9 +155,15 @@ export const commands = {
 	chunkyRun: (id: string, action: string, world: string, x: number, z: number, radius: number, radiusZ: number, shape: string) => __TAURI_INVOKE<null>("chunky_run", { id, action, world, x, z, radius, radiusZ, shape }),
 	/**  Downloads the latest files for a game server again (SteamCMD update or a fresh official download). */
 	updateGameServer: (id: string) => __TAURI_INVOKE<null>("update_game_server", { id }),
-	mapShareState: (id: string) => __TAURI_INVOKE<MapShareView>("map_share_state", { id }),
-	mapShareCreate: (id: string, labels: { [key in string]: string }) => __TAURI_INVOKE<MapShareView>("map_share_create", { id, labels }),
-	mapShareRemove: (id: string) => __TAURI_INVOKE<MapShareView>("map_share_remove", { id }),
+	mapWebState: (id: string) => __TAURI_INVOKE<MapWebView>("map_web_state", { id }),
+	mapWebSet: (id: string, enabled: boolean, port: number, secret: boolean, players: boolean, renew: boolean, labels: { [key in string]: string }) => __TAURI_INVOKE<MapWebView>("map_web_set", { id, enabled, port, secret, players, renew, labels }),
+	/**  The address friends outside the house reach this computer by. Asked only when the user presses the button. */
+	publicAddress: () => __TAURI_INVOKE<string>("public_address"),
+	/**
+	 *  Whether something answers on this address and port from here. A router that can't loop back to itself can say no
+	 *  even when friends get through, so the dialog words a "no" carefully.
+	 */
+	mapWebProbe: (host: string, port: number) => __TAURI_INVOKE<boolean>("map_web_probe", { host, port }),
 	chunkStats: (id: string, realm: string, metric: string, rx: number, rz: number) => __TAURI_INVOKE<(number | null)[] | null>("chunk_stats", { id, realm, metric, rx, rz }),
 	listRuns: (id: string) => __TAURI_INVOKE<RunEntry[]>("list_runs", { id }),
 	trimChunks: (id: string, realm: string, maxMinutes: number, keepRadius: number, apply: boolean, area: number[] | null) => __TAURI_INVOKE<TrimReport>("trim_chunks", { id, realm, maxMinutes, keepRadius, apply, area }),
@@ -172,6 +178,11 @@ export const commands = {
 	previewMrpack: (path: string) => __TAURI_INVOKE<MrpackFileEntry[]>("preview_mrpack", { path }),
 	searchModpacks: (query: string, page: number | null) => __TAURI_INVOKE<CatalogPage>("search_modpacks", { query, page }),
 	downloadModpack: (projectId: string) => __TAURI_INVOKE<string>("download_modpack", { projectId }),
+	/**  Where datapacks go for this server, relative to its folder. */
+	datapackFolder: (id: string) => __TAURI_INVOKE<string>("datapack_folder", { id }),
+	searchDatapacks: (id: string, query: string, page: number | null) => __TAURI_INVOKE<CatalogPage>("search_datapacks", { id, query, page }),
+	/**  Downloads the newest datapack file made for this server's Minecraft version into the world's datapacks folder. */
+	installDatapack: (id: string, projectId: string) => __TAURI_INVOKE<string>("install_datapack", { id, projectId }),
 	previewCfpack: (path: string) => __TAURI_INVOKE<Pack>("preview_cfpack", { path }),
 	importCfpack: (id: string, path: string) => __TAURI_INVOKE<CfImportResult>("import_cfpack", { id, path }),
 	importMrpack: (input: MrpackImportInput) => __TAURI_INVOKE<number>("import_mrpack", { input }),
@@ -952,12 +963,18 @@ export type LogFile = {
 	compressed: boolean,
 };
 
-export type MapShareView = {
-	shared: boolean,
-	url: string,
-	panelOn: boolean,
-	tunnelOn: boolean,
-	createdAt: number,
+export type MapWebView = {
+	supported: boolean,
+	reason: string,
+	addonReady: boolean,
+	enabled: boolean,
+	port: number,
+	private: boolean,
+	players: boolean,
+	running: boolean,
+	error: string,
+	path: string,
+	lanUrl: string,
 };
 
 export type Masked = {

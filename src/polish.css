@@ -1,0 +1,201 @@
+/* Finishing touches: loaded after App.css so these win without touching the older rules. */
+:root {
+  --pop: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* Collapsed sidebar: icon buttons are small squares, so the hover box hugs the icon. */
+.sidebar.compact .nav-item,
+.sidebar.compact .instance-nav button,
+.sidebar.compact .rail-back,
+.sidebar.compact .rail-servers button {
+  width: 40px;
+  height: 40px;
+  margin-inline: auto;
+  padding: 0;
+  border-radius: 10px;
+}
+.sidebar.compact .instance-nav button.selected {
+  background: var(--raise);
+}
+.sidebar.compact .nav-item svg,
+.sidebar.compact .instance-nav button svg,
+.sidebar.compact .rail-back svg {
+  width: 19px;
+  height: 19px;
+}
+.sidebar.compact .rail-collapse {
+  width: 40px;
+  height: 40px;
+  margin-inline: auto;
+  border-radius: 10px;
+}
+.sidebar.compact .rail-server {
+  width: 40px;
+  height: 40px;
+  margin-inline: auto;
+  padding: 0;
+  border-radius: 10px;
+}
+
+/* Map sharing dialog */
+.share-rows { display: grid; gap: 2px; margin-top: 4px; }
+.share-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border-radius: var(--r-md); background: var(--panel-2); }
+.share-row + .share-row { margin-top: 6px; }
+.share-row > span:first-child { display: grid; gap: 3px; min-width: 0; }
+.share-row small { color: var(--text-3); font-size: 12.5px; line-height: 1.5; }
+.share-port { display: flex; align-items: center; gap: 8px; }
+.share-port .input { width: 92px; text-align: center; font-variant-numeric: tabular-nums; }
+.share-state { display: flex; align-items: center; gap: 8px; margin: 8px 4px 2px; color: var(--text-2); font-size: 13px; }
+.share-state i { width: 8px; height: 8px; border-radius: 50%; background: var(--text-4); flex: none; }
+.share-state.ok i { background: var(--ok); animation: share-beat 2.4s ease-out infinite; }
+.share-state.wait i { background: var(--warn); }
+.share-state.bad { color: var(--danger); }
+.share-state.bad i { background: var(--danger); }
+.share-howto { display: grid; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line-soft); animation: enter 220ms var(--ease) backwards; }
+.share-num { display: flex; gap: 12px; align-items: flex-start; }
+.share-num > b { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 8px; background: var(--raise); color: var(--text); font-size: 12.5px; }
+.share-num > span { display: grid; gap: 3px; }
+.share-num small { color: var(--text-3); font-size: 12.5px; line-height: 1.5; }
+.share-link > small { flex: none; min-width: 74px; color: var(--text-3); font-size: 12px; }
+.share-result { margin: 0 4px; font-size: 12.5px; line-height: 1.5; }
+.share-result.ok { color: var(--ok); }
+.share-result.bad { color: var(--warn); }
+@keyframes share-beat { 0% { box-shadow: 0 0 0 0 var(--ok-line); } 70%, 100% { box-shadow: 0 0 0 7px transparent; } }
+
+/* Datapacks in the browse page */
+.datapacks { display: grid; gap: 22px; align-content: start; }
+.datapacks h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.dp-installed { display: grid; gap: 10px; padding: 14px; border-radius: var(--r-md); background: var(--panel); border: 1px solid var(--line-soft); }
+.dp-installed > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dp-installed ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.dp-installed li { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 8px 0 10px; border-radius: 10px; transition: background 140ms var(--ease); animation: enter 200ms var(--ease) backwards; }
+.dp-installed li:hover { background: var(--raise); }
+.dp-installed li > svg { width: 16px; height: 16px; flex: none; color: var(--text-3); }
+.dp-installed li > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dp-installed li > small { color: var(--text-4); font-size: 12px; font-variant-numeric: tabular-nums; }
+.dp-installed li .icon-button { opacity: 0; transition: opacity 140ms var(--ease); }
+.dp-installed li:hover .icon-button, .dp-installed li .icon-button:focus-visible { opacity: 1; }
+.dp-none, .dp-note { margin: 0; font-size: 12.5px; line-height: 1.55; }
+.dp-title { margin-bottom: 12px !important; }
+
+/* Console with the server's numbers beside it, like a hosting panel */
+.overview-console .console-split { display: grid; flex: 1; min-height: 0; grid-template-columns: minmax(0, 1fr) 292px; gap: 14px; }
+.console-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
+.server-stats { display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; padding: 1px 2px 2px 0; scrollbar-width: thin; }
+.stat-status { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line-soft); }
+.stat-status > div { display: grid; min-width: 0; flex: 1; gap: 1px; }
+.stat-status strong { font-size: 15px; font-weight: 640; letter-spacing: -.01em; }
+.stat-status small { overflow: hidden; color: var(--text-3); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.stat-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--text-4); }
+.stat-status.running .stat-dot { background: var(--ok); animation: share-beat 2.4s ease-out infinite; }
+.stat-status.starting .stat-dot, .stat-status.stopping .stat-dot { background: var(--warn); animation: stat-blink 1s ease-in-out infinite; }
+.stat-status.crashed .stat-dot { background: var(--danger); }
+.stat-copy { display: inline-flex; align-items: center; flex: none; gap: 6px; height: 28px; padding: 0 9px; border: 0; border-radius: 9px; background: var(--raise); color: var(--text-3); cursor: pointer; transition: background 140ms var(--ease), color 140ms var(--ease), transform 140ms var(--ease); }
+.stat-copy code { font-family: var(--code); font-size: 11.5px; }
+.stat-copy svg { width: 13px; height: 13px; }
+.stat-copy:hover { background: var(--raise-hover); color: var(--text); }
+.stat-copy:active { transform: scale(.95); }
+.stat-copy.done { color: var(--ok); }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stat-card { position: relative; display: grid; align-content: start; gap: 2px; min-width: 0; padding: 12px 14px 10px; overflow: hidden; border-radius: 14px; background: var(--panel); border: 1px solid var(--line-soft); animation: stat-in 320ms var(--ease) backwards; transition: border-color 160ms var(--ease), transform 160ms var(--ease); }
+.stat-card:hover { border-color: var(--line); transform: translateY(-1px); }
+.stat-card:nth-child(-n + 2) { grid-column: 1 / -1; }
+.stat-head { display: flex; align-items: center; gap: 6px; color: var(--text-3); font-size: 11.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.stat-head svg { width: 13px; height: 13px; }
+.stat-value { margin-top: 3px; overflow: hidden; font-size: 19px; font-weight: 650; letter-spacing: -.015em; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.stat-card:nth-child(n + 3) .stat-value { font-size: 17px; }
+.stat-note { color: var(--text-4); font-size: 12px; font-variant-numeric: tabular-nums; }
+.stat-bar { display: block; height: 5px; margin-top: 8px; overflow: hidden; border-radius: 99px; background: var(--raise); }
+.stat-bar i { display: block; height: 100%; border-radius: inherit; background: var(--ok); transition: width 500ms var(--ease), background 200ms; }
+.stat-card.warn .stat-bar i { background: var(--warn); }
+.stat-card.danger .stat-bar i { background: var(--danger); }
+.stat-card.warn .stat-value { color: var(--warn); }
+.stat-card.danger .stat-value { color: var(--danger); }
+.stat-trace { display: block; width: calc(100% + 28px); height: 30px; margin: 8px -14px -10px; color: var(--ok); }
+.stat-trace.warn { color: var(--warn); }
+.stat-trace.danger { color: var(--danger); }
+.stat-trace .area { fill: currentColor; opacity: .13; }
+.stat-trace .line { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+.stat-idle { margin: 6px 4px; color: var(--text-4); font-size: 12.5px; line-height: 1.5; }
+@keyframes stat-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes stat-blink { 50% { opacity: .35; } }
+@media (max-width: 1180px) {
+  .overview-console .console-split { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .server-stats { order: -1; flex-direction: row; overflow: auto hidden; padding-bottom: 4px; }
+  .stat-status { flex: none; min-width: 236px; }
+  .stat-grid { display: flex; gap: 10px; }
+  .stat-card, .stat-card:nth-child(-n + 2), .stat-card:nth-child(n + 3):last-child:nth-child(odd) { flex: none; min-width: 156px; max-width: 200px; grid-column: auto; }
+  .stat-idle { align-self: center; white-space: nowrap; }
+}
+@media (prefers-reduced-motion: reduce) { .stat-card, .stat-status .stat-dot, .stat-bar i { animation: none; transition: none; } }
+.stat-card:nth-child(n + 3):last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+/* Sign-in page for the web panel */
+.web-login { background: radial-gradient(900px 460px at 50% -8%, color-mix(in srgb, var(--ok) 10%, transparent), transparent 70%), var(--bg); }
+.web-login-card { max-width: 360px; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.32); }
+.web-login-card .brand-mark { margin: 2px 0 6px; transform: scale(1.3); }
+.web-login-card .button, .web-login-card button[type="submit"] { justify-content: center; text-align: center; }
+
+/* Small motion: quick, springy and calm. Everything here is skipped for people who ask for less motion. */
+@keyframes modal-pop { from { opacity: 0; transform: translateY(14px) scale(0.955); } to { opacity: 1; transform: none; } }
+@keyframes tick-pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes bar-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes float-mark { 0%, 100% { translate: 0 0; } 50% { translate: 0 -3px; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .modal-backdrop { backdrop-filter: blur(3px); }
+  .add-modal { animation: modal-pop 280ms var(--pop); }
+  .web-login-card { animation: modal-pop 480ms var(--pop) backwards; }
+  .web-login-card .brand-mark { animation: float-mark 5s ease-in-out infinite; }
+
+  /* Buttons feel pressed. */
+  .button, .icon-button, .chip-button, .rail-pill, .extras-tabs button, .seg button, .world-menu-button {
+    transition-property: background, color, border-color, box-shadow, transform, filter, opacity;
+    transition-duration: 140ms;
+    transition-timing-function: var(--ease);
+  }
+  .button:active:not(:disabled), .icon-button:active:not(:disabled), .chip-button:active, .rail-pill:active, .extras-tabs button:active, .world-menu-button:active { transform: scale(0.96); }
+  .button.primary:hover:not(:disabled) { filter: brightness(1.06); }
+  .icon-button:hover:not(:disabled) { transform: scale(1.06); }
+  .icon-button:hover:not(:disabled):active { transform: scale(0.94); }
+
+  /* Switches and checks bounce a little. */
+  .switch > span { transition: background 180ms var(--ease); }
+  .switch > span::after { transition: transform 260ms var(--pop), width 160ms var(--ease); }
+  .switch:active > span::after { width: 20px; }
+  .switch input:checked + span::after { transform: translateX(16px); }
+  .switch:active input:checked + span::after { transform: translateX(12px); }
+  .checkbox input:checked { animation: tick-pop 260ms var(--pop); }
+
+  /* Sidebar: the icon leans in and the open page gets a growing marker. */
+  .nav-item .nav-icon, .instance-nav button svg { transition: transform 200ms var(--pop), color 140ms var(--ease); }
+  .nav-item:hover .nav-icon, .instance-nav button:hover svg { transform: translateX(2px) scale(1.08); }
+  .rail-back svg { transition: transform 200ms var(--pop); }
+  .rail-back:hover svg { transform: translateX(-3px); }
+  .sidebar:not(.compact) .nav-item.active::before, .sidebar:not(.compact) .instance-nav button.selected::before {
+    content: ""; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px; border-radius: 0 3px 3px 0; background: var(--ok);
+    transform-origin: center; animation: bar-grow 260ms var(--pop) backwards;
+  }
+  .sidebar .status-dot.status-running { animation: share-beat 2.6s ease-out infinite; }
+  .brand-mark img { transition: transform 260ms var(--pop); }
+  .brand-mark:hover img { transform: rotate(-8deg) scale(1.08); }
+
+  /* Cards lift like Modrinth's project cards. */
+  .catalog-card, .addon-row.opens, .setting-card, .backup-row, .project-version { transition: border-color 160ms var(--ease), transform 200ms var(--pop), box-shadow 200ms var(--ease), background 160ms var(--ease); }
+  .catalog-card:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22); }
+  .catalog-card .catalog-icon { transition: transform 260ms var(--pop); }
+  .catalog-card:hover .catalog-icon { transform: scale(1.06) rotate(-2deg); }
+  .addon-row.opens:hover { transform: translateY(-1px); }
+  .server-card:hover { box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22); }
+
+  /* Inputs and menus. */
+  .search { transition: box-shadow 180ms var(--ease), background 160ms var(--ease); }
+  .search:focus-within { box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok) 40%, transparent); }
+  .dropdown-trigger svg { transition: transform 220ms var(--pop); }
+  .dropdown-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .dropdown-menu { transform-origin: top; }
+  .dropdown-menu button { transition: background 120ms var(--ease), color 120ms var(--ease), padding 160ms var(--ease); }
+  .dropdown-menu button:hover { padding-left: 14px; }
+  .chip { transition: background 160ms var(--ease), color 160ms var(--ease), transform 160ms var(--pop); }
+  .toast-spin svg { will-change: transform; }
+}

@@ -2034,6 +2034,9 @@ pub(crate) fn web_invoke(
         "preview_mrpack" => ok(preview_mrpack(arg(body, "path")?)?),
         "search_modpacks" => ok(search_modpacks(arg(body, "query")?, arg(body, "page")?)?),
         "download_modpack" => ok(download_modpack(app.clone(), arg(body, "projectId")?)?),
+        "datapack_folder" => ok(tauri::async_runtime::block_on(datapack_folder(app.clone(), arg(body, "id")?))?),
+        "search_datapacks" => ok(search_datapacks(app.clone(), arg(body, "id")?, arg(body, "query")?, arg(body, "page")?)?),
+        "install_datapack" => ok(tauri::async_runtime::block_on(install_datapack(app.clone(), arg(body, "id")?, arg(body, "projectId")?))?),
         "import_mrpack" => ok(tauri::async_runtime::block_on(import_mrpack(app.clone(), app.state(), arg(body, "input")?))?),
         "preview_cfpack" => ok(preview_cfpack(arg(body, "path")?)?),
         "import_cfpack" => ok(tauri::async_runtime::block_on(import_cfpack(app.clone(), app.state(), arg(body, "id")?, arg(body, "path")?))?),
@@ -8665,55 +8668,140 @@ async fn chunky_run(
 
 #[derive(Clone, Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
-struct MapShareView {
-    shared: bool,
-    url: String,
-    panel_on: bool,
-    tunnel_on: bool,
-    created_at: u64,
+struct MapWebView {
+    supported: bool,
+    reason: String,
+    addon_ready: bool,
+    enabled: bool,
+    port: u16,
+    private: bool,
+    players: bool,
+    running: bool,
+    error: String,
+    path: String,
+    lan_url: String,
 }
 
-fn map_share_view(app: &AppHandle, id: &str) -> MapShareView {
-    let share = mapshare::of_server(app, id);
-    let port = app.state::<web::Running>().lock().expect("web panel poisoned").as_ref().map(|one| one.port());
-    let outside = app.state::<tunnel::Running>().lock().expect("tunnel poisoned").as_ref().map(|one| one.url().to_string());
-    let url = match (&share, &outside, port) {
-        (Some(one), Some(base), _) => format!("{}/m/{}", base.trim_end_matches('/'), one.token),
-        (Some(one), None, Some(port)) => format!("http://{}:{port}/m/{}", lan_address(), one.token),
-        _ => String::new(),
+async fn map_web_read(app: &AppHandle, instance: &ServerInstance, name: &str) -> Option<String> {
+    if is_far(instance) {
+        return far_read(app, instance, &format!("{}/{name}", remote_addon_data_dir(instance))).await.ok();
+    }
+    fs::read_to_string(events::event_folder(Path::new(&instance.path)).join(name)).ok()
+}
+
+async fn map_web_write(app: &AppHandle, instance: &ServerInstance, name: &str, text: &str) -> Result<(), String> {
+    if is_far(instance) {
+        return far_write(app, instance, &format!("{}/{name}", remote_addon_data_dir(instance)), text).await;
+    }
+    let dir = events::event_folder(Path::new(&instance.path));
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    fs::write(dir.join(name), text).map_err(|error| error.to_string())
+}
+
+async fn map_web_view(app: &AppHandle, state: &AppState, instance: &ServerInstance) -> MapWebView {
+    let kind = events::addon_kind(&instance.core);
+    let supported = matches!(kind, Some(events::AddonKind::Paper | events::AddonKind::NeoForge | events::AddonKind::Fabric));
+    let settings = map_web_read(app, instance, "web.json").await.map(|text| mapshare::read_settings(&text)).unwrap_or_else(|| mapshare::read_settings(""));
+    let status = map_web_read(app, instance, "web-status.json").await.and_then(|text| mapshare::read_status(&text)).unwrap_or_default();
+    let (addon_ready, reason) = if !supported {
+        (false, "The web map runs inside the Monolab add-on, which is available for Paper, Purpur, Folia, NeoForge and Fabric servers.".to_string())
+    } else if is_far(instance) {
+        (true, String::new())
+    } else {
+        let addon = addon_status_of(state, instance);
+        let ready = addon.installed && addon.installed_version.unwrap_or(0) >= mapshare::FIRST_ADDON;
+        (ready, if ready { String::new() } else { "Install or update the Monolab add-on first. The web map comes with it.".to_string() })
     };
-    MapShareView {
-        shared: share.is_some(),
-        url,
-        panel_on: port.is_some(),
-        tunnel_on: outside.is_some(),
-        created_at: share.map(|one| one.created_at).unwrap_or(0),
+    let alive = is_far(instance) || state.processes.lock().expect("process state poisoned").contains_key(&instance.id);
+    MapWebView {
+        supported,
+        reason,
+        addon_ready,
+        enabled: settings.enabled,
+        port: settings.port,
+        private: !settings.token.is_empty(),
+        players: settings.players,
+        running: settings.enabled && status.running && alive,
+        error: if settings.enabled { status.error.unwrap_or_default() } else { String::new() },
+        path: mapshare::path_of(&settings),
+        lan_url: if is_far(instance) { String::new() } else { format!("http://{}:{}{}", lan_address(), settings.port, mapshare::path_of(&settings)) },
     }
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-fn map_share_state(app: AppHandle, id: String) -> Result<MapShareView, String> {
-    instance_by_id(&app, &id)?;
-    Ok(map_share_view(&app, &id))
+async fn map_web_state(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<MapWebView, String> {
+    let instance = instance_by_id(&app, &id)?;
+    Ok(map_web_view(&app, &state, &instance).await)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-fn map_share_create(app: AppHandle, id: String, labels: HashMap<String, String>) -> Result<MapShareView, String> {
-    instance_by_id(&app, &id)?;
-    let labels = labels.into_iter().filter(|(key, value)| key.len() <= 64 && value.len() <= 200).take(64).collect();
-    mapshare::create(&app, &id, labels, unix_now())?;
-    record_audit(&app, &id, "Server", "Map shared", "");
-    Ok(map_share_view(&app, &id))
+#[allow(clippy::too_many_arguments)]
+async fn map_web_set(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    enabled: bool,
+    port: u16,
+    secret: bool,
+    players: bool,
+    renew: bool,
+    labels: HashMap<String, String>,
+) -> Result<MapWebView, String> {
+    let instance = instance_by_id(&app, &id)?;
+    if !mapshare::port_ok(port) {
+        return Err("Use a port between 1024 and 65535.".into());
+    }
+    let old = map_web_read(&app, &instance, "web.json")
+        .await
+        .map(|text| mapshare::read_settings(&text))
+        .unwrap_or_else(|| mapshare::read_settings(""));
+    let token = match (secret, old.token.is_empty() || renew) {
+        (false, _) => String::new(),
+        (true, true) => mapshare::make_token(),
+        (true, false) => old.token.clone(),
+    };
+    let labels = if labels.is_empty() { old.labels } else { labels.into_iter().filter(|(key, value)| key.len() <= 64 && value.len() <= 200).take(64).collect() };
+    let settings = mapshare::Settings { enabled, port, token, players, name: instance.name.clone(), labels };
+    let text = serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?;
+    map_web_write(&app, &instance, "web.json", &text).await?;
+    record_audit(&app, &id, "Server", if enabled { "Web map on" } else { "Web map off" }, &port.to_string());
+    Ok(map_web_view(&app, &state, &instance).await)
 }
 
+/// The address friends outside the house reach this computer by. Asked only when the user presses the button.
 #[tauri::command(async)]
 #[specta::specta]
-fn map_share_remove(app: AppHandle, id: String) -> Result<MapShareView, String> {
-    mapshare::remove(&app, &id)?;
-    record_audit(&app, &id, "Server", "Map sharing stopped", "");
-    Ok(map_share_view(&app, &id))
+async fn public_address() -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .user_agent(net::USER_AGENT)
+        .timeout(Duration::from_secs(6))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let text = client
+        .get("https://api.ipify.org")
+        .send()
+        .await
+        .map_err(|_| "Could not look up the public address. Check the internet connection.".to_string())?
+        .text()
+        .await
+        .map_err(|_| "Could not look up the public address. Check the internet connection.".to_string())?;
+    let text = text.trim();
+    text.parse::<std::net::IpAddr>().map(|ip| ip.to_string()).map_err(|_| "The lookup did not return an address.".to_string())
+}
+
+/// Whether something answers on this address and port from here. A router that can't loop back to itself can say no
+/// even when friends get through, so the dialog words a "no" carefully.
+#[tauri::command(async)]
+#[specta::specta]
+async fn map_web_probe(host: String, port: u16) -> Result<bool, String> {
+    let ip: std::net::IpAddr = host.trim().parse().map_err(|_| "That is not an address.".to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        std::net::TcpStream::connect_timeout(&std::net::SocketAddr::new(ip, port), Duration::from_secs(4)).is_ok()
+    })
+    .await
+    .map_err(|error| error.to_string())
 }
 
 fn forget_chunk_stats(state: &AppState, id: &str) {
@@ -12256,6 +12344,164 @@ fn search_modpacks(query: String, page: Option<u32>) -> Result<CatalogPage, Stri
     })
 }
 
+/// Where datapacks go for this server, relative to its folder.
+#[tauri::command(async)]
+#[specta::specta]
+async fn datapack_folder(app: AppHandle, id: String) -> Result<String, String> {
+    let instance = instance_by_id(&app, &id)?;
+    if pumpkin::is_pumpkin(&instance.core) || matches!(instance.core.as_str(), "Velocity" | "BungeeCord") {
+        return Err("This kind of server has no worlds, so it has no datapacks.".into());
+    }
+    Ok(format!("{}/datapacks", level_name_any(&app, &instance).await))
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn search_datapacks(app: AppHandle, id: String, query: String, page: Option<u32>) -> Result<CatalogPage, String> {
+    off_runtime(|| {
+        let instance = instance_by_id(&app, &id)?;
+        let page = page.unwrap_or(0);
+        let per_page = 20_u32;
+        let client = crate::net::builder()
+            .user_agent("Monolab/0.1.0 (local Windows desktop app)")
+            .timeout(Duration::from_secs(20))
+            .build()
+            .map_err(|error| error.to_string())?;
+        let mut facets = vec![vec!["project_type:datapack".to_string()]];
+        if looks_like_version(&instance.version) {
+            facets.push(vec![format!("versions:{}", instance.version.trim())]);
+        }
+        let facets = serde_json::to_string(&facets).map_err(|error| error.to_string())?;
+        let offset = (page * per_page).to_string();
+        let limit = per_page.to_string();
+        let response: serde_json::Value = client
+            .get("https://api.modrinth.com/v2/search")
+            .query(&[
+                ("query", query.trim()),
+                ("limit", limit.as_str()),
+                ("offset", offset.as_str()),
+                ("facets", facets.as_str()),
+                ("index", "downloads"),
+            ])
+            .send()
+            .map_err(|error| format!("Datapack search failed: {error}"))?
+            .error_for_status()
+            .map_err(|error| error.to_string())?
+            .json()
+            .map_err(|error| error.to_string())?;
+        let hits: Vec<catalog::CatalogHit> = response
+            .get("hits")
+            .and_then(|value| value.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|hit| {
+                let project_id: String = hit.get("project_id")?.as_str()?.into();
+                Some(catalog::CatalogHit {
+                    page_url: format!("https://modrinth.com/datapack/{project_id}"),
+                    source: "Modrinth".into(),
+                    project_id,
+                    title: hit.get("title")?.as_str()?.into(),
+                    description: hit.get("description").and_then(|value| value.as_str()).unwrap_or_default().into(),
+                    project_type: "datapack".into(),
+                    installable: true,
+                    icon_url: hit
+                        .get("icon_url")
+                        .and_then(|value| value.as_str())
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string),
+                    author: hit.get("author").and_then(|value| value.as_str()).map(str::to_owned),
+                    downloads: hit.get("downloads").and_then(|value| value.as_u64()),
+                    follows: hit.get("follows").and_then(|value| value.as_u64()),
+                    updated_at: None,
+                    loaders: Vec::new(),
+                    versions: Vec::new(),
+                })
+            })
+            .collect();
+        Ok(CatalogPage { has_more: hits.len() as u32 >= per_page, hits, page })
+    })
+}
+
+/// Downloads the newest datapack file made for this server's Minecraft version into the world's datapacks folder.
+#[tauri::command(async)]
+#[specta::specta]
+async fn install_datapack(app: AppHandle, id: String, project_id: String) -> Result<String, String> {
+    let instance = instance_by_id(&app, &id)?;
+    let folder = datapack_folder(app.clone(), id.clone()).await?;
+    let version = instance.version.trim().to_string();
+    let downloaded = {
+        let (app, project_id) = (app.clone(), project_id.clone());
+        tauri::async_runtime::spawn_blocking(move || {
+            off_runtime(|| -> Result<(String, Vec<u8>), String> {
+                let client = crate::net::builder()
+                    .user_agent("Monolab/0.1.0 (local Windows desktop app)")
+                    .timeout(Duration::from_secs(90))
+                    .build()
+                    .map_err(|error| error.to_string())?;
+                let games = serde_json::to_string(&[version.as_str()]).map_err(|error| error.to_string())?;
+                let releases: serde_json::Value = client
+                    .get(format!("https://api.modrinth.com/v2/project/{project_id}/version"))
+                    .query(&[("game_versions", games.as_str()), ("loaders", "[\"datapack\"]")])
+                    .send()
+                    .map_err(|error| format!("Could not fetch Modrinth download info: {error}"))?
+                    .error_for_status()
+                    .map_err(|error| error.to_string())?
+                    .json()
+                    .map_err(|error| error.to_string())?;
+                let release = releases
+                    .as_array()
+                    .and_then(|items| items.first())
+                    .ok_or_else(|| format!("No datapack file is made for Minecraft {version}."))?;
+                let file = release
+                    .get("files")
+                    .and_then(|value| value.as_array())
+                    .and_then(|files| files.iter().find(|file| file.get("primary").and_then(|one| one.as_bool()).unwrap_or(false)).or_else(|| files.first()))
+                    .ok_or("No Modrinth release file was found.")?;
+                let url = file.get("url").and_then(|value| value.as_str()).ok_or("The Modrinth file URL is malformed.")?;
+                let name = file
+                    .get("filename")
+                    .and_then(|value| value.as_str())
+                    .and_then(|value| Path::new(value).file_name())
+                    .and_then(|value| value.to_str())
+                    .ok_or("The Modrinth file name is malformed.")?
+                    .to_string();
+                if !name.to_ascii_lowercase().ends_with(".zip") {
+                    return Err(format!("{name} is not a datapack zip."));
+                }
+                let checksum = file.pointer("/hashes/sha512").and_then(|value| value.as_str()).ok_or("The Modrinth file has no SHA‑512.")?;
+                let staging = std::env::temp_dir().join(format!("monolab-datapack-{}", unix_now()));
+                download_file_watched(&client, url, &staging, &mut |received, total| {
+                    tell_addon_download(&app, "", &project_id, &name, received, total);
+                })?;
+                if let Err(error) = verify_sha512(&staging, checksum) {
+                    let _ = fs::remove_file(&staging);
+                    return Err(error);
+                }
+                let bytes = fs::read(&staging).map_err(|error| error.to_string());
+                let _ = fs::remove_file(&staging);
+                Ok((name, bytes?))
+            })
+        })
+        .await
+        .map_err(|error| error.to_string())??
+    };
+    let (name, bytes) = downloaded;
+    let relative = format!("{folder}/{name}");
+    if is_far(&instance) {
+        far_upload(&app, &instance, &relative, &bytes, &name).await?;
+    } else {
+        let dir = Path::new(&instance.path).join(&folder);
+        fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+        let target = dir.join(&name);
+        if target.exists() {
+            return Err(format!("{name} is already installed."));
+        }
+        fs::write(&target, &bytes).map_err(|error| format!("Could not save the datapack: {error}"))?;
+    }
+    record_audit(&app, &id, "Datapack", "Datapack install", &format!("Installed {name}."));
+    Ok(name)
+}
+
 #[tauri::command(async)]
 #[specta::specta]
 fn download_modpack(app: AppHandle, project_id: String) -> Result<String, String> {
@@ -15613,9 +15859,10 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             chunky_status,
             chunky_run,
             game_server::update_game_server,
-            map_share_state,
-            map_share_create,
-            map_share_remove,
+            map_web_state,
+            map_web_set,
+            public_address,
+            map_web_probe,
             chunk_stats,
             list_runs,
             trim_chunks,
@@ -15630,6 +15877,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             preview_mrpack,
             search_modpacks,
             download_modpack,
+            datapack_folder,
+            search_datapacks,
+            install_datapack,
             preview_cfpack,
             import_cfpack,
             import_mrpack,

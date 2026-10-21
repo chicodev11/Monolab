@@ -119,6 +119,8 @@ const READS: &[&str] = &[
     "item_names",
     "item_icons",
     "playit_state",
+    "datapack_folder",
+    "search_datapacks",
 ];
 
 const ADMINS: &[&str] = &[
@@ -198,6 +200,7 @@ const WRITES: &[&str] = &[
     "download_modpack",
     "export_mrpack_download",
     "add_addon_files",
+    "install_datapack",
     "cancel_pending_addon",
     "playit_expose",
     "playit_unexpose",

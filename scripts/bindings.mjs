@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const check = process.argv.includes("--check");
 const stored = join(root, "src", "lib", "bindings.ts");
-const exe = join(root, "src-tauri", "target", "debug", "monolab.exe");
+const exe = join(root, "src-tauri", "target", "debug", process.platform === "win32" ? "monolab.exe" : "monolab");
 
 execFileSync("cargo", ["build", "--manifest-path", join(root, "src-tauri", "Cargo.toml")], { stdio: "inherit" });
 if (!existsSync(exe)) throw new Error(`${exe} not found.`);

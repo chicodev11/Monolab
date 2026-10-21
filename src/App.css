@@ -10070,14 +10070,6 @@ button.sftp-crumb:hover { background: var(--raise-hover); }
 .import-flow h2, .import-flow .modal-copy { margin: 0; }
 .import-flow .import-where { margin-top: 2px; }
 
-.usage-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 8px 14px; border-radius: 12px; background: var(--panel-2); font-size: 12.5px; }
-.usage-item { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
-.usage-label { color: var(--text-4); font-weight: 600; }
-.usage-value { color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.usage-bar { width: 64px; height: 5px; border-radius: 99px; background: var(--raise); overflow: hidden; }
-.usage-bar i { display: block; height: 100%; border-radius: inherit; background: var(--text-3); transition: width 300ms var(--ease); }
-.usage-item.warn .usage-bar i { background: var(--warn); }
-.usage-item.danger .usage-bar i { background: var(--danger); }
 
 /* Tasks */
 .tasks-page { display: flex; min-height: 0; flex: 1; flex-direction: column; }
@@ -10283,7 +10275,6 @@ button.sftp-crumb:hover { background: var(--raise-hover); }
 .share-step small { color: var(--text-3); font-size: 12.5px; line-height: 1.5; }
 .share-link { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; border-radius: var(--r-md); background: var(--panel-2); }
 .share-link code { flex: 1; overflow: hidden; color: var(--text); font-family: var(--code); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
-.share-note { margin: 10px 0 0; font-size: 12.5px; line-height: 1.55; }
 .world-spot-face:not(.on) { box-shadow: 0 0 0 2px var(--danger); }
 .map-area-action.danger { color: var(--danger); }
 .map-area-action.danger svg { color: var(--danger); }

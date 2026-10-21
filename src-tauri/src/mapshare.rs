@@ -1,98 +1,115 @@
+//! The world map's web page runs inside the server's Monolab add-on, on a port of its own (like BlueMap), so friends
+//! reach it through a router port forward. The app only writes the add-on's `web.json` and reads `web-status.json`.
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
-use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
 
-static LOCK: Mutex<()> = Mutex::new(());
+pub const DEFAULT_PORT: u16 = 8100;
+/// The first add-on version that carries the web map.
+pub const FIRST_ADDON: u32 = 28;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Share {
+#[serde(default)]
+pub struct Settings {
+    pub enabled: bool,
+    pub port: u16,
+    /// A secret first part of the address; empty means anyone who finds the port can look.
     pub token: String,
-    pub server_id: String,
-    pub created_at: u64,
-    #[serde(default)]
+    pub players: bool,
+    pub name: String,
     pub labels: HashMap<String, String>,
 }
 
-fn file(app: &AppHandle) -> Option<PathBuf> {
-    app.path().app_data_dir().ok().map(|dir| dir.join("map-shares.json"))
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct Status {
+    pub at: u64,
+    pub running: bool,
+    pub port: u16,
+    pub error: Option<String>,
 }
 
-fn load(app: &AppHandle) -> Vec<Share> {
-    file(app)
-        .and_then(|path| fs::read_to_string(path).ok())
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
-}
-
-fn save(app: &AppHandle, shares: &[Share]) -> Result<(), String> {
-    let path = file(app).ok_or("The app data folder is unavailable.")?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+pub fn read_settings(text: &str) -> Settings {
+    let mut one: Settings = serde_json::from_str(text).unwrap_or_default();
+    if !port_ok(one.port) {
+        one.port = DEFAULT_PORT;
     }
-    let text = serde_json::to_string_pretty(shares).map_err(|error| error.to_string())?;
-    fs::write(path, text).map_err(|error| error.to_string())
+    one.token = clean_token(&one.token);
+    one
 }
 
-pub fn of_server(app: &AppHandle, server: &str) -> Option<Share> {
-    load(app).into_iter().find(|one| one.server_id == server)
+pub fn read_status(text: &str) -> Option<Status> {
+    serde_json::from_str(text).ok()
 }
 
-pub fn create(app: &AppHandle, server: &str, labels: HashMap<String, String>, now: u64) -> Result<Share, String> {
-    let _held = LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let mut shares = load(app);
-    shares.retain(|one| one.server_id != server);
-    let share = Share { token: crate::web::make_key(), server_id: server.to_string(), created_at: now, labels };
-    shares.push(share.clone());
-    save(app, &shares)?;
-    Ok(share)
+pub fn port_ok(port: u16) -> bool {
+    port >= 1024
 }
 
-pub fn remove(app: &AppHandle, server: &str) -> Result<(), String> {
-    let _held = LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    let mut shares = load(app);
-    shares.retain(|one| one.server_id != server);
-    save(app, &shares)
+pub fn clean_token(token: &str) -> String {
+    token.chars().filter(char::is_ascii_alphanumeric).take(64).collect()
 }
 
-fn same(a: &str, b: &str) -> bool {
-    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+pub fn make_token() -> String {
+    crate::web::make_key().chars().take(32).collect()
 }
 
-/// The share a link token opens, if any.
-pub fn find(app: &AppHandle, token: &str) -> Option<Share> {
-    if token.len() < 32 || !token.bytes().all(|one| one.is_ascii_hexdigit()) {
-        return None;
+/// What follows `host:port` in the address friends open.
+pub fn path_of(settings: &Settings) -> String {
+    if settings.token.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}/", settings.token)
     }
-    load(app).into_iter().find(|one| same(&one.token, token))
 }
-
-/// Splits `/m/<token>/<rest>` into the token and what follows.
-pub fn split(path: &str) -> Option<(&str, &str)> {
-    let rest = path.strip_prefix("/m/")?;
-    Some(match rest.split_once('/') {
-        Some((token, tail)) => (token, tail),
-        None => (rest, ""),
-    })
-}
-
-pub const PAGE: &str = include_str!("web/mapshare.html");
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn splits_share_paths() {
-        assert_eq!(split("/m/abc"), Some(("abc", "")));
-        assert_eq!(split("/m/abc/tile"), Some(("abc", "tile")));
-        assert_eq!(split("/m/abc/"), Some(("abc", "")));
-        assert_eq!(split("/api/list"), None);
-        assert!(same("abcd", "abcd"));
-        assert!(!same("abcd", "abce"));
-        assert!(!same("abcd", "abc"));
+    fn reads_what_the_addon_expects() {
+        let mut one = Settings { enabled: true, port: 8100, token: "abc".into(), players: true, name: "Home".into(), ..Default::default() };
+        one.labels.insert("night".into(), "밤".into());
+        let text = serde_json::to_string(&one).unwrap();
+        for key in ["\"enabled\":true", "\"port\":8100", "\"token\":\"abc\"", "\"players\":true", "\"name\":\"Home\""] {
+            assert!(text.contains(key), "{key} missing from {text}");
+        }
+        let back = read_settings(&text);
+        assert_eq!(back.port, 8100);
+        assert_eq!(back.labels.get("night").map(String::as_str), Some("밤"));
+    }
+
+    #[test]
+    fn falls_back_on_broken_settings() {
+        assert_eq!(read_settings("not json").port, DEFAULT_PORT);
+        assert_eq!(read_settings("{\"port\":80}").port, DEFAULT_PORT, "ports below 1024 need admin rights");
+        assert!(!read_settings("").enabled);
+    }
+
+    #[test]
+    fn keeps_tokens_url_safe() {
+        assert_eq!(clean_token("ab/../c d"), "abcd");
+        let made = make_token();
+        assert_eq!(made.len(), 32);
+        assert_eq!(clean_token(&made), made);
+        assert_ne!(make_token(), made);
+    }
+
+    #[test]
+    fn builds_the_path_friends_open() {
+        let mut one = Settings::default();
+        assert_eq!(path_of(&one), "/");
+        one.token = "abc".into();
+        assert_eq!(path_of(&one), "/abc/");
+    }
+
+    #[test]
+    fn reads_the_addons_status() {
+        let status = read_status("{\"at\":5,\"running\":true,\"port\":8100}").unwrap();
+        assert!(status.running && status.port == 8100 && status.error.is_none());
+        let failed = read_status("{\"at\":5,\"running\":false,\"port\":8100,\"error\":\"Address already in use\"}").unwrap();
+        assert_eq!(failed.error.as_deref(), Some("Address already in use"));
+        assert!(read_status("nope").is_none());
     }
 }

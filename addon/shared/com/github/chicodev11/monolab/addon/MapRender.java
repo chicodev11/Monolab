@@ -43,6 +43,7 @@ final class MapRender {
     private String game = "";
     private volatile boolean running;
     private Thread thread;
+    private MapWeb web;
 
     MapRender(Path server, Path out, BiConsumer<String, Throwable> onTrouble) {
         this.server = server;
@@ -96,12 +97,18 @@ final class MapRender {
         thread.setDaemon(true);
         thread.setPriority(Thread.MIN_PRIORITY);
         thread.start();
+        web = new MapWeb(out, onTrouble);
+        web.start();
     }
 
     void stop() {
         running = false;
         if (thread != null) {
             thread.interrupt();
+        }
+        if (web != null) {
+            web.stop();
+            web = null;
         }
     }
 

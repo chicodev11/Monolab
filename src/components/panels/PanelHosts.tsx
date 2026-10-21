@@ -174,7 +174,7 @@ export function PanelHosts({
           <input
             type="password"
             value={draft.appKey}
-            placeholder={draft.id ? tr("Leave blank to keep it") : "hydro_…"}
+            placeholder={draft.id ? tr("Leave blank to keep it") : "ptlc_…"}
             spellCheck={false}
             onChange={(event) => setDraft({ ...draft, appKey: event.target.value })}
           />
@@ -185,7 +185,7 @@ export function PanelHosts({
         <input
           type="password"
           value={draft.key}
-          placeholder={draft.id ? tr("Leave blank to keep it") : "hydro_…"}
+          placeholder={draft.id ? tr("Leave blank to keep it") : "ptlc_…"}
           spellCheck={false}
           onChange={(event) => setDraft({ ...draft, key: event.target.value })}
         />
@@ -320,7 +320,7 @@ export function PanelHosts({
       )}
       {!hosts.length && editing !== "new" && (
         <p className="panel-hint">
-          {tr("Add a Hydrodactyl panel to start and stop its servers and view their consoles here.")}
+          {tr("Add a Pterodactyl-compatible panel (Pterodactyl, Pelican or Hydrodactyl) to start and stop its servers and view their consoles here.")}
         </p>
       )}
     </div>

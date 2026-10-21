@@ -76,8 +76,6 @@
     "mclo.gs rejected it: {}": "mclo.gs가 거절했어요: $1",
     "Unknown reason": "원인을 알 수 없어요",
     "mclo.gs did not return a URL.": "mclo.gs가 주소를 주지 않았어요.",
-    "Map shared": "지도 공유",
-    "Map sharing stopped": "지도 공유 끔",
     "Area chunks deleted": "영역 청크 삭제",
     "The area is malformed.": "영역 값이 잘못됐어요.",
     "The downloaded Pumpkin file isn't a Linux program.": "다운로드한 Pumpkin 파일이 리눅스 프로그램이 아니에요.",
@@ -1241,5 +1239,19 @@
     "Open the Overview tab and set the program to run again.": "개요 탭에서 실행할 프로그램을 다시 설정해주세요.",
     "The program was not found": "실행 파일을 찾을 수 없어요",
     "{exe} isn't there anymore. Choose the program again on the Overview tab.": "$1이(가) 더 이상 없어요. 개요 탭에서 실행 파일을 다시 선택해주세요."
+  },
+  "lib.rs · 월드 지도·데이터팩": {
+    "Use a port between 1024 and 65535.": "1024~65535 사이의 포트를 입력해주세요.",
+    "Could not look up the public address. Check the internet connection.": "공인 주소를 확인하지 못했어요. 인터넷 연결을 확인해주세요.",
+    "The lookup did not return an address.": "조회 결과에 주소가 없어요.",
+    "That is not an address.": "올바른 주소가 아니에요.",
+    "The web map runs inside the Monolab add-on, which is available for Paper, Purpur, Folia, NeoForge and Fabric servers.": "웹 지도는 Monolab 애드온 안에서 실행돼요. Paper, Purpur, Folia, NeoForge, Fabric 서버에서 쓸 수 있어요.",
+    "Install or update the Monolab add-on first. The web map comes with it.": "먼저 Monolab 애드온을 설치하거나 업데이트해주세요. 웹 지도는 애드온에 들어 있어요.",
+    "This kind of server has no worlds, so it has no datapacks.": "이 서버 종류에는 월드가 없어서 데이터팩도 없어요.",
+    "Datapack search failed: {error}": "데이터팩 검색에 실패했어요: $1",
+    "No datapack file is made for Minecraft {version}.": "Minecraft $1용 데이터팩 파일이 없어요.",
+    "{name} is not a datapack zip.": "$1은(는) 데이터팩 zip이 아니에요.",
+    "{name} is already installed.": "$1은(는) 이미 설치되어 있어요.",
+    "Could not save the datapack: {error}": "데이터팩을 저장하지 못했어요: $1"
   }
 }

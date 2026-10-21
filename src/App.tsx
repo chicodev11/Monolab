@@ -115,6 +115,7 @@ import { CompareDialog } from "./components/dialogs/CompareDialog";
 import type { MapArea } from "./components/map/WorldMap";
 import { WorldSide } from "./components/map/WorldSide";
 import { MapShareDialog } from "./components/dialogs/MapShareDialog";
+import { DatapackPanel } from "./components/panels/DatapackPanel";
 import { TrimDialog } from "./components/dialogs/TrimDialog";
 import { DiskDialog } from "./components/dialogs/DiskDialog";
 import { PregenDialog } from "./components/dialogs/PregenDialog";
@@ -126,7 +127,7 @@ import { CATEGORIES, propertyMatches, propertyMeta, propertyOrder, type Category
 import { Badge, Banner, Button, Card, DropdownMenu, EmptyState, IconButton, SegmentedControl } from "./components/primitives";
 import { QrCode } from "./components/panels/QrCode";
 import { ConsoleOutput, LogLines, type ConsoleLevel } from "./components/console/ConsoleOutput";
-import { UsageStrip } from "./components/console/UsageStrip";
+import { ServerStats } from "./components/console/ServerStats";
 import { FileRows } from "./components/files/FileRows";
 import { TextureView } from "./components/files/TextureView";
 import { CodeEditor, languageOf, type Cursor } from "./components/files/CodeEditor";
@@ -145,6 +146,7 @@ import {
   statusInfo,
 } from "./lib/format";
 import "./App.css";
+import "./polish.css";
 
 type Instance = Sent<GenInstance>;
 type WebPanelView = Sent<GenWebPanelView>;
@@ -312,6 +314,9 @@ function isLoaderName(name: string) {
 function sortLoaders(loaders: string[], core: string) {
   const mine = core.toLowerCase();
   return [...loaders].sort((a, b) => Number(b === mine) - Number(a === mine));
+}
+function hasWorlds(core: string) {
+  return !["Pumpkin", "Velocity", "BungeeCord", "Waterfall"].includes(core);
 }
 function compactCount(value: number) {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}M`;
@@ -909,7 +914,7 @@ function App() {
   useEffect(() => reloadPanelHosts(), [reloadPanelHosts]);
   const hostChip = (instance: { remoteHost: string; panelHost?: string }) =>
     instance.panelHost ? (
-      <span className="chip subtle host-chip" data-tip={tr("A server on a Hydrodactyl panel")}>
+      <span className="chip subtle host-chip" data-tip={tr("A server on a Pterodactyl panel")}>
         <Icon name="cloud" />
         {panelHosts[instance.panelHost] ?? tr("Panel")}
       </span>
@@ -1137,7 +1142,7 @@ function App() {
   const [pickedFiles, setPickedFiles] = useState<Set<string>>(new Set());
   const [fileQuery, setFileQuery] = useState("");
   const [catalogQuery, setCatalogQuery] = useState("");
-  const [browseKind, setBrowseKind] = useState<"addon" | "modpack">("addon");
+  const [browseKind, setBrowseKind] = useState<"addon" | "modpack" | "datapack">("addon");
   const catalogLoader = "";
   const [webPanel, setWebPanel] = useState<WebPanelView>({
     on: false,
@@ -4836,6 +4841,7 @@ function App() {
   useEffect(() => {
     if (!browseOpen || projectView) return;
     if (catalogQuery === lastSearchedRef.current) return;
+    if (browseKind === "datapack") return;
     const timer = window.setTimeout(() => void (browseKind === "modpack" ? searchPacks(catalogQuery) : searchCatalog(catalogQuery, 0)), 300);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5653,6 +5659,8 @@ function App() {
               <h2>
                 {browseKind === "modpack"
                   ? tr("Browse modpacks")
+                  : browseKind === "datapack"
+                    ? tr("Browse datapacks")
                   : addonKind(selected.core) === "plugin"
                     ? tr("Browse plugins")
                     : tr("Browse mods")}
@@ -5666,6 +5674,7 @@ function App() {
                     void searchPacks(catalogQuery);
                     return;
                   }
+                  if (browseKind === "datapack") return;
                   void searchCatalog(catalogQuery, 0);
                 }}
               >
@@ -5673,16 +5682,17 @@ function App() {
                 <input
                   autoFocus
                   value={catalogQuery}
-                  placeholder={browseKind === "modpack" ? tr("Search modpacks by name") : tr("Search by name or function · leave empty for popular results")}
+                  placeholder={browseKind === "modpack" ? tr("Search modpacks by name") : browseKind === "datapack" ? tr("Search datapacks by name") : tr("Search by name or function · leave empty for popular results")}
                   onChange={(event) => setCatalogQuery(event.target.value)}
                 />
               </form>
             </div>
-            {addonKind(selected.core) !== "plugin" && (
+            {hasWorlds(selected.core) && (
             <div className="extras-tabs browse-kinds">
               {[
-                { id: "addon" as const, label: tr("Mods") },
-                { id: "modpack" as const, label: tr("Modpack") },
+                { id: "addon" as const, label: addonKind(selected.core) === "plugin" ? tr("Plugins") : tr("Mods") },
+                ...(addonKind(selected.core) === "plugin" ? [] : [{ id: "modpack" as const, label: tr("Modpack") }]),
+                { id: "datapack" as const, label: tr("Datapacks") },
               ].map((one) => (
                 <button
                   key={one.id}
@@ -5699,7 +5709,9 @@ function App() {
               ))}
             </div>
             )}
-            {browseKind === "modpack" ? (
+            {browseKind === "datapack" ? (
+              <DatapackPanel serverId={selected.id} query={catalogQuery} onNotice={setNotice} />
+            ) : browseKind === "modpack" ? (
               <div className="browse-main packs">
                 {packBusy ? (
                   <div className="catalog-grid">
@@ -5964,6 +5976,8 @@ function App() {
       )}
       {!toolLoading && tool === "console" && (
         <div className="tool-content overview-console">
+          <div className="console-split">
+          <div className="console-main">
           <div className="live-head">
             <SegmentedControl
               className="console-levels"
@@ -5987,7 +6001,6 @@ function App() {
               />
             </label>
           </div>
-          <UsageStrip server={{ id: selected.id, panelHost: selected.panelHost, maxMemoryMib: selected.maxMemoryMib, running: selected.status === "running" }} />
           <ConsoleOutput serverId={selected.id} filter={consoleFilter} level={consoleLevel} />
           <form
             className="console-input"
@@ -6066,7 +6079,9 @@ function App() {
             >
               {tr("Send")}</button>
           </form>
-
+          </div>
+          <ServerStats server={{ id: selected.id, name: selected.name, panelHost: selected.panelHost, maxMemoryMib: selected.maxMemoryMib, port: selected.port, status: selected.status, uptimeSeconds: selected.uptimeSeconds }} />
+          </div>
         </div>
       )}
       {!toolLoading && tool === "overview" && (
@@ -9482,7 +9497,7 @@ function App() {
                 <span className="nav-icon">
                   <Icon name="blocks" />
                 </span>
-                <span className="nav-label">Hydrodactyl</span>
+                <span className="nav-label">Pterodactyl</span>
               </button>
             )}
             {!onWeb && (sshHostViews.length > 0 || panelHostViews.length > 0) && (
@@ -9834,7 +9849,7 @@ function App() {
             <EmptyState
               icon="cloud"
               title={filter ? tr("No matching servers") : tr("None of your servers are on this panel")}
-              hint={tr("Your servers and shared servers are added automatically (synced every 5 minutes). An account API key is required. Find other users' servers in the Hydrodactyl tab.")}
+              hint={tr("Your servers and shared servers are added automatically (synced every 5 minutes). An account API key is required. Find other users' servers in the Pterodactyl tab.")}
               action={
                 <Button
                   variant="secondary"
@@ -10451,7 +10466,7 @@ function App() {
               <>
                 <div className="panel-head">
                   <div>
-                    <h2>Hydrodactyl</h2>
+                    <h2>Pterodactyl</h2>
                   </div>
                   <Button
                     variant="ghost"
@@ -11467,7 +11482,7 @@ function App() {
                 <strong>{sessionOpen.adding ? tr("New session") : tr("Manage sessions")}</strong> ·{" "}
                 {sessionOpen.tab === "ssh"
                   ? tr("Connect to servers on another computer, such as an Ubuntu machine, over SSH")
-                  : tr("Manage Hydrodactyl servers here")}
+                  : tr("Manage Pterodactyl servers here")}
               </p>
               <div className="modal-top-actions">
                 <button className="close in-flow" data-tip={tr("Close")} aria-label={tr("Close")} onClick={() => setSessionOpen(null)}>
@@ -11480,7 +11495,7 @@ function App() {
               value={sessionOpen.tab}
               options={[
                 { value: "ssh", label: "SSH" },
-                { value: "panel", label: "Hydrodactyl" },
+                { value: "panel", label: "Pterodactyl" },
               ]}
               onChange={(tab) => setSessionOpen({ ...sessionOpen, tab })}
             />
