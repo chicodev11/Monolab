@@ -29,7 +29,9 @@ mod mcp;
 mod properties;
 mod pumpkin;
 mod chunky;
+mod game_server;
 mod games;
+mod kinds;
 mod mapshare;
 mod chunkstats;
 mod crash;
@@ -377,13 +379,13 @@ struct ManagedProcess {
     stop_when_ready: bool,
     stop_from_log: bool,
     crash_seen: bool,
-    game: Option<&'static games::Game>,
+    game: Option<games::Game>,
 }
 
 impl ManagedProcess {
     /// Asks the server to stop the way it understands: a console command, or Ctrl+C for some games.
     fn send_stop(&mut self) -> Result<(), String> {
-        match self.game.map(|game| game.stop) {
+        match self.game.as_ref().map(|game| &game.stop) {
             Some(games::Stop::CtrlC) => {
                 if games::ctrl_c(self.pid) {
                     Ok(())
@@ -393,7 +395,7 @@ impl ManagedProcess {
             }
             other => {
                 let line = match other {
-                    Some(games::Stop::Input(text)) => text,
+                    Some(games::Stop::Input(text)) => text.as_str(),
                     _ => "stop\n",
                 };
                 let stdin = self.child.stdin.as_mut().ok_or("The server's console is closed.")?;
@@ -1674,8 +1676,9 @@ async fn precheck_instance(
     }
     let instance = instance_by_id(&app, &id)?;
     let root = Path::new(&instance.path);
-    let game = games::find(&instance.core);
-    let native = pumpkin::is_pumpkin(&instance.core) || game.is_some();
+    let game = game_server::game_for(&app, &instance);
+    let custom = games::is_custom(&instance.core);
+    let native = pumpkin::is_pumpkin(&instance.core) || game.is_some() || custom;
     let jar = instance
         .server_jar
         .as_ref()
@@ -1702,9 +1705,12 @@ async fn precheck_instance(
     };
     let _ = &state;
     let max_memory = if native { 0 } else { instance.max_memory_mib };
-    let game_missing = game.filter(|game| !root.join(game.exe).is_file()).map(|game| game.exe);
+    let game_missing = game.as_ref().filter(|game| !root.join(&game.exe).is_file()).map(|game| game.exe.clone());
+    let custom_broken = custom && game.is_none();
+    let missing_runtimes = game.as_ref().map(games::missing_requirements).unwrap_or_default();
     let exe_missing = native
         && game.is_none()
+        && !custom
         && !instance
             .server_jar
             .as_ref()
@@ -1719,11 +1725,30 @@ async fn precheck_instance(
                 "There is no pumpkin.exe in the server folder. Create the server again, or download the release again from the Upgrade tab.",
             ));
         }
-        if let Some(exe) = game_missing {
+        for runtime in &missing_runtimes {
             findings.push(doctor::Finding::stop(
-                "The game server files are missing",
-                &format!("{exe} isn't in the server folder. Press Update server files on the Overview tab to download them again."),
+                &format!("{runtime} is missing"),
+                "Press Update server files on the Overview tab to install it.",
             ));
+        }
+        if custom_broken {
+            findings.push(doctor::Finding::stop(
+                "The program settings are missing",
+                "Open the Overview tab and set the program to run again.",
+            ));
+        }
+        if let Some(exe) = game_missing {
+            if custom {
+                findings.push(doctor::Finding::stop(
+                    "The program was not found",
+                    &format!("{exe} isn't there anymore. Choose the program again on the Overview tab."),
+                ));
+            } else {
+                findings.push(doctor::Finding::stop(
+                    "The game server files are missing",
+                    &format!("{exe} isn't in the server folder. Press Update server files on the Overview tab to download them again."),
+                ));
+            }
         }
         findings.extend(doctor::precheck(
             root,
@@ -3347,7 +3372,7 @@ async fn move_instance_to_host(
     host_id: String,
 ) -> Result<InstanceView, String> {
     let instance = instance_by_id(&app, &id)?;
-    if games::is_game(&instance.core) {
+    if games::is_non_minecraft(&instance.core) {
         return Err("Game servers can only run on this PC for now.".into());
     }
     if pumpkin::is_pumpkin(&instance.core) {
@@ -4328,7 +4353,7 @@ fn level_name_of(instance: &ServerInstance) -> String {
 }
 
 fn port_from_properties(instance: &ServerInstance) -> u16 {
-    if games::is_game(&instance.core) {
+    if games::is_non_minecraft(&instance.core) {
         return instance.port;
     }
     if pumpkin::is_pumpkin(&instance.core) {
@@ -4717,7 +4742,7 @@ fn import_instance(
         max_memory_mib: 4096,
         min_memory_mib: 4096,
         jvm_args: String::new(),
-        port: if matches!(core.as_str(), "Velocity" | "BungeeCord") {
+        port: if kinds::is_proxy(&core) {
             25577
         } else {
             25565
@@ -5049,7 +5074,7 @@ async fn duplicate_remote(app: &AppHandle, state: &AppState, source: ServerInsta
     duplicate.path = made.clone();
     duplicate.created_at = unix_now();
     duplicate.port = port;
-    if !pumpkin::is_pumpkin(&source.core) && !matches!(source.core.as_str(), "Velocity" | "BungeeCord") {
+    if !pumpkin::is_pumpkin(&source.core) && !kinds::is_proxy(&source.core) {
         let current = remote::read_text(app, &source.remote_host, &made, "server.properties").await.unwrap_or_default();
         remote::write_text(app, &source.remote_host, &made, "server.properties", &with_port(&current, port)).await?;
     }
@@ -5339,7 +5364,7 @@ fn create_instance(
         return Err("Creating a server requires accepting the Minecraft EULA.".into());
     }
     if let Some(game) = games::find(&input.core) {
-        return create_game_server(&app, &state, game, name, &input.operation_id);
+        return game_server::create_game_server(&app, &state, game, name, &input.operation_id);
     }
     let folder = free_folder(&managed_servers_root(&app)?, &name);
     fs::create_dir_all(&folder)
@@ -5378,7 +5403,7 @@ fn create_instance(
     };
     fs::write(folder.join("eula.txt"), "eula=true\n")
         .map_err(|error| format!("Could not create the EULA file: {error}"))?;
-    let default_port = if matches!(input.core.as_str(), "Velocity" | "BungeeCord") {
+    let default_port = if kinds::is_proxy(&input.core) {
         25577
     } else {
         25565
@@ -5424,74 +5449,6 @@ fn create_instance(
     save_instances(&app, &instances)?;
     drop(_store);
     Ok(instance_view(instance, &state))
-}
-
-fn create_game_server(app: &AppHandle, state: &AppState, game: &'static games::Game, name: String, operation: &str) -> Result<InstanceView, String> {
-    let folder = free_folder(&managed_servers_root(app)?, &name);
-    fs::create_dir_all(&folder).map_err(|error| format!("Could not create the server folder: {error}"))?;
-    let folder = folder.canonicalize().map(plain_path).map_err(|error| format!("Could not verify the server folder: {error}"))?;
-    if !operation.is_empty() {
-        state.cancelled_downloads.lock().expect("download state poisoned").remove(operation);
-    }
-    let password = web::make_key()[..10].to_string();
-    let setup = games::Setup { name: &name, password: &password, port: game.port };
-    let cancelled = || !operation.is_empty() && state.cancelled_downloads.lock().expect("download state poisoned").contains(operation);
-    let progress = |received: u64, total: u64| games::report(app, game, received, total);
-    let installed = off_runtime(|| games::install(app, game, &folder, &setup, true, &progress, &cancelled));
-    if let Err(error) = installed {
-        let _ = fs::remove_dir_all(&folder);
-        return Err(error);
-    }
-    let instance = ServerInstance {
-        id: instance_id(),
-        name,
-        path: folder.to_string_lossy().to_string(),
-        core: game.id.to_string(),
-        version: "latest".into(),
-        launch_mode: "game".into(),
-        server_jar: Some(folder.join(game.exe).to_string_lossy().to_string()),
-        java_path: String::new(),
-        max_memory_mib: 4096,
-        min_memory_mib: 4096,
-        jvm_args: String::new(),
-        port: game.port,
-        sort_order: 0,
-        start_with_app: false,
-        crash_restart: false,
-        core_build: String::new(),
-        created_at: unix_now(),
-        last_run_at: 0,
-        custom_command: String::new(),
-        start_script: String::new(),
-        start_script_hash: String::new(),
-        remote_host: String::new(),
-        linked: false,
-        panel_host: String::new(),
-        panel_server: String::new(),
-        panel_daemon: String::new(),
-    };
-    let _store = lock_instance_store();
-    let mut instances = load_instances(app)?;
-    instances.push(instance.clone());
-    save_instances(app, &instances)?;
-    drop(_store);
-    Ok(instance_view(instance, state))
-}
-
-/// Downloads the latest files for a game server again (SteamCMD update or a fresh official download).
-#[tauri::command(async)]
-#[specta::specta]
-fn update_game_server(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
-    let instance = instance_by_id(&app, &id)?;
-    let game = games::find(&instance.core).ok_or("This isn't a game server.")?;
-    if is_running(&state, &id) {
-        return Err("Stop the server first.".into());
-    }
-    let setup = games::Setup { name: &instance.name, password: "", port: instance.port };
-    let progress = |received: u64, total: u64| games::report(&app, game, received, total);
-    off_runtime(|| games::install(&app, game, Path::new(&instance.path), &setup, false, &progress, &|| false))?;
-    record_audit(&app, &id, "Server", "Server files updated", game.id);
-    Ok(())
 }
 
 #[tauri::command(async)]
@@ -6135,7 +6092,7 @@ fn game_ready_line(app: &AppHandle, server_id: &str, line: &str) -> bool {
         return false;
     }
     let low = line.to_ascii_lowercase();
-    process.game.is_some_and(|game| game.ready.iter().any(|mark| low.contains(&mark.to_ascii_lowercase())))
+    process.game.as_ref().is_some_and(|game| game.ready.iter().any(|mark| low.contains(&mark.to_ascii_lowercase())))
 }
 
 #[cfg(test)]
@@ -6381,12 +6338,12 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
         command.args(CONSOLE_FLAGS);
         command.args(rest);
         command
-    } else if let Some(game) = games::find(&instance.core) {
+    } else if let Some(game) = game_server::game_for(&app, &instance) {
         let folder = Path::new(&instance.path);
-        let (program, front) = games::program(game, folder)?;
+        let (program, front) = games::program(&game, folder)?;
         let mut command = hidden_command(program);
-        command.current_dir(folder).args(front).args(games::launch_args(folder)?);
-        for (key, value) in game.env {
+        command.current_dir(folder).args(front).args(game_server::args_for(&game, folder)?);
+        for (key, value) in &game.env {
             command.env(key, value);
         }
         command
@@ -6449,7 +6406,7 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
             command.arg(argument);
         }
         command.arg("-jar").arg(&jar);
-        if !matches!(instance.core.as_str(), "Velocity" | "BungeeCord") {
+        if !kinds::is_proxy(&instance.core) {
             command.arg("nogui");
         }
         command
@@ -6522,10 +6479,10 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
                 stop_when_ready: false,
                 stop_from_log: false,
                 crash_seen: false,
-                game: games::find(&instance.core),
+                game: game_server::game_for(&app, &instance),
             },
         );
-    if let Some(game) = games::find(&instance.core) {
+    if let Some(game) = game_server::game_for(&app, &instance) {
         let handle = app.clone();
         let id = instance.id.clone();
         let wait = if game.ready.is_empty() { 5 } else { 90 };
@@ -15545,6 +15502,10 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             trash_instance,
             list_trash_instances,
             get_servers_root,
+            game_server::servers_root_free_bytes,
+            game_server::create_custom_server,
+            game_server::read_custom_program,
+            game_server::save_custom_program,
             list_java_runtimes,
             enrich_addons,
             list_java_processes,
@@ -15651,7 +15612,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             clean_disk,
             chunky_status,
             chunky_run,
-            update_game_server,
+            game_server::update_game_server,
             map_share_state,
             map_share_create,
             map_share_remove,

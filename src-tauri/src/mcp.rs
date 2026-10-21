@@ -513,10 +513,7 @@ fn where_of(one: &Value) -> String {
 }
 
 fn addon_kind(core: &str) -> &'static str {
-    match core {
-        "Paper" | "Purpur" | "Folia" | "Velocity" | "BungeeCord" => "plugin",
-        _ => "mod",
-    }
+    crate::kinds::addon_word(core)
 }
 
 fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Result<Value, String> {

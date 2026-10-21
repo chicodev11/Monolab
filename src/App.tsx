@@ -62,6 +62,7 @@ import type {
   CommandBook as GenCommandBook,
   LagDiagnosis,
   LagFinding,
+  CustomProgram,
 } from "./lib/bindings";
 import { lagLine, tpCommand, type LagAction } from "./lib/lag";
 const SPARK_MODRINTH_ID = "l6YH9Als";
@@ -81,6 +82,9 @@ import {
 import { Icon } from "./components/ui/Icon";
 import { CoreIcon, coreInfo } from "./components/ui/CoreIcon";
 import { Dropdown } from "./components/ui/Dropdown";
+import { GameFacts, GamePicker } from "./components/create/GamePicker";
+import { CustomCreate, CustomProgramCard } from "./components/create/CustomProgram";
+import { GameFilter } from "./components/servers/GameFilter";
 import { AskDialog, type AskRequest } from "./components/dialogs/AskDialog";
 import { Sparkline } from "./components/ui/Sparkline";
 import { RemoteImport } from "./components/panels/RemoteImport";
@@ -92,7 +96,7 @@ import { AgentPage } from "./components/panels/AgentPage";
 import { TasksPage } from "./components/panels/TasksPage";
 import { PanelStartupCard } from "./components/panels/PanelStartupCard";
 import { GameLaunchCard } from "./components/panels/GameLaunchCard";
-import { games, isGame } from "./lib/games";
+import { addonKind, coreLabel, customProgram, findGame, gameOf, has, isCustom, isGame, kindOf, minecraftCores } from "./lib/kinds";
 import { SshHosts } from "./components/panels/SshHosts";
 import { CommandPalette } from "./components/dialogs/CommandPalette";
 import { MarksPanel } from "./components/panels/MarksPanel";
@@ -126,12 +130,13 @@ import { UsageStrip } from "./components/console/UsageStrip";
 import { FileRows } from "./components/files/FileRows";
 import { TextureView } from "./components/files/TextureView";
 import { CodeEditor, languageOf, type Cursor } from "./components/files/CodeEditor";
-import { applyTheme, followSystem, readTheme, type Theme } from "./lib/theme";
+import { applyCompact, applyTheme, followSystem, readCompact, readTheme, type Theme } from "./lib/theme";
 import {
   bytes,
   used,
   date,
   fileSize,
+  roughSize,
   isImage,
   isProxy,
   realVersion,
@@ -386,20 +391,16 @@ type DownloadProgress = {
 type ArchiveProgress = { stage: string; done?: number; total?: number };
 type SshJob = { kind: string; name: string; stage: string; sent: number; total: number };
 
-const cores = [
-  "Vanilla",
-  "Paper",
-  "Purpur",
-  "Folia",
-  "Fabric",
-  "Forge",
-  "NeoForge",
-  "Velocity",
-  "Pumpkin",
-];
+const cores = minecraftCores;
 
-const isNative = (core: string) => core === "Pumpkin" || isGame(core);
-const gameHidden: Tool[] = ["properties", "worlds", "addons", "players"];
+const isNative = (core: string) => !has(core, "java");
+const toolAllowed = (core: string, tool: Tool) => {
+  if (tool === "properties") return has(core, "settings");
+  if (tool === "worlds") return has(core, "worlds");
+  if (tool === "players") return has(core, "players");
+  if (tool === "addons") return kindOf(core).addons !== null;
+  return true;
+};
 
 function isClientOnly(
   one: { compatibility: string },
@@ -486,12 +487,6 @@ function ruleMatches(key: string, query: string): boolean {
     .includes(want);
 }
 
-const addonKind = (core: string): "mod" | "plugin" | null => {
-  if (["Fabric", "Forge", "NeoForge"].includes(core)) return "mod";
-  if (["Paper", "Purpur", "Folia", "Velocity", "BungeeCord"].includes(core))
-    return "plugin";
-  return null;
-};
 
 const SLASH_TAIL = /[\\/][^\\/]*$/;
 
@@ -861,7 +856,10 @@ function App() {
   );
   const [modal, setModal] = useState<Modal>("none");
   const [createStep, setCreateStep] = useState<"core" | "version" | "modpack">("core");
+  const [createPage, setCreatePage] = useState<"game" | "core" | "finish">("game");
   const [createWhere, setCreateWhere] = useState("local");
+  const [createGame, setCreateGame] = useState("Minecraft");
+  const [createFree, setCreateFree] = useState<number | null>(null);
   const [packCreating, setPackCreating] = useState<string | null>(null);
   const [dropping, setDropping] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -1096,6 +1094,7 @@ function App() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [theme, setThemeState] = useState<Theme>(readTheme);
+  const [compact, setCompactState] = useState(readCompact);
   const [languageLabels, setLanguageLabels] = useState<Record<string, string>>({});
   useEffect(() => {
     void languageNames().then(setLanguageLabels);
@@ -1233,6 +1232,13 @@ function App() {
   );
   const javaChoices = selected?.remoteHost ? (remoteJavas ?? []) : javaList;
   const [place, setPlace] = useState("local");
+  const [gameFilter, setGameFilter] = useState(() => localStorage.getItem("monolab-game-filter") ?? "");
+  const gameCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const one of instances) counts.set(gameOf(one.core), (counts.get(gameOf(one.core)) ?? 0) + 1);
+    return counts;
+  }, [instances]);
+  const shownGame = gameFilter && gameCounts.has(gameFilter) ? gameFilter : "";
   const placeBar = useRef<HTMLDivElement | null>(null);
   const [placeMark, setPlaceMark] = useState({ left: 0, width: 0, ready: false });
   useEffect(() => {
@@ -1247,13 +1253,14 @@ function App() {
       instances.filter(
         (item) =>
           item.name.toLowerCase().includes(filter.toLowerCase()) &&
+          (!shownGame || gameOf(item.core) === shownGame) &&
           (place === "local"
             ? !item.remoteHost && !item.panelHost
             : place.startsWith("panel:")
               ? item.panelHost === place.slice(6)
               : item.remoteHost === place),
       ),
-    [instances, filter, place],
+    [instances, filter, place, shownGame],
   );
   const remotePlaces = useMemo(
     () => [
@@ -1407,18 +1414,8 @@ function App() {
       }
     }
   }, [instances]);
-  const ERROR_LIFE = 16_000;
   useEffect(() => {
-    if (!error) {
-      return;
-    }
-    setErrorLeaving(false);
-    const fade = window.setTimeout(() => setErrorLeaving(true), ERROR_LIFE - 220);
-    const gone = window.setTimeout(() => setError(null), ERROR_LIFE);
-    return () => {
-      window.clearTimeout(fade);
-      window.clearTimeout(gone);
-    };
+    if (error) setErrorLeaving(false);
   }, [error]);
   function dismissError() {
     setErrorLeaving(true);
@@ -1486,7 +1483,7 @@ function App() {
       running.map(async (instance) => {
         const [resource, ping] = await Promise.allSettled([
           commands.getResourceSnapshot(instance.id),
-          withPing ? commands.getServerPing(instance.id) : Promise.reject(new Error("skip")),
+          withPing && has(instance.core, "ping") ? commands.getServerPing(instance.id) : Promise.reject(new Error("skip")),
         ]);
         return { instance, resource, ping };
       }),
@@ -1604,6 +1601,10 @@ function App() {
     themeRef.current = next;
     setThemeState(next);
     applyTheme(next);
+  }
+  function setCompact(next: boolean) {
+    setCompactState(next);
+    applyCompact(next);
   }
   const playitPeriod = period(4_000, attention);
   useEffect(() => {
@@ -1745,18 +1746,34 @@ function App() {
   async function openCreate() {
     resetForm();
     setCreateStep("core");
+    setCreatePage("game");
     setCreateWhere("local");
+    setCreateGame("Minecraft");
+    setCreateFree(null);
     setModal("create");
+    if (!onWeb) void commands.serversRootFreeBytes().then(setCreateFree).catch(() => setCreateFree(null));
     try {
       setSuggestedName(await commands.suggestServerName());
     } catch {
       setSuggestedName(tr("New server"));
     }
   }
+  function pickGame(game: string) {
+    setCreateGame(game);
+    if (game === "Minecraft") {
+      if (isGame(form.core)) setForm({ ...form, core: "", version: "", coreBuild: "" });
+      setCreatePage("core");
+      return;
+    }
+    setCreatePage("finish");
+    setCreateWhere("local");
+    void chooseCore(game);
+  }
   async function chooseCore(core: string) {
-    setForm({ ...form, core, version: isProxy(core) || isGame(core) ? "latest" : "", coreBuild: "" });
+    const versionless = !has(core, "versions");
+    setForm({ ...form, core, version: versionless ? "latest" : "", coreBuild: "" });
     setCoreBuilds([]);
-    if (isProxy(core) || isGame(core)) return;
+    if (versionless) return;
     setVersionsBusy(true);
     try {
       const list = await commands.listCoreVersions(core);
@@ -2417,7 +2434,7 @@ function App() {
   }
   async function loadTool(next: Tool, instance = selected, keepBrowse = false) {
     if (!instance) return;
-    if (isGame(instance.core) && gameHidden.includes(next)) next = "overview";
+    if (!toolAllowed(instance.core, next)) next = "overview";
     if (!keepBrowse) {
       setBrowseOpen(false);
       setProjectView(null);
@@ -2670,6 +2687,15 @@ function App() {
     }
     celebrateCreatedServer(before);
     resetForm();
+  }
+  async function createCustom(folder: string, port: number, program: CustomProgram) {
+    const before = new Set(instancesRef.current.map((instance) => instance.id));
+    const ok = await call(() => commands.createCustomServer(folder, "", port, program), tr("Server added."));
+    if (!ok) return false;
+    setModal("none");
+    celebrateCreatedServer(before);
+    resetForm();
+    return true;
   }
   async function createFromModpack(hit: CatalogHit) {
     const before = new Set(instancesRef.current.map((instance) => instance.id));
@@ -6153,9 +6179,14 @@ function App() {
           <div className="setting-card core-card">
             <span className="setting-title">{tr("Core")}</span>
             <strong className="strip-core core-value">
-              {isGame(selected.core) ? selected.core : `${selected.core} ${selected.version}${selected.coreBuild ? ` · ${selected.coreBuild}` : ""}`}
+              {`${coreLabel(selected.core, selected.version)}${selected.coreBuild ? ` · ${selected.coreBuild}` : ""}`}
             </strong>
-            {isGame(selected.core) ? (
+            {isCustom(selected.core) ? (
+            <p className="memory-note core-note">
+              <Icon name="terminal" />
+              {tr("Custom program · runs on this PC only")}
+            </p>
+            ) : isGame(selected.core) ? (
             <>
             <span className="title-actions">
               <button
@@ -6206,7 +6237,15 @@ function App() {
             className="overview-lock"
             disabled={selected.status !== "stopped"}
           >
-          {isGame(selected.core) ? (
+          {isCustom(selected.core) ? (
+            <CustomProgramCard
+              id={selected.id}
+              folder={selected.path}
+              port={selected.port}
+              onError={(message) => setError(message)}
+              onNotice={(message) => setNotice(message)}
+            />
+          ) : isGame(selected.core) ? (
             <GameLaunchCard
               id={selected.id}
               onError={(message) => setError(message)}
@@ -6545,7 +6584,7 @@ function App() {
               </div>
             )}
           </div>
-          {!selected.remoteHost && !selected.panelHost && (
+          {!selected.remoteHost && !selected.panelHost && kindOf(selected.core).family === "minecraft" && (
           <div className="setting-card">
             {(() => {
               const tunnel = playit?.tunnels.find((one) => one.localPort === selected.port);
@@ -7328,7 +7367,7 @@ function App() {
                 setMarkForm((was) => ({ ...was, dimension: mapRealm }));
                 setMarksOpen(true);
               }}
-              onPregen={selected.core !== "Pumpkin" && selected.core !== "Vanilla" ? () => { setPregenArea(null); setPregenOpen(true); } : null}
+              onPregen={has(selected.core, "pregen") ? () => { setPregenArea(null); setPregenOpen(true); } : null}
               onTrim={!selected.panelHost && worlds.length > 0 ? () => setTrimOpen(true) : null}
               onShare={!onWeb && addon?.installed && worlds.length > 0 ? () => setShareOpen(true) : null}
             />
@@ -7376,7 +7415,7 @@ function App() {
                   stats={selected.panelHost ? null : fetchChunkStats}
                   onDeleteArea={!selected.panelHost && ["overworld", "nether", "end"].includes(mapRealm) ? (area) => void deleteAreaChunks(area) : null}
                   onPregenArea={
-                    selected.core !== "Pumpkin" && selected.core !== "Vanilla" && ["overworld", "nether", "end"].includes(mapRealm)
+                    has(selected.core, "pregen") && ["overworld", "nether", "end"].includes(mapRealm)
                       ? (area) => {
                           setPregenArea({
                             x: Math.round((area.minX + area.maxX + 1) / 2),
@@ -9299,7 +9338,7 @@ function App() {
               <span className="rail-server-body">
                 <strong>{selected.name}</strong>
                 <small>
-                  {`${selected.core} ${selected.version}${selected.coreBuild ? ` · ${selected.coreBuild}` : ""}`}
+                  {`${coreLabel(selected.core, selected.version)}${selected.coreBuild ? ` · ${selected.coreBuild}` : ""}`}
                 </small>
                 {selected.remoteHost && (
                   <small className="rail-host">
@@ -9325,13 +9364,7 @@ function App() {
                 aria-hidden
               />
               {(selected.panelHost ? panelNav : instanceNav).map((item) => {
-                if (isGame(selected.core) && gameHidden.includes(item.id)) return null;
-                if (
-                  item.id === "addons" &&
-                  !addonKind(selected.core) &&
-                  !isNative(selected.core)
-                )
-                  return null;
+                if (!toolAllowed(selected.core, item.id)) return null;
                 if (item.id === "claude" && onWeb) return null;
 
                 const live =
@@ -9566,7 +9599,7 @@ function App() {
         {selected && page === "instance" ? (
           <>
             <header className="topbar instance-topbar">
-              <div className="instance-logo" data-tip={`${selected.core} ${selected.version}`}>
+              <div className="instance-logo" data-tip={coreLabel(selected.core, selected.version)}>
                 {serverIcons[selected.id] ? (
                   <img className="server-icon card" src={serverIcons[selected.id]} alt="" />
                 ) : (
@@ -9578,9 +9611,9 @@ function App() {
                 <p>
                   <span className="chip" data-core={selected.core}>
                     <CoreIcon core={selected.core} />
-                    {selected.core}
+                    {isCustom(selected.core) ? tr(customProgram.id) : selected.core}
                   </span>
-                  <span className="chip subtle">{selected.version}</span>
+                  {kindOf(selected.core).family === "minecraft" && selected.version && <span className="chip subtle">{selected.version}</span>}
                   <span className="chip subtle">:{selected.port}</span>
                   {hostChip(selected)}
                   <span className={`status-badge ${statusInfo(shownStatus(selected)).tone}`}>
@@ -9751,6 +9784,15 @@ function App() {
                   ))}
                 </div>
               )}
+              <GameFilter
+                value={shownGame}
+                counts={gameCounts}
+                total={instances.length}
+                onChange={(next) => {
+                  setGameFilter(next);
+                  localStorage.setItem("monolab-game-filter", next);
+                }}
+              />
               {!onWeb && (
                 <div className="place-actions">
                   <button
@@ -9817,7 +9859,7 @@ function App() {
               const liveOnes = list.filter((one) => one.status === "running" || one.status === "stopping");
               const online = liveOnes.reduce((sum, one) => sum + (pings[one.id]?.online ?? 0), 0);
               const ram = liveOnes.reduce((sum, one) => sum + (resources[one.id]?.memoryMib ?? 0), 0);
-              const ramCap = liveOnes.reduce((sum, one) => sum + one.maxMemoryMib, 0);
+              const ramCap = liveOnes.reduce((sum, one) => sum + (has(one.core, "java") ? one.maxMemoryMib : 0), 0);
               return (
                 <div className="monitor-grid list-summary">
                   <div>
@@ -9860,7 +9902,7 @@ function App() {
                   }}
                   onPointerDown={(event) => grabInstance(event, item.id)}
                 >
-                  <div className="sc-logo" data-tip={`${item.core} ${item.version}`}>
+                  <div className="sc-logo" data-tip={coreLabel(item.core, item.version)}>
                     {serverIcons[item.id] ? (
                       <img className="server-icon card" src={serverIcons[item.id]} alt="" />
                     ) : (
@@ -9877,7 +9919,7 @@ function App() {
                     </p>
                     <p className="sc-meta">
                       <span className="sc-meta-text">
-                        {item.core} {item.version} · :{item.port}
+                        {coreLabel(item.core, item.version)} · :{item.port}
                       </span>
                       {hostChip(item)}
                     </p>
@@ -9886,8 +9928,9 @@ function App() {
                         CPU <b>{live && res ? orDash(res.cpuPercent ?? 0, (v) => `${Math.round(v)}%`) : "—"}</b>
                       </span>
                       <span>
-                        RAM <b>{live && res ? used(res.memoryMib) : "—"}</b> / {bytes(item.maxMemoryMib)}
+                        RAM <b>{live && res ? used(res.memoryMib) : "—"}</b>{has(item.core, "java") && <> / {bytes(item.maxMemoryMib)}</>}
                       </span>
+                      {has(item.core, "ping") && (
                       <span>
                         {tr("Players")}{" "}
                         <b>
@@ -9898,6 +9941,7 @@ function App() {
                             : "—"}
                         </b>
                       </span>
+                      )}
                     </p>
                   </div>
                   <div className="sc-side">
@@ -9971,7 +10015,7 @@ function App() {
               </div>
             )}
             </>
-          ) : filter ? (
+          ) : filter || shownGame ? (
             <div className="empty-state">
               <div className="empty-symbol">
                 <Icon name="search" />
@@ -9981,7 +10025,11 @@ function App() {
               <div className="empty-actions">
                 <button
                   className="button secondary"
-                  onClick={() => setFilter("")}
+                  onClick={() => {
+                    setFilter("");
+                    setGameFilter("");
+                    localStorage.setItem("monolab-game-filter", "");
+                  }}
                 >
                   {t("empty.clearSearch")}
                 </button>
@@ -10404,7 +10452,6 @@ function App() {
                 <div className="panel-head">
                   <div>
                     <h2>Hydrodactyl</h2>
-                    <p className="modal-copy">{tr("Manage the panel's servers, users and nodes here.")}</p>
                   </div>
                   <Button
                     variant="ghost"
@@ -10485,7 +10532,7 @@ function App() {
                         <span className="trash-item-body">
                           <strong>{entry.name}</strong>
                           <small>
-                            {entry.instance ? `${entry.instance.core} ${entry.instance.version} · ` : ""}
+                            {entry.instance ? `${coreLabel(entry.instance.core, entry.instance.version)} · ` : ""}
                             {tr("Delete {0}", [relativeTime(entry.deletedAt)])}
                           </small>
                         </span>
@@ -10520,8 +10567,6 @@ function App() {
             {modal === "settings" && (
               <>
                 <h2>{tr("Settings")}</h2>
-                <p className="modal-copy">
-                  {tr("Changes here are saved immediately.")}</p>
                 <div className="settings-list">
                   <section className="settings-group">
                     <h3 className="settings-group-title"><Icon name="sparkles" />{tr("Display")}</h3>
@@ -10529,7 +10574,6 @@ function App() {
                   <div className="setting-row">
                     <div>
                       <strong>{tr("Language")}</strong>
-                      <small>{tr("Changing it reloads the app.")}</small>
                     </div>
                     <div className="setting-input theme-pick">
                       <Dropdown
@@ -10545,7 +10589,6 @@ function App() {
                   <div className="setting-row">
                     <div>
                       <strong>{tr("Theme")}</strong>
-                      <small>{tr("Light uses a white background; OLED black uses pure black. System follows your Windows settings.")}</small>
                     </div>
                     <div className="setting-input theme-pick">
                       <Dropdown
@@ -10562,9 +10605,21 @@ function App() {
                   </div>
                   <div className="setting-row">
                     <div>
+                      <strong>{tr("Compact lists")}</strong>
+                    </div>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        aria-label={tr("Compact lists")}
+                        checked={compact}
+                        onChange={(event) => setCompact(event.target.checked)}
+                      />
+                      <span />
+                    </label>
+                  </div>
+                  <div className="setting-row">
+                    <div>
                       <strong>{tr("Console history size (lines)")}</strong>
-                      <small>
-                        {tr("Keeping more lets you scroll further back but uses more memory.")}</small>
                     </div>
                     <div className="setting-input">
                       <input
@@ -10610,8 +10665,6 @@ function App() {
                   <div className="setting-row">
                     <div>
                       <strong>{tr("Default memory for new servers")}</strong>
-                      <small>
-                        {tr("The default value for new servers.")}</small>
                     </div>
                     <div className="setting-input">
                       <input
@@ -10882,7 +10935,7 @@ function App() {
               <>
                 <h2>{tr("Modpack")}</h2>
                 <p className="modal-copy">
-                  {tr("Extract a modpack into this server, or bundle installed mods into one file.")}{" "}<b>Modrinth(.mrpack)</b>{tr(": downloads mods too,")}<b> CurseForge(.zip)</b>{tr(": extracts settings only.")}</p>
+                  <b>Modrinth(.mrpack)</b>{tr(": downloads mods too,")}<b> CurseForge(.zip)</b>{tr(": extracts settings only.")}</p>
                 <div className="mrpack-page">
             <section className="mrpack-panel">
               <div>
@@ -11159,130 +11212,194 @@ function App() {
                 <p className="consent-note">{tr("Pick a pack to create the server right away. Creating it means you accept the Minecraft EULA.")}</p>
               </div>
             )}
-            {modal === "create" && createStep !== "modpack" && (
-              <div className="create-flow">
+            {modal === "create" && createStep !== "modpack" && (() => {
+              const isMinecraft = createGame === "Minecraft";
+              const isCustom = createGame === customProgram.id;
+              const pages: { id: "game" | "core" | "finish"; label: string }[] = [
+                { id: "game", label: tr("Game") },
+                ...(isMinecraft ? [{ id: "core" as const, label: tr("Core") }] : []),
+                { id: "finish", label: isCustom ? tr(customProgram.id) : isMinecraft ? tr("Version") : tr("Confirm") },
+              ];
+              const at = Math.max(0, pages.findIndex((one) => one.id === createPage));
+              const back = () => setCreatePage(pages[Math.max(0, at - 1)].id);
+              const where = createWhere === "local" ? tr("Local") : sshHostViews.find((one) => one.id === createWhere)?.name ?? createWhere;
+              const ready = !!form.core && !versionsBusy && (isProxy(form.core) || !!form.version);
+              const game = !isMinecraft && !isCustom ? findGame(createGame) : undefined;
+              return (
+              <div className="create-flow create-wizard">
                 <div className="create-flow-head">
                   <h2>{tr("New server")}</h2>
                 </div>
-                {!onWeb && sshHostViews.length > 0 && (
-                  <div className="create-field">
-                    <span>{tr("Create on")}</span>
-                    <SegmentedControl
-                      value={createWhere}
-                      onChange={(next) => {
-                        setCreateWhere(next);
-                        if (next !== "local" && isGame(form.core)) setForm({ ...form, core: "", version: "" });
-                      }}
-                      options={[{ value: "local", label: tr("Local") }, ...sshHostViews.map((one) => ({ value: one.id, label: one.name }))]}
-                    />
-                  </div>
-                )}
-                <div className="create-field">
-                  <span>{tr("Core")}</span>
-                  <div className="core-chips">
-                    {cores
-                      .map((core) => (
-                        <button
-                          type="button"
-                          key={core}
-                          className={`core-chip ${form.core === core ? "on" : ""}`}
-                          data-tip={coreInfo[core]?.blurb}
-                          onClick={() => void chooseCore(core)}
-                        >
-                          <CoreIcon core={core} />
-                          {core}
-                        </button>
-                      ))}
-                    {createWhere === "local" && (
-                      <button type="button" className="core-chip core-chip-custom" data-tip={tr("Use a server jar you already have")} onClick={() => void createFromJar()}>
-                        <Icon name="folder" />
-                        {tr("Choose a file")}
+                <ol className="wizard-steps">
+                  {pages.map((one, index) => (
+                    <li key={one.id} className={index === at ? "now" : index < at ? "done" : ""}>
+                      <button type="button" disabled={index >= at} onClick={() => setCreatePage(one.id)}>
+                        <b>{index < at ? <Icon name="check" /> : index + 1}</b>
+                        {one.label}
                       </button>
-                    )}
-                  </div>
-                </div>
-                {createWhere === "local" && (
-                  <div className="create-field">
-                    <span>{tr("Games")}</span>
-                    <div className="core-chips">
-                      {games.map((game) => (
+                    </li>
+                  ))}
+                </ol>
+                <div className="wizard-body" key={createPage}>
+                  {createPage === "game" && (
+                    <GamePicker value={createGame} onPick={pickGame} gamesLocked={onWeb} />
+                  )}
+                  {createPage === "core" && (
+                    <>
+                      {!onWeb && sshHostViews.length > 0 && (
+                        <div className="wizard-where">
+                          <span>{tr("Create on")}</span>
+                          <SegmentedControl
+                            value={createWhere}
+                            onChange={setCreateWhere}
+                            options={[{ value: "local", label: tr("Local") }, ...sshHostViews.map((one) => ({ value: one.id, label: one.name }))]}
+                          />
+                        </div>
+                      )}
+                      <div className="core-rows">
+                        {cores.map((core) => (
+                          <button
+                            type="button"
+                            key={core}
+                            className={`core-row ${form.core === core ? "on" : ""}`}
+                            aria-pressed={form.core === core}
+                            onClick={() => {
+                              void chooseCore(core);
+                              setCreatePage("finish");
+                            }}
+                          >
+                            <span className="core-row-mark"><CoreIcon core={core} /></span>
+                            <strong className="core-row-name">{core}</strong>
+                            {coreInfo[core]?.kind && <em>{coreInfo[core].kind}</em>}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="core-more">
+                        {createWhere === "local" && (
+                          <button type="button" className="button ghost small" onClick={() => void createFromJar()}>
+                            <Icon name="folder" />
+                            {tr("Choose a file")}
+                          </button>
+                        )}
                         <button
                           type="button"
-                          key={game}
-                          className={`core-chip ${form.core === game ? "on" : ""}`}
-                          onClick={() => void chooseCore(game)}
+                          className="button ghost small"
+                          onClick={() => {
+                            setCreateStep("modpack");
+                            if (!packHits.length) void searchPacks("");
+                          }}
                         >
-                          <Icon name="gamepad" />
-                          {game}
+                          <Icon name="package" />
+                          {tr("From a modpack")}
                         </button>
-                      ))}
+                      </div>
+                    </>
+                  )}
+                  {createPage === "finish" && isCustom && <CustomCreate onCreate={createCustom} />}
+                  {createPage === "finish" && !isCustom && (
+                    <div className="wizard-finish">
+                      <div className="wizard-pick">
+                        <span className="wizard-pick-mark"><CoreIcon core={form.core || createGame} /></span>
+                        <span>
+                          <strong>{form.core || createGame}</strong>
+                          {isMinecraft && <small>{`Minecraft · ${where}`}</small>}
+                        </span>
+                        <button type="button" className="button ghost small" onClick={back}>
+                          {tr("Change")}
+                        </button>
+                      </div>
+                      {form.core && has(form.core, "versions") && (
+                        <div className="create-two">
+                          <label className="create-field">
+                            <span>{form.core === "Pumpkin" ? tr("Release") : tr("Minecraft version")}</span>
+                            <Dropdown
+                              value={form.version}
+                              disabled={versionsBusy}
+                              placeholder={versionsBusy ? tr("Loading…") : tr("Choose")}
+                              search={tr("Search versions")}
+                              options={versions.map((version, index) => ({ value: version, label: version, hint: index === 0 ? tr("Latest") : undefined }))}
+                              onChange={(version) => {
+                                if (version === form.version) return;
+                                setForm({ ...form, version, coreBuild: "" });
+                                void loadCoreBuilds(form.core, version);
+                              }}
+                            />
+                          </label>
+                          {(buildsBusy || coreBuilds.length > 0) && (
+                            <label className="create-field">
+                              <span>{form.core === "Fabric" ? tr("Loader version") : tr("Core build")}</span>
+                              <Dropdown
+                                value={form.coreBuild}
+                                disabled={buildsBusy}
+                                placeholder={buildsBusy ? tr("Loading…") : tr("Choose")}
+                                search={coreBuilds.length > 12 ? tr("Search builds") : undefined}
+                                options={coreBuilds.map((build) => ({ value: build.id, label: build.label, hint: build.channel || undefined }))}
+                                onChange={(coreBuild) => setForm({ ...form, coreBuild })}
+                              />
+                            </label>
+                          )}
+                        </div>
+                      )}
+                      {isMinecraft && form.core && (kindOf(form.core).sizeBytes > 0 || (createWhere === "local" && createFree !== null)) && (
+                        <div className="game-facts">
+                          {kindOf(form.core).sizeBytes > 0 && (
+                            <div>
+                              <span>{tr("Install size")}</span>
+                              <strong>{tr("About {0}", [roughSize(kindOf(form.core).sizeBytes)])}</strong>
+                            </div>
+                          )}
+                          {createWhere === "local" && createFree !== null && (
+                            <div className={createFree < kindOf(form.core).sizeBytes * 1.2 ? "warn" : ""}>
+                              <span>{tr("Free space")}</span>
+                              <strong>{fileSize(createFree)}</strong>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {game && <GameFacts game={game} freeBytes={createFree} />}
+                      {form.core === "Pumpkin" && (
+                        <p className="create-warn">
+                          <Icon name="alert" />
+                          <span>{tr("This server is still in development. Don't use it with a world you care about.")}</span>
+                        </p>
+                      )}
                     </div>
-                  </div>
-                )}
-                {form.core && !isProxy(form.core) && !isGame(form.core) && (
-                  <div className="create-two">
-                    <label className="create-field">
-                      <span>{form.core === "Pumpkin" ? tr("Release") : tr("Minecraft version")}</span>
-                      <Dropdown
-                        value={form.version}
-                        disabled={versionsBusy}
-                        placeholder={versionsBusy ? tr("Loading…") : tr("Choose")}
-                        search={tr("Search versions")}
-                        options={versions.map((version, at) => ({ value: version, label: version, hint: at === 0 ? tr("Latest") : undefined }))}
-                        onChange={(version) => {
-                          if (version === form.version) return;
-                          setForm({ ...form, version, coreBuild: "" });
-                          void loadCoreBuilds(form.core, version);
-                        }}
-                      />
-                    </label>
-                    {(buildsBusy || coreBuilds.length > 0) && (
-                      <label className="create-field">
-                        <span>{form.core === "Fabric" ? tr("Loader version") : tr("Core build")}</span>
-                        <Dropdown
-                          value={form.coreBuild}
-                          disabled={buildsBusy}
-                          placeholder={buildsBusy ? tr("Loading…") : tr("Choose")}
-                          search={coreBuilds.length > 12 ? tr("Search builds") : undefined}
-                          options={coreBuilds.map((build) => ({ value: build.id, label: build.label, hint: build.channel || undefined }))}
-                          onChange={(coreBuild) => setForm({ ...form, coreBuild })}
-                        />
-                      </label>
-                    )}
-                  </div>
-                )}
-                {form.core === "Pumpkin" && (
-                  <p className="create-warn">
-                    <Icon name="alert" />
-                    <span>{tr("This server is still in development. Don't use it with a world you care about.")}</span>
-                  </p>
-                )}
-                <div className="create-actions">
-                  <span className="create-more">
-                    <button
-                      type="button"
-                      className="button secondary small"
-                      onClick={() => {
-                        setCreateStep("modpack");
-                        if (!packHits.length) void searchPacks("");
-                      }}
-                    >
-                      <Icon name="package" />
-                      {tr("From a modpack")}
+                  )}
+                </div>
+                <div className="wizard-foot">
+                  {at > 0 ? (
+                    <button type="button" className="button ghost wizard-back" onClick={back}>
+                      <Icon name="arrow" />
+                      {tr("Back")}
                     </button>
-                  </span>
-                  <span className="consent-note">{isGame(form.core) ? tr("Creating a server means you accept the game's server terms. Large games can take a while to download.") : isProxy(form.core) ? tr("Creating a server means you accept its terms.") : tr("Creating a server means you accept the Minecraft EULA.")}</span>
-                  <button
-                    className="button primary"
-                    disabled={creating || !form.core || versionsBusy || (!isProxy(form.core) && !form.version)}
-                    onClick={() => void create()}
-                  >
-                    <Icon name="plus" />
-                    {tr("Create")}
-                  </button>
+                  ) : (
+                    <span />
+                  )}
+                  {createPage === "finish" && !isCustom && (
+                    <div className="wizard-go">
+                      <span className="consent-note">{isGame(form.core) ? tr("Creating a server means you accept the game's server terms. Large games can take a while to download.") : isProxy(form.core) ? tr("Creating a server means you accept its terms.") : tr("Creating a server means you accept the Minecraft EULA.")}</span>
+                      <button className="button primary" disabled={creating || !ready} onClick={() => void create()}>
+                        <Icon name="plus" />
+                        {tr("Create")}
+                      </button>
+                    </div>
+                  )}
+                  {createPage === "game" && (
+                    <button type="button" className="button secondary" onClick={() => pickGame(createGame)}>
+                      {tr("Next")}
+                      <Icon name="arrow" />
+                    </button>
+                  )}
+                  {createPage === "core" && form.core && (
+                    <button type="button" className="button secondary" onClick={() => setCreatePage("finish")}>
+                      {tr("Next")}
+                      <Icon name="arrow" />
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
+              );
+            })()}
           </section>
         </div>
       )}
@@ -11790,14 +11907,13 @@ function App() {
           </button>
         )}
         {error && (
-          <button
-            className={`toast error ${errorLeaving ? "leaving" : ""}`}
-            role="alert"
-            onClick={() => dismissError()}
-          >
+          <div className={`toast error ${errorLeaving ? "leaving" : ""}`} role="alert">
             <Icon name="alert" />
             <span>{trBack(error)}</span>
-          </button>
+            <button className="toast-close" aria-label={tr("Close")} data-tip={tr("Close")} onClick={() => dismissError()}>
+              <Icon name="close" />
+            </button>
+          </div>
         )}
       </div>
     </main>

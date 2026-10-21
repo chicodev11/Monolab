@@ -9,7 +9,7 @@
     "card.stop": "Stop",
     "card.trash": "Move to trash",
     "count.items": "{0}",
-    "empty.body": "Choose a core and version, and the app downloads the official build to create your server. Already have one? Import a folder or zip file.",
+    "empty.body": "Pick Minecraft or another game, and the app downloads the official server files to create your server. Already have one? Import a folder or zip file.",
     "empty.clearSearch": "Clear search",
     "empty.noMatch": "No matching servers.",
     "empty.title": "Create your first server",

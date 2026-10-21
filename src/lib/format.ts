@@ -48,6 +48,14 @@ export function fileSize(bytes?: number | null): string {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
+/** A rounded size for estimates: 110 MB, 2.1 GB, 14 GB. */
+export function roughSize(bytes: number): string {
+  const mb = bytes / 1024 / 1024;
+  if (mb < 1024) return `${Math.max(10, Math.round(mb / 10) * 10)} MB`;
+  const gb = mb / 1024;
+  return gb < 10 ? `${gb.toFixed(1)} GB` : `${Math.round(gb)} GB`;
+}
+
 export function relativeTime(atSeconds: number, nowMs: number = Date.now()): string {
   const gap = Math.round(nowMs / 1000 - atSeconds);
   const ahead = gap < 0;
@@ -79,7 +87,7 @@ export function relativeTime(atSeconds: number, nowMs: number = Date.now()): str
   };
   return (ahead ? later : ago)[unit];
 }
-export const isProxy = (core: string) => core === "Velocity" || core === "BungeeCord";
+export { isProxy } from "./kinds";
 export const bytes = (mib?: number | null) =>
   typeof mib === "number" && Number.isFinite(mib)
     ? `${(mib / 1024).toFixed(mib % 1024 ? 1 : 0)} GB`

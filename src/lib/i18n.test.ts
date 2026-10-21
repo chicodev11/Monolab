@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test } from "vitest";
 import { ko } from "../test/lang";
 import { rustKo } from "../test/lang";
-import { format, language, setLanguage, t, tr, trBack } from "./i18n";
+import { format, language, particles, setLanguage, t, tr, trBack } from "./i18n";
 
 test("follows the system language and falls back to English", () => {
   localStorage.removeItem("monolab-language");
@@ -28,7 +28,8 @@ describe("after switching to Korean", () => {
     await setLanguage("ko");
     expect(language()).toBe("ko");
     expect(tr("Server imported.")).toBe(ko["Server imported."]);
-    expect(tr("Deleted {0}.", ["x"])).toBe(ko["Deleted {0}."].replace("{0}", "x"));
+    expect(tr("Deleted {0}.", ["x"])).toBe(particles(ko["Deleted {0}."].replace("{0}", "x")));
+    expect(tr("Deleted {0}.", ["서버 1"])).toBe("서버 1을 삭제했어요.");
     expect(tr("no such text")).toBe("no such text");
     expect(trBack("Server not found.")).toBe(rustKo["Server not found."]);
     expect(trBack("playit error: NotAllowed")).toBe(rustKo["playit error: {}"].replace("$1", "NotAllowed"));
@@ -67,5 +68,26 @@ describe("format handles the ICU plural subset", () => {
     expect(tr(chunk, [1])).toBe("1 entity in one chunk");
     expect(tr(chunk, ["1,900"])).toBe("1,900 entities in one chunk");
     expect(t("top.subtitle", { total: 1, running: 0 })).toBe("1 server · 0 running");
+  });
+});
+
+describe("particles", () => {
+  test("picks the particle that fits the word before it", () => {
+    expect(particles("서버 1을(를) 삭제했어요.")).toBe("서버 1을 삭제했어요.");
+    expect(particles("서버 2을(를) 삭제했어요.")).toBe("서버 2를 삭제했어요.");
+    expect(particles("월드이(가) 켜졌어요!")).toBe("월드가 켜졌어요!");
+    expect(particles("Valheim을(를) 켰어요.")).toBe("Valheim을 켰어요.");
+    expect(particles("Paper이(가) 켜졌어요!")).toBe("Paper가 켜졌어요!");
+    expect(particles("ARK을(를) 삭제했어요.")).toBe("ARK를 삭제했어요.");
+    expect(particles("빌드 26.2(으)로 변경할까요?")).toBe("빌드 26.2로 변경할까요?");
+    expect(particles("서울(으)로 이동")).toBe("서울로 이동");
+    expect(particles("집(으)로 이동")).toBe("집으로 이동");
+    expect(particles("‘서버 3’을(를) 삭제할까요?")).toBe("‘서버 3’을 삭제할까요?");
+  });
+
+  test("leaves what it can't tell alone", () => {
+    expect(particles("은(는) 이대로 두면 서버가 켜지지 않아요.")).toBe("은(는) 이대로 두면 서버가 켜지지 않아요.");
+    expect(particles("파일 #을(를) 열어요")).toBe("파일 #을(를) 열어요");
+    expect(particles("변경 없음")).toBe("변경 없음");
   });
 });

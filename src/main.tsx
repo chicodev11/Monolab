@@ -1,10 +1,11 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
-import { applyTheme, readTheme } from "./lib/theme";
+import { applyCompact, applyTheme, readCompact, readTheme } from "./lib/theme";
 import { loadLanguage } from "./lib/i18n";
 
 applyTheme(readTheme());
+applyCompact(readCompact());
 
 const sink = import.meta.env.DEV && window.location.hash === "#/dev/kitchen-sink";
 

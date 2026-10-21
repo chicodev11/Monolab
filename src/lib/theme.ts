@@ -31,3 +31,21 @@ export function followSystem(get: () => Theme) {
   system.addEventListener("change", onChange);
   return () => system.removeEventListener("change", onChange);
 }
+
+const DENSITY_KEY = "monolab-density";
+
+export function readCompact(): boolean {
+  try {
+    return localStorage.getItem(DENSITY_KEY) === "compact";
+  } catch {
+    return false;
+  }
+}
+
+export function applyCompact(compact: boolean) {
+  if (compact) document.documentElement.dataset.density = "compact";
+  else delete document.documentElement.dataset.density;
+  try {
+    localStorage.setItem(DENSITY_KEY, compact ? "compact" : "comfortable");
+  } catch {}
+}

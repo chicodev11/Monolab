@@ -259,7 +259,6 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
             { value: "codex", label: "Codex" },
           ]}
         />
-        <span className="claude-bar-note muted">{tr("An agent for this server only. Both share the notes in AGENTS.md.")}</span>
         {installed && who && (
           <span className="claude-bar-who" data-tip={tr("Signed in as {0}", [who])}>
             <Icon name="user" />

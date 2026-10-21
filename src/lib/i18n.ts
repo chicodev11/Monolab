@@ -146,7 +146,62 @@ export function setLanguage(next: Language): Promise<void> {
 
 export function tr(ko: string, args?: unknown[]): string {
   const text = words?.[ko] ?? ko;
-  return args ? format(text, Object.fromEntries(args.map((value, index) => [String(index), value])), current) : text;
+  return args ? particles(format(text, Object.fromEntries(args.map((value, index) => [String(index), value])), current)) : text;
+}
+
+const PAIRED = /(을\(를\)|를\(을\)|이\(가\)|가\(이\)|은\(는\)|는\(은\)|과\(와\)|와\(과\)|\(으\)로|\(이\))/g;
+const CLOSERS = new Set(["'", '"', "’", "”", ")", "]", "》", "」", "』", "`"]);
+
+/** Whether a word ends in a final consonant, and whether that is ㄹ. Null when it can't be told (symbols). */
+function finalSound(word: string): { coda: boolean; rieul: boolean } | null {
+  const ch = word.at(-1);
+  if (!ch) return null;
+  const code = ch.charCodeAt(0);
+  if (code >= 0xac00 && code <= 0xd7a3) {
+    const jong = (code - 0xac00) % 28;
+    return { coda: jong !== 0, rieul: jong === 8 };
+  }
+  if (/[0-9]/.test(ch)) return { coda: !"2459".includes(ch), rieul: "178".includes(ch) };
+  const tail = word.match(/[A-Za-z]+$/)?.[0];
+  if (!tail) return null;
+  if (tail === tail.toUpperCase() && tail.length <= 4) {
+    const last = tail.slice(-1);
+    return { coda: "LMNR".includes(last), rieul: "LR".includes(last) };
+  }
+  const low = tail.toLowerCase();
+  if (low.endsWith("l")) return { coda: true, rieul: true };
+  return { coda: /(m|n|ng)$/.test(low), rieul: false };
+}
+
+/** Turns paired particles like 을(를) into the one that fits the word in front of them. */
+export function particles(text: string): string {
+  if (!text.includes("(")) return text;
+  return text.replace(PAIRED, (pair: string, _group: string, at: number) => {
+    let end = at;
+    while (end > 0 && CLOSERS.has(text[end - 1])) end -= 1;
+    const before = text.slice(0, end);
+    if (!before || /\s$/.test(before)) return pair;
+    const sound = finalSound(before);
+    if (!sound) return pair;
+    switch (pair) {
+      case "을(를)":
+      case "를(을)":
+        return sound.coda ? "을" : "를";
+      case "이(가)":
+      case "가(이)":
+        return sound.coda ? "이" : "가";
+      case "은(는)":
+      case "는(은)":
+        return sound.coda ? "은" : "는";
+      case "과(와)":
+      case "와(과)":
+        return sound.coda ? "과" : "와";
+      case "(으)로":
+        return sound.coda && !sound.rieul ? "으로" : "로";
+      default:
+        return sound.coda ? "이" : "";
+    }
+  });
 }
 
 export function format(text: string, args: Record<string, unknown>, locale: string = current): string {
@@ -289,14 +344,14 @@ export function trBack(message: string): string {
   if (exact) return exact;
   for (const [pattern, text] of rust?.rustPatterns ?? []) {
     const found = message.match(pattern);
-    if (found) return text.replace(/\$(\d+)/g, (_, n) => found[Number(n)] ?? "");
+    if (found) return particles(text.replace(/\$(\d+)/g, (_, n) => found[Number(n)] ?? ""));
   }
   return message;
 }
 
 export function t(key: string, values?: Record<string, string | number>): string {
   const text = words?.[key] ?? key;
-  return values ? format(text, values, current) : text;
+  return values ? particles(format(text, values, current)) : text;
 }
 
 export async function wordsFor(lang: Language): Promise<Record<string, string>> {

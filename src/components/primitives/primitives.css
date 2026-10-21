@@ -9,7 +9,7 @@
   background: var(--raise);
 }
 .input:focus-visible {
-  outline: 2px solid var(--text-2);
+  outline: 2px solid var(--focus);
   outline-offset: 1px;
 }
 .checkbox {
@@ -38,7 +38,7 @@
   height: 32px;
   padding: 0 14px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 8px;
   color: var(--text-2);
   background: transparent;
   font-size: 14px;
@@ -47,8 +47,9 @@
 }
 .segmented button:hover:not(.on) { color: var(--text); background: var(--raise-hover); }
 .segmented button.on {
-  color: var(--primary-ink);
-  background: var(--primary);
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
 }
 
 .card {
@@ -212,7 +213,7 @@
 .sink {
   max-width: 980px;
   margin: 0 auto;
-  padding: var(--space-5) var(--content-px) var(--space-7);
+  padding: var(--space-6) var(--content-px) var(--space-8);
   display: grid;
   align-content: start;
   gap: var(--space-4);

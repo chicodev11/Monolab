@@ -16,6 +16,7 @@ const HOSTS: &[&str] = &[
     "akamaihd.net",
     "terraria.org",
     "fivem.net",
+    "download.microsoft.com",
 ];
 
 fn https_only() -> reqwest::redirect::Policy {

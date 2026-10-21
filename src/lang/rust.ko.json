@@ -37,8 +37,8 @@
     "The server order is malformed.": "서버 순서 정보가 형식이 맞지 않아요.",
     "The server order contains an unknown server.": "서버 순서에 알 수 없는 서버가 있어요.",
     "Imported server": "가져온 서버",
-    "The folder to extract into was not found.": "압축을 풀어 둘 폴더를 찾을 수 없어요.",
-    "Could not verify the folder to extract into: {error}": "압축을 풀어 둘 폴더를 확인할 수 없어요: $1",
+    "The folder to extract into was not found.": "압축을 해제할 폴더를 찾을 수 없어요.",
+    "Could not verify the folder to extract into: {error}": "압축을 해제할 폴더를 확인할 수 없어요: $1",
     "Server names are 1–80 characters and cannot contain \\ / :": "서버 이름은 1~80자이며 \\ / : 문자를 포함할 수 없어요.",
     "Server not found.": "서버를 찾을 수 없어요.",
     "Duplicate server": "서버 복제",
@@ -273,7 +273,7 @@
     "This file type can't be created in the app. Only text files can.": "이 종류의 파일은 앱에서 만들 수 없어요. 글 파일만 만들 수 있어요.",
     "Create file": "파일 만들기",
     "Create file (panel)": "파일 만들기 (패널)",
-    "{name} is not a text file, so it cannot be created here. Use a name like .yml, .json, .txt or .properties.": "$1은(는) 글 파일이 아니라서 여기서 만들 수 없어요. .yml·.json·.txt·.properties 같은 이름으로 해 주세요.",
+    "{name} is not a text file, so it cannot be created here. Use a name like .yml, .json, .txt or .properties.": "$1은(는) 텍스트 파일이 아니라서 여기서 만들 수 없어요. .yml·.json·.txt·.properties 같은 확장자로 입력해주세요.",
     "Could not create the file: {error}": "파일을 만들 수 없어요: $1",
     "Could not create the folder: {error}": "폴더를 만들 수 없어요: $1",
     "Create folder": "폴더 만들기",
@@ -289,10 +289,10 @@
     "Compress (SSH)": "압축하기 (SSH)",
     "Could not create the zip: {error}": "zip을 만들 수 없어요: $1",
     "Could not include {}: {error}": "$1을(를) 담을 수 없어요: $2",
-    "Extract (panel)": "압축 풀기 (패널)",
+    "Extract (panel)": "압축 해제 (패널)",
     "Could not open the zip: {error}": "zip을 열 수 없어요: $1",
     "The zip is corrupt: {error}": "zip이 깨졌어요: $1",
-    "Unzip": "압축 풀기",
+    "Unzip": "압축 해제",
     "Not a file.": "파일이 아니에요.",
     "Files larger than 64 MB cannot be downloaded through the browser.": "64MB보다 큰 파일은 브라우저로 내려받을 수 없어요.",
     "Could not read the file: {error}": "파일을 읽을 수 없어요: $1",
@@ -489,9 +489,9 @@
     "The server folder was not found on the SSH server.": "SSH 서버에서 서버 폴더를 찾지 못했어요.",
     "Unknown cleanup type.": "알 수 없는 정리 종류예요.",
     "Disk cleanup": "디스크 정리",
-    "Choose a radius between 1 and 100,000 blocks.": "반경은 1~100,000 블록 사이로 정해 주세요.",
+    "Choose a radius between 1 and 100,000 blocks.": "반경은 1~100,000 블록 사이로 정해주세요.",
     "Chunk pre-generation": "청크 생성",
-    "Start the server first. The pre-generator runs inside the server.": "서버를 먼저 켜 주세요. 미리 생성 도구는 서버 안에서 돌아요.",
+    "Start the server first. The pre-generator runs inside the server.": "서버를 먼저 켜주세요. 미리 생성 도구는 서버 안에서 실행돼요.",
     "Unknown pre-generation action.": "알 수 없는 미리 생성 동작이에요.",
     "Unknown map view.": "알 수 없는 지도 보기예요."
   },
@@ -561,7 +561,7 @@
     "Panel": "패널",
     "This server wasn't started by the app (pid {}), so the console can't attach. Stop it on Ubuntu, then press Start.": "앱에서 실행한 서버가 아니라(pid $1) 콘솔에 연결할 수 없어요. Ubuntu에서 정지한 뒤 시작을 눌러주세요.",
     "Restart via SSH": "SSH로 다시 시작",
-    "This server is already running (pid {}). It wasn't started by the app, so the console can't attach — stop it on that machine and try again.": "이 서버는 이미 실행 중이에요(pid $1). 앱이 켠 서버가 아니라서 콘솔을 붙일 수 없어요. 그 컴퓨터에서 정지한 뒤 다시 해 주세요.",
+    "This server is already running (pid {}). It wasn't started by the app, so the console can't attach — stop it on that machine and try again.": "이 서버는 이미 실행 중이에요(pid $1). 앱이 켠 서버가 아니라서 콘솔을 연결할 수 없어요. 그 컴퓨터에서 정지한 뒤 다시 시도해주세요.",
     "This server is already running (session {}).": "이 서버는 이미 실행 중이에요($1 세션).",
     "Start via SSH": "SSH로 시작",
     "{what} isn't available on panel servers yet.": "$1은(는) 아직 패널 서버에서 할 수 없어요.",
@@ -843,7 +843,13 @@
     "No Terraria server download was found.": "Terraria 서버 다운로드를 찾을 수 없어요.",
     "Could not get the FiveM server version: {error}": "FiveM 서버 버전을 가져올 수 없어요: $1",
     "The FiveM version list is malformed.": "FiveM 버전 목록 형식이 맞지 않아요.",
-    "Could not unpack the FiveM server: {error}": "FiveM 서버 압축을 풀 수 없어요: $1"
+    "Could not unpack the FiveM server: {error}": "FiveM 서버 압축을 해제할 수 없어요: $1",
+    "{runtime} is missing": "$1이(가) 없어요",
+    "Press Update server files on the Overview tab to install it.": "개요의 서버 파일 업데이트를 누르면 설치돼요.",
+    "The XNA Framework installer download is broken. Try again.": "XNA Framework 설치 파일이 손상됐어요. 다시 시도해주세요.",
+    "Could not start the XNA Framework installer: {error}": "XNA Framework 설치를 시작하지 못했어요: $1",
+    "The XNA Framework installation was cancelled. Terraria needs it to run.": "XNA Framework 설치를 취소했어요. 테라리아 실행에 필요해요.",
+    "The XNA Framework installation failed (code {}). Install it from Microsoft and try again.": "XNA Framework 설치에 실패했어요 (코드 $1)."
   },
   "hashes.rs": {
     "Could not open the downloaded file: {error}": "다운로드한 파일을 열 수 없어요: $1",
@@ -1021,7 +1027,7 @@
   "pfs.rs": {
     "That name already exists.": "같은 이름이 이미 있어요.",
     "Could not read the trash list. Please try again shortly.": "휴지통 목록을 읽지 못했어요. 잠시 뒤 다시 시도해주세요.",
-    "Could not extract {name}: {error}": "$1의 압축을 풀 수 없어요: $2"
+    "Could not extract {name}: {error}": "$1의 압축을 해제할 수 없어요: $2"
   },
   "ping.rs": {
     "Could not read the status response: {error}": "서버 상태 응답을 읽을 수 없어요: $1",
@@ -1153,7 +1159,7 @@
     "Could not check {at}: {error}": "$1을(를) 확인할 수 없어요: $2",
     "Could not create the monolab folder on the SSH server. Pick the server folder yourself.": "SSH 서버에 monolab 폴더를 만들 수 없어요. 서버 폴더 위치를 직접 골라주세요.",
     "The folder name is invalid.": "폴더 이름이 형식에 맞지 않아요.",
-    "Please choose a folder to extract into.": "압축을 풀 폴더를 선택해주세요.",
+    "Please choose a folder to extract into.": "압축을 해제할 폴더를 선택해주세요.",
     "Something already exists at {dest}. Choose another name.": "$1에 이미 무언가 있어요. 다른 이름을 골라주세요.",
     "The server machine has no unzip tool. Install one with `sudo apt install unzip`.": "서버에 unzip이 없어요. `sudo apt install unzip`으로 설치해주세요.",
     "The server jar file name is invalid.": "서버 jar 파일 이름이 형식이 맞지 않아요.",
@@ -1203,7 +1209,7 @@
   "web.rs": {
     "Could not get randomness from the operating system": "운영체제에서 난수를 받지 못했어요",
     "Could not open the web panel on port {port}: {error}": "$1 포트로 웹 화면을 열 수 없어요: $2",
-    "The app is busy. Try again once the other work finishes.": "앱이 다른 일을 하고 있어요. 끝나면 다시 해 주세요.",
+    "The app is busy. Try again once the other work finishes.": "앱이 다른 작업을 하고 있어요. 작업이 끝나면 다시 시도해주세요.",
     "Please sign in again.": "다시 로그인해주세요.",
     "Files larger than 4 GB can't be uploaded.": "4GB보다 큰 파일은 올릴 수 없어요.",
     "The file you sent is too large.": "보낸 파일이 너무 커요.",
@@ -1216,6 +1222,24 @@
   "zips.rs": {
     "The archive has too many entries ({}). Up to {max_entries} are unpacked.": "압축 파일 안에 항목이 너무 많아요($1개). $2개까지만 풀어요.",
     "The archive contains a symbolic link, so it was not unpacked: {}": "압축 파일 안에 심볼릭 링크가 있어 풀지 않아요: $1",
-    "Unpacking would exceed {} MB. Up to {} MB is unpacked.": "압축을 풀면 $1MB가 넘어요. $2MB까지만 풀어요."
+    "Unpacking would exceed {} MB. Up to {} MB is unpacked.": "압축을 해제하면 $1MB를 넘어요. $2MB까지만 해제해요."
+  },
+  "game_server.rs": {
+    "This server has no files to download.": "이 서버는 다운로드할 파일이 없어요.",
+    "The program settings for this server are missing.": "이 서버의 실행 설정이 없어요.",
+    "The program settings are malformed: {error}": "실행 설정 형식이 올바르지 않아요: $1",
+    "Choose the program to run.": "실행할 프로그램을 선택해주세요.",
+    "{} was not found.": "$1을(를) 찾을 수 없어요.",
+    "The arguments are malformed: {error}": "실행 인자 형식이 올바르지 않아요: $1",
+    "The server folder was not found.": "서버 폴더를 찾을 수 없어요.",
+    "Enter the port the server uses.": "서버가 쓰는 포트를 입력해주세요.",
+    "This folder is already in the server list.": "이 폴더는 이미 서버 목록에 있어요.",
+    "This isn't a custom program server.": "직접 실행 서버가 아니에요.",
+    "Custom program added": "직접 실행 서버 추가",
+    "Custom program settings saved": "직접 실행 설정 저장",
+    "The program settings are missing": "실행 설정이 없어요",
+    "Open the Overview tab and set the program to run again.": "개요 탭에서 실행할 프로그램을 다시 설정해주세요.",
+    "The program was not found": "실행 파일을 찾을 수 없어요",
+    "{exe} isn't there anymore. Choose the program again on the Overview tab.": "$1이(가) 더 이상 없어요. 개요 탭에서 실행 파일을 다시 선택해주세요."
   }
 }

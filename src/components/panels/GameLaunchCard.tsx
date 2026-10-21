@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { launchFile } from "../../lib/games";
+import { launchFile } from "../../lib/kinds";
 import { tr } from "../../lib/i18n";
 import { commands } from "../../lib/ipc";
 import { Icon } from "../ui/Icon";

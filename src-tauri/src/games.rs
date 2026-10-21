@@ -1,6 +1,8 @@
-//! Dedicated servers for games other than Minecraft. Each game is a template:
-//! where its files come from, what to run, its port and how to stop it.
+//! Dedicated servers for games other than Minecraft: where a game's files come from, what to run and how to stop it.
+//! The table itself lives in kinds.json.
 
+use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -8,18 +10,21 @@ use std::process::Stdio;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Source {
     Steam(u32),
     Terraria,
     FiveM,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 pub enum Stop {
     /// Type this into the console.
-    Input(&'static str),
+    #[serde(rename = "input")]
+    Input(String),
     /// Send Ctrl+C, the way the game expects to be closed from a terminal.
+    #[serde(rename = "ctrl-c")]
     CtrlC,
 }
 
@@ -29,15 +34,34 @@ pub struct Setup<'a> {
     pub port: u16,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Game {
-    pub id: &'static str,
-    pub source: Source,
-    pub exe: &'static str,
+    pub id: String,
+    /// Where the files come from. None for a custom program the user already has.
+    #[serde(default)]
+    pub source: Option<Source>,
+    pub exe: String,
     pub port: u16,
-    pub ready: &'static [&'static str],
+    pub ready: Vec<String>,
     pub stop: Stop,
-    pub env: &'static [(&'static str, &'static str)],
-    pub args: fn(&Setup) -> String,
+    pub env: BTreeMap<String, String>,
+    pub args: String,
+    /// System runtimes the server needs installed, such as "xna4" for Terraria.
+    #[serde(default)]
+    pub requires: Vec<String>,
+}
+
+impl Game {
+    /// Fills the launch template: {name}, {name_bare}, {port}, {port+1}, {password}.
+    pub fn launch_args(&self, setup: &Setup) -> String {
+        self.args
+            .replace("{name_bare}", &setup.name.replace([' ', '?', '"'], "_"))
+            .replace("{name}", &quoted(setup.name))
+            .replace("{port+1}", &(setup.port + 1).to_string())
+            .replace("{port}", &setup.port.to_string())
+            .replace("{password}", setup.password)
+    }
 }
 
 /// The launch arguments live in this file in the server folder, so they can be changed like any other setting.
@@ -47,127 +71,28 @@ fn quoted(text: &str) -> String {
     format!("\"{}\"", text.replace('"', "'"))
 }
 
-pub const GAMES: &[Game] = &[
-    Game {
-        id: "Terraria",
-        source: Source::Terraria,
-        exe: "TerrariaServer.exe",
-        port: 7777,
-        ready: &["Server started"],
-        stop: Stop::Input("exit\n"),
-        env: &[],
-        args: |_| "-config serverconfig.txt".into(),
-    },
-    Game {
-        id: "Valheim",
-        source: Source::Steam(896660),
-        exe: "valheim_server.exe",
-        port: 2456,
-        ready: &["Game server connected"],
-        stop: Stop::CtrlC,
-        env: &[("SteamAppId", "892970")],
-        args: |setup| {
-            format!(
-                "-nographics -batchmode -name {} -port {} -world Dedicated -password {} -public 0 -savedir saves",
-                quoted(setup.name),
-                setup.port,
-                setup.password
-            )
-        },
-    },
-    Game {
-        id: "Palworld",
-        source: Source::Steam(2394010),
-        exe: "PalServer.exe",
-        port: 8211,
-        ready: &["Running Palworld dedicated server"],
-        stop: Stop::CtrlC,
-        env: &[],
-        args: |setup| format!("-port={} -useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS", setup.port),
-    },
-    Game {
-        id: "Project Zomboid",
-        source: Source::Steam(380870),
-        exe: "StartServer64.bat",
-        port: 16261,
-        ready: &["SERVER STARTED"],
-        stop: Stop::Input("quit\n\n"),
-        env: &[],
-        args: |setup| format!("-adminpassword {}", setup.password),
-    },
-    Game {
-        id: "Rust",
-        source: Source::Steam(258550),
-        exe: "RustDedicated.exe",
-        port: 28015,
-        ready: &["Server startup complete"],
-        stop: Stop::CtrlC,
-        env: &[],
-        args: |setup| {
-            format!(
-                "-batchmode -nographics +server.port {} +server.level \"Procedural Map\" +server.seed 12345 +server.worldsize 3000 +server.maxplayers 50 +server.hostname {} +server.identity monolab +rcon.port {} +rcon.password {} +rcon.web 1",
-                setup.port,
-                quoted(setup.name),
-                setup.port + 1,
-                setup.password
-            )
-        },
-    },
-    Game {
-        id: "Satisfactory",
-        source: Source::Steam(1690800),
-        exe: "FactoryServer.exe",
-        port: 7777,
-        ready: &["Took", "seconds to LoadMap"],
-        stop: Stop::CtrlC,
-        env: &[],
-        args: |setup| format!("-log -unattended -Port={}", setup.port),
-    },
-    Game {
-        id: "7 Days to Die",
-        source: Source::Steam(294420),
-        exe: "7DaysToDieServer.exe",
-        port: 26900,
-        ready: &["GameServer.LogOn successful", "StartGame done"],
-        stop: Stop::CtrlC,
-        env: &[],
-        args: |_| "-logfile - -quit -batchmode -nographics -configfile=serverconfig.xml -dedicated".into(),
-    },
-    Game {
-        id: "ARK",
-        source: Source::Steam(2430930),
-        exe: "ShooterGame/Binaries/Win64/ArkAscendedServer.exe",
-        port: 7777,
-        ready: &["Server has completed startup"],
-        stop: Stop::CtrlC,
-        env: &[],
-        args: |setup| {
-            format!(
-                "TheIsland_WP?listen?SessionName={}?Port={}?ServerAdminPassword={} -server -log -NoBattlEye",
-                setup.name.replace([' ', '?', '"'], "_"),
-                setup.port,
-                setup.password
-            )
-        },
-    },
-    Game {
-        id: "FiveM",
-        source: Source::FiveM,
-        exe: "FXServer.exe",
-        port: 30120,
-        ready: &["txAdmin", "Server started"],
-        stop: Stop::CtrlC,
-        env: &[],
-        args: |_| String::new(),
-    },
-];
+pub fn all() -> &'static [Game] {
+    crate::kinds::games()
+}
 
 pub fn find(core: &str) -> Option<&'static Game> {
-    GAMES.iter().find(|one| one.id == core)
+    all().iter().find(|one| one.id == core)
 }
 
 pub fn is_game(core: &str) -> bool {
     find(core).is_some()
+}
+
+/// A program the user points the app at, with its own launch settings.
+pub const CUSTOM: &str = "Custom program";
+
+pub fn is_custom(core: &str) -> bool {
+    core == CUSTOM
+}
+
+/// Game servers and custom programs: local only, no Minecraft features.
+pub fn is_non_minecraft(core: &str) -> bool {
+    is_game(core) || is_custom(core)
 }
 
 /// Reads the launch arguments for a game server.
@@ -179,7 +104,7 @@ pub fn launch_args(folder: &Path) -> Result<Vec<String>, String> {
 
 /// The program to run and the arguments in front of the game's own ones.
 pub fn program(game: &Game, folder: &Path) -> Result<(PathBuf, Vec<String>), String> {
-    let exe = folder.join(game.exe);
+    let exe = folder.join(&game.exe);
     if !exe.is_file() {
         return Err(format!("{} was not found in the server folder. Update the server files and try again.", game.exe));
     }
@@ -195,15 +120,19 @@ type Cancelled<'a> = &'a dyn Fn() -> bool;
 /// Downloads or updates a game's server files into the folder and writes its first settings.
 pub fn install(app: &AppHandle, game: &Game, folder: &Path, setup: &Setup, fresh: bool, progress: Progress, cancelled: Cancelled) -> Result<(), String> {
     match game.source {
-        Source::Steam(id) => steam_install(app, id, folder, progress, cancelled)?,
-        Source::Terraria => terraria_install(app, folder, progress, cancelled)?,
-        Source::FiveM => fivem_install(app, folder, progress, cancelled)?,
+        Some(Source::Steam(id)) => steam_install(app, id, folder, progress, cancelled)?,
+        Some(Source::Terraria) => terraria_install(app, folder, progress, cancelled)?,
+        Some(Source::FiveM) => fivem_install(app, folder, progress, cancelled)?,
+        None => return Err("This server has no files to download.".into()),
     }
-    if !folder.join(game.exe).is_file() {
+    if !folder.join(&game.exe).is_file() {
         return Err(format!("The download finished but {} is missing.", game.exe));
     }
+    if game.requires.iter().any(|one| one == "xna4") && !xna_installed() {
+        install_xna(app, progress, cancelled)?;
+    }
     if fresh {
-        let args = (game.args)(setup);
+        let args = game.launch_args(setup);
         fs::write(
             folder.join(LAUNCH_FILE),
             format!("# Launch options for {}. Change them here and restart the server.\n{args}\n", game.id),
@@ -386,11 +315,65 @@ fn fivem_install(_app: &AppHandle, folder: &Path, progress: Progress, cancelled:
         .and_then(|one| one.as_str())
         .ok_or("The FiveM version list is malformed.")?
         .to_string();
-    let archive = folder.join("fivem-server.7z");
+    let zipped = url.to_ascii_lowercase().ends_with(".zip");
+    let archive = folder.join(if zipped { "fivem-server.zip" } else { "fivem-server.7z" });
     fetch(&url, &archive, progress, cancelled)?;
-    let result = sevenz_rust2::decompress_file(&archive, folder).map_err(|error| format!("Could not unpack the FiveM server: {error}"));
+    let result = if zipped {
+        unzip_into(&archive, folder, None)
+    } else {
+        sevenz_rust2::decompress_file(&archive, folder).map_err(|error| format!("Could not unpack the FiveM server: {error}"))
+    };
     let _ = fs::remove_file(&archive);
     result
+}
+
+const XNA_MSI: &str = "https://download.microsoft.com/download/A/C/2/AC2C903B-E6E8-42C2-9FD7-BEBAC362A930/xnafx40_redist.msi";
+
+#[cfg(windows)]
+fn xna_installed() -> bool {
+    let windows = std::env::var_os("WINDIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    windows.join("Microsoft.NET").join("assembly").join("GAC_32").join("Microsoft.Xna.Framework").is_dir()
+}
+
+#[cfg(not(windows))]
+fn xna_installed() -> bool {
+    true
+}
+
+/// Runtimes the game needs that this PC doesn't have, by display name.
+pub fn missing_requirements(game: &Game) -> Vec<&'static str> {
+    let mut missing = Vec::new();
+    if game.requires.iter().any(|one| one == "xna4") && !xna_installed() {
+        missing.push("XNA Framework 4.0");
+    }
+    missing
+}
+
+/// Downloads Microsoft's XNA Framework 4.0 redistributable and runs it. Windows asks for admin rights.
+fn install_xna(app: &AppHandle, progress: Progress, cancelled: Cancelled) -> Result<(), String> {
+    let dir = app.path().app_data_dir().map_err(|error| error.to_string())?.join("xna");
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    let msi = dir.join("xnafx40_redist.msi");
+    fetch(XNA_MSI, &msi, progress, cancelled)?;
+    let head = fs::read(&msi).map(|bytes| bytes.get(..8).map(<[u8]>::to_vec).unwrap_or_default()).unwrap_or_default();
+    if head != [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1] {
+        let _ = fs::remove_file(&msi);
+        return Err("The XNA Framework installer download is broken. Try again.".into());
+    }
+    let status = std::process::Command::new("msiexec")
+        .arg("/i")
+        .arg(&msi)
+        .args(["/passive", "/norestart"])
+        .status()
+        .map_err(|error| format!("Could not start the XNA Framework installer: {error}"))?;
+    let _ = fs::remove_file(&msi);
+    if xna_installed() {
+        return Ok(());
+    }
+    match status.code() {
+        Some(1602) => Err("The XNA Framework installation was cancelled. Terraria needs it to run.".into()),
+        _ => Err(format!("The XNA Framework installation failed (code {}). Install it from Microsoft and try again.", status.code().unwrap_or(-1))),
+    }
 }
 
 /// Sends Ctrl+C to a console program started without a window.
@@ -432,17 +415,26 @@ mod tests {
 
     #[test]
     fn every_game_is_complete() {
-        let mut ids: Vec<&str> = GAMES.iter().map(|one| one.id).collect();
+        let mut ids: Vec<&str> = all().iter().map(|one| one.id.as_str()).collect();
         ids.sort_unstable();
         ids.dedup();
-        assert_eq!(ids.len(), GAMES.len());
+        assert_eq!(ids.len(), all().len());
         let setup = Setup { name: "My \"Server\"", password: "pw12345", port: 1234 };
-        for game in GAMES {
+        for game in all() {
             assert!(!game.exe.is_empty());
             assert!(game.port > 1024);
-            let args = (game.args)(&setup);
+            let args = game.launch_args(&setup);
             assert!(shell_words::split(&args).is_ok(), "{} has broken launch args: {args}", game.id);
+            assert!(!args.contains('{'), "{} has an unknown placeholder: {args}", game.id);
         }
+        let rust = find("Rust").unwrap().launch_args(&setup);
+        assert!(rust.contains("+rcon.port 1235") && rust.contains("+server.hostname \"My 'Server'\""));
+        assert!(find("ARK").unwrap().launch_args(&setup).contains("SessionName=My__Server_?"));
+        assert_eq!(find("Valheim").unwrap().env.get("SteamAppId").map(String::as_str), Some("892970"));
+        assert_eq!(find("Terraria").unwrap().stop, Stop::Input("exit
+".into()));
+        assert_eq!(find("Terraria").unwrap().requires, vec!["xna4".to_string()]);
+        assert!(find("Valheim").unwrap().requires.is_empty());
         assert!(is_game("Valheim"));
         assert!(!is_game("Paper"));
     }

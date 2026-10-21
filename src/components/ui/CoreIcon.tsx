@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { customProgram, findGame, type GameInfo } from "../../lib/kinds";
+import { Icon } from "./Icon";
 import { tr } from "../../lib/i18n";
 import paperLogo from "../../assets/cores/papermc_logo.min.svg";
 import velocityLogoWhite from "../../assets/cores/velocity_logo_white.min.svg";
@@ -7,51 +10,42 @@ import forgeLogo from "../../assets/cores/forge_logo.svg";
 import neoforgeLogo from "../../assets/cores/neoforge_logo.png";
 import purpurLogo from "../../assets/cores/purpur_logo.svg";
 
-export type CoreInfo = { icon: string; blurb: string; kind: string };
+export type CoreInfo = { icon: string; kind: string };
 export const coreInfo: Record<string, CoreInfo> = {
   Vanilla: {
     icon: "vanilla",
-    blurb: tr("Mojang's official server. Pure vanilla, no extensions."),
     kind: tr("Default"),
   },
   Paper: {
     icon: "paper",
-    blurb: tr("The most widely used plugin server. Fast and stable."),
     kind: tr("Plugins"),
   },
   Purpur: {
     icon: "purpur",
-    blurb: tr("A Paper fork with many more configuration options."),
     kind: tr("Plugins"),
   },
   Folia: {
     icon: "folia",
-    blurb: tr("Region‑based multithreading. An experimental core for large player counts."),
     kind: tr("Plugins"),
   },
   Fabric: {
     icon: "fabric",
-    blurb: tr("A lightweight mod loader that updates quickly."),
     kind: tr("Mods"),
   },
   Forge: {
     icon: "forge",
-    blurb: tr("The classic mod loader with the largest modpack ecosystem."),
     kind: tr("Mods"),
   },
   NeoForge: {
     icon: "neoforge",
-    blurb: tr("A modern mod loader forked from Forge."),
     kind: tr("Mods"),
   },
   Velocity: {
     icon: "velocity",
-    blurb: tr("A modern proxy that connects multiple servers."),
     kind: tr("Proxy"),
   },
   Pumpkin: {
     icon: "pumpkin",
-    blurb: tr("A server written from scratch in Rust. Fast, but still in development."),
     kind: tr("Beta"),
   },
 };
@@ -113,7 +107,16 @@ function CoreGlyph({ core }: { core: string }) {
   );
 }
 
+function GameLogo({ game }: { game: GameInfo }) {
+  const [broken, setBroken] = useState(false);
+  if (broken) return <Icon name={game.icon} />;
+  return <img className="core-logo game-logo" src={game.logo} alt="" draggable={false} onError={() => setBroken(true)} />;
+}
+
 export function CoreIcon({ core }: { core: string }) {
+  if (core === customProgram.id) return <Icon name={customProgram.icon} />;
+  const game = findGame(core);
+  if (game) return <GameLogo game={game} />;
   const logo = coreLogos[core];
   if (!logo) return <CoreGlyph core={core} />;
   if (logo.darkSrc)

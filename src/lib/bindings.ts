@@ -15,6 +15,12 @@ export const commands = {
 	trashInstance: (id: string) => __TAURI_INVOKE<null>("trash_instance", { id }),
 	listTrashInstances: () => __TAURI_INVOKE<TrashEntry[]>("list_trash_instances"),
 	getServersRoot: () => __TAURI_INVOKE<string>("get_servers_root"),
+	serversRootFreeBytes: () => __TAURI_INVOKE<number>("servers_root_free_bytes"),
+	/**  Registers a server program that is already on this PC. Nothing is downloaded or copied. */
+	createCustomServer: (folder: string, name: string, port: number, program: CustomProgram) => __TAURI_INVOKE<InstanceView>("create_custom_server", { folder, name, port, program }),
+	readCustomProgram: (id: string) => __TAURI_INVOKE<CustomProgram>("read_custom_program", { id }),
+	/**  Saves new launch settings for a custom program. They apply on the next start. */
+	saveCustomProgram: (id: string, port: number, program: CustomProgram) => __TAURI_INVOKE<null>("save_custom_program", { id, port, program }),
 	listJavaRuntimes: () => __TAURI_INVOKE<JavaRuntime[]>("list_java_runtimes"),
 	enrichAddons: (id: string) => __TAURI_INVOKE<AddonCard[]>("enrich_addons", { id }),
 	listJavaProcesses: () => __TAURI_INVOKE<JavaProcess[]>("list_java_processes"),
@@ -147,6 +153,7 @@ export const commands = {
 	cleanDisk: (id: string, kind: string) => __TAURI_INVOKE<number>("clean_disk", { id, kind }),
 	chunkyStatus: (id: string) => __TAURI_INVOKE<ChunkyStatus>("chunky_status", { id }),
 	chunkyRun: (id: string, action: string, world: string, x: number, z: number, radius: number, radiusZ: number, shape: string) => __TAURI_INVOKE<null>("chunky_run", { id, action, world, x, z, radius, radiusZ, shape }),
+	/**  Downloads the latest files for a game server again (SteamCMD update or a fresh official download). */
 	updateGameServer: (id: string) => __TAURI_INVOKE<null>("update_game_server", { id }),
 	mapShareState: (id: string) => __TAURI_INVOKE<MapShareView>("map_share_state", { id }),
 	mapShareCreate: (id: string, labels: { [key in string]: string }) => __TAURI_INVOKE<MapShareView>("map_share_create", { id, labels }),
@@ -606,6 +613,17 @@ export type CreateInstanceInput = {
 	minMemoryMib?: number,
 	eulaAccepted: boolean,
 	operationId?: string,
+};
+
+/**  Launch settings for a custom program. Kept in the app's data folder, not the server folder. */
+export type CustomProgram = {
+	/**  The file to run, relative to the server folder when it is inside it. */
+	program?: string,
+	args?: string,
+	/**  A line in the console that means the server is ready. Empty: ready a few seconds after start. */
+	ready?: string,
+	/**  Typed into the console to stop it. Empty: send Ctrl+C. */
+	stopInput?: string,
 };
 
 export type DailySummary = {

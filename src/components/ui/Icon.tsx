@@ -11,6 +11,7 @@ import {
   Sun, Moon,
   Database, Network, Users, SlidersVertical, CalendarClock, ChartLine, CloudUpload, SquareTerminal,
   Eye, EyeOff, HardDrive,
+  Pickaxe, Axe, PawPrint, Hammer, Factory, Biohazard, Bone, Car,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -74,6 +75,14 @@ const ICONS: Record<string, LucideIcon> = {
   wand: WandSparkles,
   gamepad: Gamepad2,
   skull: Skull,
+  pickaxe: Pickaxe,
+  axe: Axe,
+  paw: PawPrint,
+  hammer: Hammer,
+  factory: Factory,
+  biohazard: Biohazard,
+  bone: Bone,
+  car: Car,
   gauge: Gauge,
   message: MessageCircle,
   package: Package,
