@@ -30,31 +30,23 @@ import {
   rectangularSelection,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
-import { tr } from "../../lib/i18n";
+import { languageKind, languageName } from "../../lib/fileLang";
 
 export function languageOf(path: string): { name: string; extension: Extension | null } {
-  const ext = path.toLowerCase().split(".").pop() ?? "";
-  switch (ext) {
+  const name = languageName(path);
+  switch (languageKind(path)) {
     case "json":
-    case "json5":
-    case "mcmeta":
-      return { name: "JSON", extension: json() };
-    case "yml":
+      return { name, extension: json() };
     case "yaml":
-      return { name: "YAML", extension: yaml() };
+      return { name, extension: yaml() };
     case "toml":
-      return { name: "TOML", extension: StreamLanguage.define(toml) };
+      return { name, extension: StreamLanguage.define(toml) };
     case "properties":
-    case "cfg":
-    case "conf":
-    case "ini":
-    case "lang":
-      return { name: "Properties", extension: StreamLanguage.define(properties) };
-    case "sh":
-    case "bash":
-      return { name: "Shell", extension: StreamLanguage.define(shell) };
+      return { name, extension: StreamLanguage.define(properties) };
+    case "shell":
+      return { name, extension: StreamLanguage.define(shell) };
     default:
-      return { name: tr("Plain text"), extension: null };
+      return { name, extension: null };
   }
 }
 

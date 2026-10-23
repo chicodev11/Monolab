@@ -1041,6 +1041,7 @@
     "The status has no player info.": "서버 상태에 접속자 정보가 없어요."
   },
   "playit.rs": {
+    "playit needs a verified account for this tunnel. Sign in at playit.gg, verify your email, then try again.": "이 터널은 인증된 playit 계정이 필요해요. playit.gg에 로그인해 이메일 인증을 마친 뒤 다시 시도해주세요.",
     "Could not find the app data folder: {error}": "앱 데이터 폴더를 찾을 수 없어요: $1",
     "Could not save the playit secret key: {error}": "playit 비밀 키를 저장할 수 없어요: $1",
     "Could not download playit: {error}": "playit을 다운로드할 수 없어요: $1",
@@ -1253,5 +1254,8 @@
     "{name} is not a datapack zip.": "$1은(는) 데이터팩 zip이 아니에요.",
     "{name} is already installed.": "$1은(는) 이미 설치되어 있어요.",
     "Could not save the datapack: {error}": "데이터팩을 저장하지 못했어요: $1"
+  },
+  "lib.rs": {
+    "Could not type into the server console.": "서버 콘솔에 입력하지 못했어요."
   }
 }

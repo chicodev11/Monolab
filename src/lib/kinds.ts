@@ -92,4 +92,13 @@ export const addonKind = (core: string): "mod" | "plugin" | null => {
 export const coreLabel = (core: string, version: string) =>
   isCustom(core) ? tr(customProgram.id) : isGame(core) ? core : `${core} ${version}`;
 
+export type Protocol = "tcp" | "udp" | "both";
+
+/** What a game's port speaks and how many ports from it up. Minecraft is one TCP port. */
+export const portsOf = (core: string): { protocol: Protocol; count: number } => {
+  const game = table.games.find((one) => one.id === core) as { protocol?: string; portCount?: number } | undefined;
+  const protocol = game?.protocol === "udp" || game?.protocol === "both" ? game.protocol : "tcp";
+  return { protocol, count: Math.max(1, game?.portCount ?? 1) };
+};
+
 export const launchFile = "monolab-launch.txt";

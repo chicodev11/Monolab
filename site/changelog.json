@@ -1,6 +1,26 @@
 [
   {
     "kind": "app",
+    "version": "1.3.1",
+    "date": "2026-10-23",
+    "added": [
+      "A Network tab for each server: every address friends can use (this PC, same Wi-Fi, playit), the playit card, and router port forwarding steps for the server's protocol.",
+      "playit works for UDP: custom program servers choose TCP, UDP or both, and game servers (Terraria, Valheim, Palworld and more) open the right ports."
+    ],
+    "changed": [
+      "The agent spends less of your plan each turn without changing what it can do.",
+      "The app starts faster: the code editor, agent, panel admin and SFTP load only when opened.",
+      "Resources for game and custom program servers show only CPU and memory."
+    ],
+    "fixed": [
+      "Custom program servers started from a .bat or Ruby/Python script showed an empty console.",
+      "Stopping a .bat server no longer stops at \"Terminate batch job (Y/N)?\".",
+      "Terraria stops cleanly instead of being killed.",
+      "The playit button in the console header was cut off."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.3.0",
     "date": "2026-10-21",
     "added": [

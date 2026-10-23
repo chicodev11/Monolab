@@ -382,15 +382,43 @@ struct ManagedProcess {
     game: Option<games::Game>,
 }
 
+/// Ruby and Python hold their output in a buffer when it goes to a pipe, so the console stays empty
+/// and the ready line comes late. Ask them to write each line right away.
+fn unbuffer_output(app: &AppHandle, command: &mut Command) {
+    command.env("PYTHONUNBUFFERED", "1");
+    let Ok(dir) = app.path().app_data_dir() else { return };
+    let helper = dir.join("stdout-sync.rb");
+    if !helper.is_file() && fs::write(&helper, "$stdout.sync = true\n$stderr.sync = true\n").is_err() {
+        return;
+    }
+    let path = helper.to_string_lossy().replace('\\', "/");
+    if path.contains(char::is_whitespace) {
+        return;
+    }
+    let earlier = std::env::var("RUBYOPT").unwrap_or_default();
+    command.env("RUBYOPT", format!("{earlier} -r{path}").trim());
+}
+
 impl ManagedProcess {
     /// Asks the server to stop the way it understands: a console command, or Ctrl+C for some games.
     fn send_stop(&mut self) -> Result<(), String> {
         match self.game.as_ref().map(|game| &game.stop) {
             Some(games::Stop::CtrlC) => {
                 if games::ctrl_c(self.pid) {
+                    let batch = self.game.as_ref().is_some_and(|game| games::is_batch(&game.exe));
+                    if let (true, Some(stdin)) = (batch, self.child.stdin.as_mut()) {
+                        let _ = stdin.write_all(b"Y\r\n").and_then(|_| stdin.flush());
+                    }
                     Ok(())
                 } else {
                     Err("Could not send Ctrl+C to the server.".into())
+                }
+            }
+            Some(games::Stop::Keys(text)) => {
+                if games::type_keys(self.pid, text) {
+                    Ok(())
+                } else {
+                    Err("Could not type into the server console.".into())
                 }
             }
             other => {
@@ -2097,6 +2125,7 @@ pub(crate) fn web_invoke(
         "restore_backup" => ok(tauri::async_runtime::block_on(restore_backup(app.clone(), app.state(), arg(body, "id")?, arg(body, "fileName")?))?),
         "set_app_settings" => ok(set_app_settings(app.clone(), arg(body, "settings")?)?),
         "playit_state" => ok(playit_state(app.clone())),
+        "lan_ip" => ok(lan_ip()),
         "playit_expose" => ok(playit_expose(app.clone(), arg(body, "id")?)?),
         "playit_unexpose" => ok(playit_unexpose(app.clone(), arg(body, "id")?)?),
         "list_web_accounts" => ok(list_web_accounts(app.clone())),
@@ -2235,6 +2264,13 @@ struct WebPanelView {
     accounts: usize,
     viewers: usize,
     direct: bool,
+}
+
+/// This PC's address on the home network, for the Network tab.
+#[tauri::command(async)]
+#[specta::specta]
+fn lan_ip() -> String {
+    lan_address()
 }
 
 pub(crate) fn lan_address() -> String {
@@ -6362,6 +6398,9 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
         for (key, value) in &game.env {
             command.env(key, value);
         }
+        if games::is_custom(&game.id) {
+            unbuffer_output(&app, &mut command);
+        }
         command
     } else if instance.core == "Pumpkin" {
         let exe = instance
@@ -6427,12 +6466,14 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
         }
         command
     };
-    let mut child = command
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("Could not start the server: {error}"))?;
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let reads_keys = game_server::game_for(&app, &instance).is_some_and(|game| game.reads_keys());
+    let mut child = if reads_keys {
+        games::spawn_with_console_input(&mut command)
+    } else {
+        command.stdin(Stdio::piped()).spawn()
+    }
+    .map_err(|error| format!("Could not start the server: {error}"))?;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let server_id = instance.id.clone();
@@ -6991,12 +7032,15 @@ fn write_console(state: &AppState, id: &str, line: &str) -> Result<(), String> {
     if is_stop_command(line) && process.stop_requested_at.is_none() {
         process.stop_requested_at = Some(SystemTime::now());
     }
+    let line = launch::console_line(line)?;
+    if process.game.as_ref().is_some_and(|game| game.reads_keys()) {
+        return if games::type_keys(process.pid, &line) { Ok(()) } else { Err("Could not type into the server console.".into()) };
+    }
     let stdin = process
         .child
         .stdin
         .as_mut()
         .ok_or("Could not connect to the server console.")?;
-    let line = launch::console_line(line)?;
     stdin
         .write_all(format!("{line}\n").as_bytes())
         .map_err(|error| format!("Could not send the command: {error}"))?;
@@ -7447,6 +7491,10 @@ fn send_process_command(state: &AppState, id: &str, command: &str) -> Result<boo
     let Some(process) = processes.get_mut(id) else {
         return Ok(false);
     };
+    if process.game.as_ref().is_some_and(|game| game.reads_keys()) {
+        let line = launch::console_line(command)?;
+        return if games::type_keys(process.pid, &line) { Ok(true) } else { Err("Could not type into the server console.".into()) };
+    }
     let stdin = process
         .child
         .stdin
@@ -15993,6 +16041,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             delete_ssh_host,
             test_ssh_host,
             playit_state,
+            lan_ip,
             playit_claim,
             playit_expose,
             playit_unexpose,

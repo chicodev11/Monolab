@@ -178,13 +178,13 @@ fn handle(app: &AppHandle, message: &Value, locked: Option<&str>) -> Option<Valu
                 "capabilities": { "tools": {} },
                 "serverInfo": { "name": "monolab", "version": env!("CARGO_PKG_VERSION") },
                 "instructions": match locked {
-                    Some(_) => format!("{INSTRUCTIONS} This connection is locked to ONE server: every tool acts on it and the `server` argument can be left out."),
+                    Some(_) => "Tools act on this agent's one Minecraft server.".to_string(),
                     None => INSTRUCTIONS.to_string(),
                 },
             }))
         }
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({ "tools": tool_list() })),
+        "tools/list" => Ok(json!({ "tools": tool_list(locked.is_some()) })),
         "tools/call" => {
             let name = params.get("name").and_then(Value::as_str).unwrap_or_default();
             let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
@@ -405,13 +405,18 @@ const TOOLS: &[Tool] = &[
     Tool { name: "create_backup", description: "Make a backup of the whole server folder now. Good idea before risky changes.", args: &[SERVER, ("note", "string", "Short label (optional).", false)], read_only: false, destructive: false },
 ];
 
-fn tool_list() -> Vec<Value> {
+/// A locked agent gets no `list_servers` and no `server` argument: every tool schema is sent with every turn.
+fn tool_list(locked: bool) -> Vec<Value> {
     TOOLS
         .iter()
+        .filter(|tool| !(locked && tool.name == "list_servers"))
         .map(|tool| {
             let mut properties = serde_json::Map::new();
             let mut required = Vec::new();
             for (name, kind, description, needed) in tool.args {
+                if locked && *name == "server" {
+                    continue;
+                }
                 properties.insert((*name).to_string(), json!({ "type": kind, "description": description }));
                 if *needed {
                     required.push(*name);
@@ -841,7 +846,7 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
 mod tests {
     #[test]
     fn every_tool_has_a_schema_and_unique_name() {
-        let list = super::tool_list();
+        let list = super::tool_list(false);
         assert_eq!(list.len(), super::TOOLS.len());
         let mut names: Vec<&str> = super::TOOLS.iter().map(|tool| tool.name).collect();
         names.sort_unstable();

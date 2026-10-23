@@ -46,6 +46,8 @@ pub struct Tunnel {
     pub local_port: u16,
     pub address: String,
     pub disabled: bool,
+    /// "tcp", "udp" or "both".
+    pub protocol: String,
 }
 
 struct Live {
@@ -386,6 +388,7 @@ fn refresh(app: &AppHandle, force: bool) -> Result<(), String> {
                     local_port: 0,
                     address: String::new(),
                     disabled: one.get("is_disabled").and_then(|v| v.as_bool()).unwrap_or(false),
+                    protocol: String::new(),
                 })
                 .collect::<Vec<_>>()
         })
@@ -421,7 +424,7 @@ fn tunnel_of(one: &serde_json::Value) -> Tunnel {
     };
     let address = if host.is_empty() {
         String::new()
-    } else if port == 25565 || port == 0 {
+    } else if port == 0 || (port == 25565 && text(one, "proto") != "udp" && text(one, "port_type") != "udp") {
         host
     } else {
         format!("{host}:{port}")
@@ -435,6 +438,10 @@ fn tunnel_of(one: &serde_json::Value) -> Tunnel {
             .unwrap_or(0) as u16,
         address,
         disabled: one.get("disabled").is_some_and(|value| !value.is_null()),
+        protocol: {
+            let proto = text(one, "proto");
+            if proto.is_empty() { text(one, "port_type") } else { proto }
+        },
     }
 }
 
@@ -480,6 +487,7 @@ pub fn expose(app: &AppHandle, id: &str) -> Result<Status, String> {
         .find(|one| one.id == id)
         .ok_or_else(|| "Server not found.".to_string())?;
     tunnel_port_allowed(instance.port, crate::read_app_settings(app).web_panel_port)?;
+    let kind = crate::game_server::tunnel_kind(app, &instance)?;
     if !running() {
         start(app)?;
     }
@@ -502,9 +510,10 @@ pub fn expose(app: &AppHandle, id: &str) -> Result<Status, String> {
     let body = |name: Option<&str>| {
         serde_json::json!({
             "name": name,
-            "tunnel_type": "minecraft-java",
-            "port_type": "tcp",
-            "port_count": 1,
+            "tunnel_type": kind.tunnel_type,
+            "tunnel_description": kind.tunnel_type.is_none().then(|| format!("{} game server", instance.name)),
+            "port_type": kind.port_type,
+            "port_count": kind.port_count,
             "origin": {
                 "type": "agent",
                 "data": {
@@ -523,6 +532,8 @@ pub fn expose(app: &AppHandle, id: &str) -> Result<Status, String> {
     if let Err(error) = made {
         if error.contains("InvalidTunnelName") {
             off_runtime(|| call(Some(&secret), "/tunnels/create", body(None)))?;
+        } else if error.contains("RequiresVerifiedAccount") {
+            return Err("playit needs a verified account for this tunnel. Sign in at playit.gg, verify your email, then try again.".into());
         } else if error.contains("NotAllowedWithReadOnly") || error.contains("AgentNotSelfManaged") {
             return Err("This playit link is read-only. Press 'Unlink playit' and link again.".into());
         } else {

@@ -119,6 +119,7 @@ const READS: &[&str] = &[
     "item_names",
     "item_icons",
     "playit_state",
+    "lan_ip",
     "datapack_folder",
     "search_datapacks",
 ];

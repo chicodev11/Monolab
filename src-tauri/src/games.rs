@@ -26,6 +26,9 @@ pub enum Stop {
     /// Send Ctrl+C, the way the game expects to be closed from a terminal.
     #[serde(rename = "ctrl-c")]
     CtrlC,
+    /// Type this as key presses into the server's own console, for servers that read keys rather than a pipe.
+    #[serde(rename = "keys")]
+    Keys(String),
 }
 
 pub struct Setup<'a> {
@@ -43,6 +46,15 @@ pub struct Game {
     pub source: Option<Source>,
     pub exe: String,
     pub port: u16,
+    /// What the port speaks: "tcp", "udp" or "both".
+    #[serde(default)]
+    pub protocol: String,
+    /// How many ports from `port` up the game uses (Valheim also listens on port+1).
+    #[serde(default)]
+    pub port_count: Option<u16>,
+    /// playit's own tunnel type for this game, when it has one.
+    #[serde(default)]
+    pub playit: Option<String>,
     pub ready: Vec<String>,
     pub stop: Stop,
     pub env: BTreeMap<String, String>,
@@ -53,6 +65,11 @@ pub struct Game {
 }
 
 impl Game {
+    /// The server reads key presses from its console, so its input can't be a pipe.
+    pub fn reads_keys(&self) -> bool {
+        matches!(self.stop, Stop::Keys(_))
+    }
+
     /// Fills the launch template: {name}, {name_bare}, {port}, {port+1}, {password}.
     pub fn launch_args(&self, setup: &Setup) -> String {
         self.args
@@ -103,12 +120,18 @@ pub fn launch_args(folder: &Path) -> Result<Vec<String>, String> {
 }
 
 /// The program to run and the arguments in front of the game's own ones.
+/// A .bat or .cmd runs under cmd, which asks "Terminate batch job (Y/N)?" after Ctrl+C.
+pub fn is_batch(exe: &str) -> bool {
+    let lower = exe.to_ascii_lowercase();
+    lower.ends_with(".bat") || lower.ends_with(".cmd")
+}
+
 pub fn program(game: &Game, folder: &Path) -> Result<(PathBuf, Vec<String>), String> {
     let exe = folder.join(&game.exe);
     if !exe.is_file() {
         return Err(format!("{} was not found in the server folder. Update the server files and try again.", game.exe));
     }
-    if game.exe.ends_with(".bat") {
+    if is_batch(&game.exe) {
         return Ok((PathBuf::from("cmd"), vec!["/c".into(), exe.to_string_lossy().into_owned()]));
     }
     Ok((exe, Vec::new()))
@@ -376,12 +399,79 @@ fn install_xna(app: &AppHandle, progress: Progress, cancelled: Cancelled) -> Res
     }
 }
 
+#[cfg(windows)]
+static CONSOLE_TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Starts a server whose input stays its own hidden console while output is still piped to us.
+/// Our input handle is blanked for the moment of the spawn, so the child gets none and reads its console.
+#[cfg(windows)]
+pub fn spawn_with_console_input(command: &mut std::process::Command) -> std::io::Result<std::process::Child> {
+    use windows_sys::Win32::System::Console::{GetStdHandle, SetStdHandle, STD_INPUT_HANDLE};
+    let _held = CONSOLE_TURN.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    unsafe {
+        let ours = GetStdHandle(STD_INPUT_HANDLE);
+        SetStdHandle(STD_INPUT_HANDLE, std::ptr::null_mut());
+        let child = command.stdin(std::process::Stdio::inherit()).spawn();
+        SetStdHandle(STD_INPUT_HANDLE, ours);
+        child
+    }
+}
+
+#[cfg(not(windows))]
+pub fn spawn_with_console_input(command: &mut std::process::Command) -> std::io::Result<std::process::Child> {
+    command.stdin(std::process::Stdio::piped()).spawn()
+}
+
+/// Types a line and Enter into a console program started without a window.
+#[cfg(windows)]
+pub fn type_keys(pid: u32, line: &str) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING};
+    use windows_sys::Win32::System::Console::{AttachConsole, FreeConsole, WriteConsoleInputW, INPUT_RECORD, KEY_EVENT};
+    let mut records: Vec<INPUT_RECORD> = Vec::new();
+    for unit in line.encode_utf16().chain(std::iter::once(13)) {
+        let key = if unit < 128 { (unit as u8).to_ascii_uppercase() as u16 } else { 0 };
+        for down in [1, 0] {
+            let mut record: INPUT_RECORD = unsafe { std::mem::zeroed() };
+            record.EventType = KEY_EVENT as u16;
+            unsafe {
+                let event = &mut record.Event.KeyEvent;
+                event.bKeyDown = down;
+                event.wRepeatCount = 1;
+                event.wVirtualKeyCode = key;
+                event.uChar.UnicodeChar = unit;
+            }
+            records.push(record);
+        }
+    }
+    let _held = CONSOLE_TURN.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    unsafe {
+        FreeConsole();
+        if AttachConsole(pid) == 0 {
+            return false;
+        }
+        let name: Vec<u16> = "CONIN$".encode_utf16().chain(std::iter::once(0)).collect();
+        let input = CreateFileW(name.as_ptr(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, std::ptr::null(), OPEN_EXISTING, 0, std::ptr::null_mut());
+        let mut written = 0;
+        let sent = input != INVALID_HANDLE_VALUE && WriteConsoleInputW(input, records.as_ptr(), records.len() as u32, &mut written) != 0;
+        if input != INVALID_HANDLE_VALUE {
+            CloseHandle(input);
+        }
+        FreeConsole();
+        sent && written as usize == records.len()
+    }
+}
+
+#[cfg(not(windows))]
+pub fn type_keys(_pid: u32, _line: &str) -> bool {
+    false
+}
+
 /// Sends Ctrl+C to a console program started without a window.
 #[cfg(windows)]
 pub fn ctrl_c(pid: u32) -> bool {
     use windows_sys::Win32::System::Console::{AttachConsole, FreeConsole, GenerateConsoleCtrlEvent, SetConsoleCtrlHandler, CTRL_C_EVENT};
-    static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _held = ONE_AT_A_TIME.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _held = CONSOLE_TURN.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     unsafe {
         FreeConsole();
         if AttachConsole(pid) == 0 {
@@ -413,6 +503,44 @@ pub fn report(app: &AppHandle, game: &Game, received: u64, total: u64) {
 mod tests {
     use super::*;
 
+    /// SE_TERRARIA_DIR=<folder with TerrariaServer.exe and serverconfig.txt>
+    #[cfg(windows)]
+    #[test]
+    #[ignore]
+    fn stops_a_real_terraria_server_by_typing_exit() {
+        use std::io::{BufRead, BufReader};
+        use std::os::windows::process::CommandExt;
+        let dir = PathBuf::from(std::env::var("SE_TERRARIA_DIR").expect("SE_TERRARIA_DIR"));
+        let mut command = std::process::Command::new(dir.join("TerrariaServer.exe"));
+        command.current_dir(&dir).args(["-config", "serverconfig.txt"]).creation_flags(0x0800_0000).stdout(std::process::Stdio::piped());
+        let mut child = spawn_with_console_input(&mut command).unwrap();
+        let out = BufReader::new(child.stdout.take().unwrap());
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for line in out.lines().map_while(Result::ok) {
+                let _ = tx.send(line);
+            }
+        });
+        let started = std::time::Instant::now();
+        loop {
+            let line = rx.recv_timeout(Duration::from_secs(90)).expect("server output");
+            if line.contains("Server started") {
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_secs(2));
+        assert!(type_keys(child.id(), "exit"));
+        for _ in 0..60 {
+            if let Some(status) = child.try_wait().unwrap() {
+                eprintln!("exited {status} after {:?}", started.elapsed());
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        let _ = child.kill();
+        panic!("Terraria did not stop after typing exit");
+    }
+
     #[test]
     fn every_game_is_complete() {
         let mut ids: Vec<&str> = all().iter().map(|one| one.id.as_str()).collect();
@@ -431,8 +559,8 @@ mod tests {
         assert!(rust.contains("+rcon.port 1235") && rust.contains("+server.hostname \"My 'Server'\""));
         assert!(find("ARK").unwrap().launch_args(&setup).contains("SessionName=My__Server_?"));
         assert_eq!(find("Valheim").unwrap().env.get("SteamAppId").map(String::as_str), Some("892970"));
-        assert_eq!(find("Terraria").unwrap().stop, Stop::Input("exit
-".into()));
+        assert_eq!(find("Terraria").unwrap().stop, Stop::Keys("exit".into()));
+        assert!(find("Terraria").unwrap().reads_keys());
         assert_eq!(find("Terraria").unwrap().requires, vec!["xna4".to_string()]);
         assert!(find("Valheim").unwrap().requires.is_empty());
         assert!(is_game("Valheim"));

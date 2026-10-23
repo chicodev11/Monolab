@@ -6,7 +6,8 @@ import { commands } from "../../lib/ipc";
 import { Input, SegmentedControl } from "../primitives";
 import { Icon } from "../ui/Icon";
 
-type Draft = { program: string; args: string; ready: string; stopInput: string; stopMode: "ctrl-c" | "input" };
+type Protocol = "tcp" | "udp" | "both";
+type Draft = { program: string; args: string; ready: string; stopInput: string; stopMode: "ctrl-c" | "input"; protocol: Protocol };
 
 const toDraft = (one: CustomProgram): Draft => ({
   program: one.program ?? "",
@@ -14,6 +15,7 @@ const toDraft = (one: CustomProgram): Draft => ({
   ready: one.ready ?? "",
   stopInput: one.stopInput ?? "",
   stopMode: one.stopInput ? "input" : "ctrl-c",
+  protocol: one.protocol === "udp" || one.protocol === "both" ? one.protocol : "tcp",
 });
 
 const toProgram = (draft: Draft): CustomProgram => ({
@@ -21,6 +23,7 @@ const toProgram = (draft: Draft): CustomProgram => ({
   args: draft.args.trim(),
   ready: draft.ready.trim(),
   stopInput: draft.stopMode === "input" ? draft.stopInput.trim() : "",
+  protocol: draft.protocol,
 });
 
 const shown = (path: string, folder: string) => {
@@ -64,10 +67,21 @@ function ProgramFields({
         </label>
       </div>
       <div className="create-two">
-        <label className="create-field">
+        <div className="create-field">
           <span>{tr("Port")}</span>
-          <Input value={port} inputMode="numeric" placeholder="12345" onChange={(event) => onPort(event.target.value.replace(/\D/g, "").slice(0, 5))} />
-        </label>
+          <span className="program-stop">
+            <Input value={port} inputMode="numeric" placeholder="12345" onChange={(event) => onPort(event.target.value.replace(/\D/g, "").slice(0, 5))} />
+            <SegmentedControl
+              value={draft.protocol}
+              onChange={(protocol) => onDraft({ ...draft, protocol: protocol as Protocol })}
+              options={[
+                { value: "tcp", label: "TCP" },
+                { value: "udp", label: "UDP" },
+                { value: "both", label: "TCP+UDP" },
+              ]}
+            />
+          </span>
+        </div>
         <label className="create-field">
           <span>{tr("Ready text (optional)")}</span>
           <Input value={draft.ready} placeholder="Server started" spellCheck={false} onChange={(event) => onDraft({ ...draft, ready: event.target.value })} />
@@ -98,7 +112,7 @@ const portOf = (text: string) => Number(text) || 0;
 /** Create step: pick a folder that already holds a server program, then how to run it. */
 export function CustomCreate({ onCreate }: { onCreate: (folder: string, port: number, program: CustomProgram) => Promise<boolean> }) {
   const [folder, setFolder] = useState("");
-  const [draft, setDraft] = useState<Draft>({ program: "", args: "", ready: "", stopInput: "", stopMode: "ctrl-c" });
+  const [draft, setDraft] = useState<Draft>({ program: "", args: "", ready: "", stopInput: "", stopMode: "ctrl-c", protocol: "tcp" });
   const [port, setPort] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -165,7 +179,7 @@ export function CustomProgramCard({
       })
       .catch((cause) => {
         errorRef.current(String(cause));
-        const empty: Draft = { program: "", args: "", ready: "", stopInput: "", stopMode: "ctrl-c" };
+        const empty: Draft = { program: "", args: "", ready: "", stopInput: "", stopMode: "ctrl-c", protocol: "tcp" };
         setSaved({ draft: empty, port: String(port) });
         setDraft(empty);
       });

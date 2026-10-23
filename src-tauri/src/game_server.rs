@@ -87,6 +87,35 @@ pub struct CustomProgram {
     pub ready: String,
     /// Typed into the console to stop it. Empty: send Ctrl+C.
     pub stop_input: String,
+    /// What the port speaks, for a playit tunnel: "tcp", "udp" or "both". Empty is tcp.
+    pub protocol: String,
+}
+
+/// How a playit tunnel for a server looks: port type, playit tunnel type, and how many ports.
+pub(crate) struct TunnelKind {
+    pub port_type: &'static str,
+    pub tunnel_type: Option<String>,
+    pub port_count: u16,
+}
+
+fn port_type(protocol: &str) -> &'static str {
+    match protocol {
+        "udp" => "udp",
+        "both" => "both",
+        _ => "tcp",
+    }
+}
+
+/// Minecraft is a Minecraft tunnel; a game or a custom program says its own protocol.
+pub(crate) fn tunnel_kind(app: &AppHandle, instance: &ServerInstance) -> Result<TunnelKind, String> {
+    if let Some(game) = game_for(app, instance) {
+        return Ok(TunnelKind {
+            port_type: port_type(&game.protocol),
+            tunnel_type: game.playit.clone(),
+            port_count: game.port_count.unwrap_or(1).max(1),
+        });
+    }
+    Ok(TunnelKind { port_type: "tcp", tunnel_type: Some("minecraft-java".into()), port_count: 1 })
 }
 
 fn custom_path(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
@@ -125,6 +154,9 @@ fn as_game(program: &CustomProgram, port: u16) -> games::Game {
         source: None,
         exe: program.program.clone(),
         port,
+        protocol: program.protocol.clone(),
+        port_count: None,
+        playit: None,
         ready: if program.ready.is_empty() { Vec::new() } else { vec![program.ready.clone()] },
         stop: if stop_input.is_empty() { games::Stop::CtrlC } else { games::Stop::Input(format!("{stop_input}\n")) },
         env: Default::default(),
@@ -269,7 +301,7 @@ mod tests {
         let folder = dir.canonicalize().map(plain_path).unwrap();
         let program = checked(
             &folder,
-            CustomProgram { program: "ruby/bin/ruby.exe".into(), args: " Server.rb \"two words\" ".into(), ready: " Server started ".into(), stop_input: String::new() },
+            CustomProgram { program: "ruby/bin/ruby.exe".into(), args: " Server.rb \"two words\" ".into(), ready: " Server started ".into(), stop_input: String::new(), protocol: String::new() },
         )
         .unwrap();
         assert_eq!(program.ready, "Server started");

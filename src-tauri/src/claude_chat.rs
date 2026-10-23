@@ -90,7 +90,7 @@ pub fn open(app: &AppHandle, server: &str, fresh: bool, mode: &str, model: &str)
         command.arg("--continue");
     }
     command.args(claude_agent::DENIED_DELETES);
-    command.arg("--mcp-config").arg(&config);
+    command.arg("--mcp-config").arg(&config).arg("--strict-mcp-config");
     command.arg("--append-system-prompt").arg(claude_agent::briefing(&instance, &dir));
     command.current_dir(&dir);
     if let Some(account) = crate::claude_accounts::config_for_server(app, server) {
@@ -100,6 +100,9 @@ pub fn open(app: &AppHandle, server: &str, fresh: bool, mode: &str, model: &str)
         // Long chats re-read their whole history every turn; compact well before the 1M window fills.
         command.env("CLAUDE_CODE_AUTO_COMPACT_WINDOW", "120000");
     }
+    // No side calls (titles, tips, update checks) that spend the plan without the user asking.
+    command.env("DISABLE_NON_ESSENTIAL_MODEL_CALLS", "1");
+    command.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
     command.env_remove("CLAUDECODE");
     command.env_remove("CLAUDE_CODE_ENTRYPOINT");
     command.env_remove("CLAUDE_CODE_CHILD_SESSION");

@@ -292,6 +292,8 @@ export const commands = {
 	deleteSshHost: (id: string) => __TAURI_INVOKE<number>("delete_ssh_host", { id }),
 	testSshHost: (id: string) => __TAURI_INVOKE<BoxInfo>("test_ssh_host", { id }),
 	playitState: () => __TAURI_INVOKE<Status>("playit_state"),
+	/**  This PC's address on the home network, for the Network tab. */
+	lanIp: () => __TAURI_INVOKE<string>("lan_ip"),
 	playitClaim: () => __TAURI_INVOKE<string>("playit_claim"),
 	playitExpose: (id: string) => __TAURI_INVOKE<Status>("playit_expose", { id }),
 	playitUnexpose: (id: string) => __TAURI_INVOKE<Status>("playit_unexpose", { id }),
@@ -635,6 +637,8 @@ export type CustomProgram = {
 	ready?: string,
 	/**  Typed into the console to stop it. Empty: send Ctrl+C. */
 	stopInput?: string,
+	/**  What the port speaks, for a playit tunnel: "tcp", "udp" or "both". Empty is tcp. */
+	protocol?: string,
 };
 
 export type DailySummary = {
@@ -1481,6 +1485,8 @@ export type Tunnel = {
 	localPort: number,
 	address: string,
 	disabled: boolean,
+	/**  "tcp", "udp" or "both". */
+	protocol: string,
 };
 
 export type UpdateIssue = {

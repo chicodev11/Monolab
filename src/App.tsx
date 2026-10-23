@@ -1,3 +1,4 @@
+import { keepSame } from "./lib/same";
 import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import appIcon from "./assets/app-icon.png";
 import { commands } from "./lib/ipc";
@@ -90,14 +91,11 @@ import { AskDialog, type AskRequest } from "./components/dialogs/AskDialog";
 import { Sparkline } from "./components/ui/Sparkline";
 import { RemoteImport } from "./components/panels/RemoteImport";
 import { PanelHosts } from "./components/panels/PanelHosts";
-import { PanelAdmin } from "./components/panels/PanelAdmin";
-import { PanelServerTools, type PanelView } from "./components/panels/PanelServerTools";
-import { SftpPage } from "./components/panels/SftpPage";
-import { AgentPage } from "./components/panels/AgentPage";
+import type { PanelView } from "./components/panels/PanelServerTools";
 import { TasksPage } from "./components/panels/TasksPage";
 import { PanelStartupCard } from "./components/panels/PanelStartupCard";
 import { GameLaunchCard } from "./components/panels/GameLaunchCard";
-import { addonKind, coreLabel, customProgram, findGame, gameOf, has, isCustom, isGame, kindOf, minecraftCores } from "./lib/kinds";
+import { addonKind, coreLabel, customProgram, findGame, gameOf, has, isCustom, isGame, kindOf, minecraftCores, portsOf, type Protocol } from "./lib/kinds";
 import { SshHosts } from "./components/panels/SshHosts";
 import { CommandPalette } from "./components/dialogs/CommandPalette";
 import { MarksPanel } from "./components/panels/MarksPanel";
@@ -131,7 +129,13 @@ import { ConsoleOutput, LogLines, type ConsoleLevel } from "./components/console
 import { ServerStats } from "./components/console/ServerStats";
 import { FileRows } from "./components/files/FileRows";
 import { TextureView } from "./components/files/TextureView";
-import { CodeEditor, languageOf, type Cursor } from "./components/files/CodeEditor";
+import type { Cursor } from "./components/files/CodeEditor";
+import { languageName } from "./lib/fileLang";
+const CodeEditor = lazy(() => import("./components/files/CodeEditor").then((module) => ({ default: module.CodeEditor })));
+const PanelAdmin = lazy(() => import("./components/panels/PanelAdmin").then((module) => ({ default: module.PanelAdmin })));
+const PanelServerTools = lazy(() => import("./components/panels/PanelServerTools").then((module) => ({ default: module.PanelServerTools })));
+const SftpPage = lazy(() => import("./components/panels/SftpPage").then((module) => ({ default: module.SftpPage })));
+const AgentPage = lazy(() => import("./components/panels/AgentPage").then((module) => ({ default: module.AgentPage })));
 import { applyCompact, applyTheme, followSystem, readCompact, readTheme, type Theme } from "./lib/theme";
 import {
   bytes,
@@ -243,6 +247,7 @@ type Tool =
   | "players"
   | "addons"
   | "claude"
+  | "reach"
   | PanelView;
 type PlayerAction = "whitelist" | "operator" | "ban" | "kick";
 function sayWhatHappened(result: AddonAddResult) {
@@ -526,6 +531,7 @@ const instanceNav: {
   { id: "backups", label: tr("Backups"), icon: "archive" },
   { id: "logs", label: tr("Logs"), icon: "console" },
   { id: "monitor", label: tr("Monitor"), icon: "cpu" },
+  { id: "reach", label: tr("Network"), icon: "network" },
 ];
 const panelNav: { id: Tool; label: string; icon: string; section?: string }[] = [
   { id: "overview", label: tr("Console"), icon: "terminal" },
@@ -1108,6 +1114,8 @@ function App() {
   const themeRef = useRef<Theme>(theme);
   const [playit, setPlayit] = useState<PlayitStatus | null>(null);
   const [playitBusy, setPlayitBusy] = useState(false);
+  const [lanIp, setLanIp] = useState("");
+  const [reachProtocol, setReachProtocol] = useState<Protocol>("tcp");
   const [itemNames, setItemNames] = useState<Record<string, string>>({});
   const [itemIcons, setItemIcons] = useState<Record<string, string>>({});
   const [live, setLive] = useState<LiveState | null>(null);
@@ -1383,7 +1391,7 @@ function App() {
   }
   async function refreshInstances() {
     try {
-      const next = await commands.listInstances();
+      const next = keepSame(instancesRef.current, await commands.listInstances());
       instancesRef.current = next;
       setInstances(next);
     } catch {}
@@ -1463,15 +1471,16 @@ function App() {
         commands.listTrashInstances(),
         commands.getServersRoot().catch(() => ""),
         commands.getAppSettings()
-          .then(setSettings)
+          .then((next) => setSettings((old) => keepSame(old, next)))
           .catch(() => undefined),
         commands.listTasks()
-          .then(setTaskList)
+          .then((next) => setTaskList((old) => keepSame(old, next)))
           .catch(() => undefined),
       ]);
-      instancesRef.current = nextInstances;
-      setInstances(nextInstances);
-      setTrashEntries(nextTrash);
+      const kept = keepSame(instancesRef.current, nextInstances);
+      instancesRef.current = kept;
+      setInstances(kept);
+      setTrashEntries((old) => keepSame(old, nextTrash));
       if (nextRoot) setServersRoot(nextRoot);
     } catch (cause) {
       setError(String(cause));
@@ -1612,10 +1621,22 @@ function App() {
     setCompactState(next);
     applyCompact(next);
   }
+  const reachServer = page === "instance" && tool === "reach" ? selected?.id ?? null : null;
+  const reachCustom = reachServer && selected && isCustom(selected.core);
+  useEffect(() => {
+    if (!reachServer || webReady !== true) return;
+    void commands.lanIp().then(setLanIp).catch(() => {});
+    if (reachCustom) {
+      void commands
+        .readCustomProgram(reachServer)
+        .then((one) => setReachProtocol(one.protocol === "udp" || one.protocol === "both" ? one.protocol : "tcp"))
+        .catch(() => setReachProtocol("tcp"));
+    }
+  }, [reachServer, reachCustom, webReady]);
   const playitPeriod = period(4_000, attention);
   useEffect(() => {
     if (webReady !== true || page !== "instance") return;
-    if (tool !== "overview" && tool !== "console") return;
+    if (tool !== "overview" && tool !== "console" && tool !== "reach") return;
     void loadPlayit();
     if (playitPeriod === null) return;
     const timer = window.setInterval(() => void loadPlayit(), playitPeriod);
@@ -3430,8 +3451,104 @@ function App() {
       setError(String(cause));
     }
   }
+  function playitCard() {
+    if (!selected) return null;
+    return (
+      <div className="setting-card">
+        {(() => {
+          const tunnel = playit?.tunnels.find((one) => one.localPort === selected.port);
+          const claim = playit?.claim;
+          const status = !playit
+            ? tr("Loading…")
+            : !playit.hasSecret
+              ? claim?.state === "waiting"
+                ? tr("Approve it in your browser.")
+                : claim?.state === "rejected"
+                  ? tr("Approval was declined in the browser. You can try again.")
+                  : claim?.state === "expired"
+                    ? tr("Approval timed out. Try again.")
+                    : claim?.state === "error"
+                      ? `${tr("Connection failed:")} ${claim.error}`
+                      : tr("Connect playit.gg so friends can join without exposing your home IP or setting up port forwarding.")
+              : tunnel
+                ? tunnel.disabled
+                  ? tr("This tunnel is disabled in the playit dashboard.")
+                  : playit.running
+                    ? tr("playit connected")
+                    : tr("playit is off — starting a server turns it back on.")
+                : tr("Public access is off. Enable it to get an address for friends to join.");
+          return (
+            <div className="setting-row playit-row">
+              <div>
+                <strong>
+                  {tr("Public address")}
+                  <small className="muted"> playit.gg</small>
+                </strong>
+                {tunnel ? (
+                  <button
+                    className="playit-address"
+                    disabled={!tunnel.address}
+                    data-tip={tr("Click to copy")}
+                    onClick={() => {
+                      void navigator.clipboard.writeText(tunnel.address);
+                      setNotice(tr("Address copied!"));
+                    }}
+                  >
+                    <code>{tunnel.address || tr("Assigning an address…")}</code>
+                    <Icon name="copy" />
+                    <small>{status}{playit?.error ? ` · ${playit.error}` : ""}</small>
+                  </button>
+                ) : (
+                  <small data-tip={status}>
+                    {status}
+                    {claim?.state === "waiting" && (
+                      <>
+                        {" "}
+                        <button className="playit-url" onClick={() => void openExternal(claim.url)}>
+                          {claim.url}
+                        </button>
+                      </>
+                    )}
+                    {playit?.error ? ` · ${playit.error}` : ""}
+                  </small>
+                )}
+              </div>
+              {playit && !playit.hasSecret && (
+                <button
+                  className="button secondary small"
+                  disabled={playitBusy || claim?.state === "waiting"}
+                  onClick={() => void beginPlayitClaim()}
+                >
+                  <Icon name="cloud" />
+                  {claim?.state === "waiting" ? tr("Waiting for approval…") : tr("Link playit")}
+                </button>
+              )}
+              {playit?.hasSecret && (
+                <>
+                  <button
+                    className="button secondary small"
+                    disabled={playitBusy}
+                    onClick={() => void setPlayitExposed(!tunnel)}
+                  >
+                    <Icon name={tunnel ? "stop" : "cloud"} />
+                    {playitBusy ? tr("One moment…") : tunnel ? tr("Disable public access") : tr("Enable public access")}
+                  </button>
+                  <IconButton
+                    className="small"
+                    label={tr("Unlink playit")}
+                    icon="exit"
+                    onClick={() => void forgetPlayit()}
+                  />
+                </>
+              )}
+            </div>
+          );
+        })()}
+      </div>
+    );
+  }
   function playitChip() {
-    if (!playit || !selected) return null;
+    if (!playit || !selected || (isGame(selected.core) && !isCustom(selected.core))) return null;
     if (!playit.hasSecret) {
       const waiting = playit.claim?.state === "waiting";
       return (
@@ -6081,7 +6198,7 @@ function App() {
               {tr("Send")}</button>
           </form>
           </div>
-          <ServerStats server={{ id: selected.id, name: selected.name, panelHost: selected.panelHost, maxMemoryMib: selected.maxMemoryMib, port: selected.port, status: selected.status, uptimeSeconds: selected.uptimeSeconds }} onOpenPlayer={() => void loadTool("players")} />
+          <ServerStats server={{ id: selected.id, name: selected.name, panelHost: selected.panelHost, maxMemoryMib: kindOf(selected.core).family === "minecraft" ? selected.maxMemoryMib : 0, port: selected.port, status: selected.status, uptimeSeconds: selected.uptimeSeconds }} onOpenPlayer={() => void loadTool("players")} />
           </div>
         </div>
       )}
@@ -6563,7 +6680,7 @@ function App() {
           })()}
           </fieldset>
           )}
-          <div className="overview-grid overview-pair">
+          <div className="overview-grid overview-one">
           <div className="setting-card">
             <div className="setting-row">
               <div>
@@ -6600,99 +6717,6 @@ function App() {
               </div>
             )}
           </div>
-          {!selected.remoteHost && !selected.panelHost && kindOf(selected.core).family === "minecraft" && (
-          <div className="setting-card">
-            {(() => {
-              const tunnel = playit?.tunnels.find((one) => one.localPort === selected.port);
-              const claim = playit?.claim;
-              const status = !playit
-                ? tr("Loading…")
-                : !playit.hasSecret
-                  ? claim?.state === "waiting"
-                    ? tr("Approve it in your browser.")
-                    : claim?.state === "rejected"
-                      ? tr("Approval was declined in the browser. You can try again.")
-                      : claim?.state === "expired"
-                        ? tr("Approval timed out. Try again.")
-                        : claim?.state === "error"
-                          ? `${tr("Connection failed:")} ${claim.error}`
-                          : tr("Connect playit.gg so friends can join without exposing your home IP or setting up port forwarding.")
-                  : tunnel
-                    ? tunnel.disabled
-                      ? tr("This tunnel is disabled in the playit dashboard.")
-                      : playit.running
-                        ? tr("playit connected")
-                        : tr("playit is off — starting a server turns it back on.")
-                    : tr("Public access is off. Enable it to get an address for friends to join.");
-              return (
-                <div className="setting-row playit-row">
-                  <div>
-                    <strong>
-                      {tr("Public address")}
-                      <small className="muted"> playit.gg</small>
-                    </strong>
-                    {tunnel ? (
-                      <button
-                        className="playit-address"
-                        disabled={!tunnel.address}
-                        data-tip={tr("Click to copy")}
-                        onClick={() => {
-                          void navigator.clipboard.writeText(tunnel.address);
-                          setNotice(tr("Address copied!"));
-                        }}
-                      >
-                        <code>{tunnel.address || tr("Assigning an address…")}</code>
-                        <Icon name="copy" />
-                        <small>{status}{playit?.error ? ` · ${playit.error}` : ""}</small>
-                      </button>
-                    ) : (
-                      <small data-tip={status}>
-                        {status}
-                        {claim?.state === "waiting" && (
-                          <>
-                            {" "}
-                            <button className="playit-url" onClick={() => void openExternal(claim.url)}>
-                              {claim.url}
-                            </button>
-                          </>
-                        )}
-                        {playit?.error ? ` · ${playit.error}` : ""}
-                      </small>
-                    )}
-                  </div>
-                  {playit && !playit.hasSecret && (
-                    <button
-                      className="button secondary small"
-                      disabled={playitBusy || claim?.state === "waiting"}
-                      onClick={() => void beginPlayitClaim()}
-                    >
-                      <Icon name="cloud" />
-                      {claim?.state === "waiting" ? tr("Waiting for approval…") : tr("Link playit")}
-                    </button>
-                  )}
-                  {playit?.hasSecret && (
-                    <>
-                      <button
-                        className="button secondary small"
-                        disabled={playitBusy}
-                        onClick={() => void setPlayitExposed(!tunnel)}
-                      >
-                        <Icon name={tunnel ? "stop" : "cloud"} />
-                        {playitBusy ? tr("One moment…") : tunnel ? tr("Disable public access") : tr("Enable public access")}
-                      </button>
-                      <IconButton
-                        className="small"
-                        label={tr("Unlink playit")}
-                        icon="exit"
-                        onClick={() => void forgetPlayit()}
-                      />
-                    </>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-          )}
           </div>
           </>
           )}
@@ -7193,6 +7217,7 @@ function App() {
                   {fileImage ? (
                     <TextureView serverId={selected.id} path={activeFile} src={fileImage} />
                   ) : (
+                    <Suspense fallback={null}>
                     <CodeEditor
                       key={activeFile}
                       path={activeFile}
@@ -7204,6 +7229,7 @@ function App() {
                       }}
                       onCursor={setEditorCursor}
                     />
+                    </Suspense>
                   )}
                 </div>
                 <div className="ide-status">
@@ -7236,7 +7262,7 @@ function App() {
                       <span>{tr("{0, plural, one {# line} other {# lines}}", [editorCursor.lines])}</span>
                       <span>UTF-8</span>
                       <span>{fileContent.includes("\r\n") ? "CRLF" : "LF"}</span>
-                      <span>{languageOf(activeFile).name}</span>
+                      <span>{languageName(activeFile)}</span>
                     </>
                   )}
                 </div>
@@ -7766,6 +7792,7 @@ function App() {
         </div>
       )}
       {!toolLoading && PANEL_VIEWS.includes(tool) && selected?.panelHost && (
+        <Suspense fallback={null}>
         <PanelServerTools
           key={selected.id}
           view={tool as PanelView}
@@ -7781,11 +7808,16 @@ function App() {
           confirm={confirmAction}
           ask={askText}
         />
+        </Suspense>
       )}
       {!toolLoading && tool === "claude" && !onWeb && (
+        <Suspense fallback={null}>
         <AgentPage key={selected.id} server={{ id: selected.id, name: selected.name }} onError={setError} />
+        </Suspense>
       )}
-      {!toolLoading && tool === "monitor" && (
+      {!toolLoading && tool === "monitor" && (() => {
+        const mc = kindOf(selected.core).family === "minecraft";
+        return (
         <div className="tool-content monitor-page">
           {addon?.supported && (!addon.installed || addon.needsUpdate) && (
             <div className="addon-strip">
@@ -7835,7 +7867,11 @@ function App() {
           )}
           <div className="tool-top">
             <p>
-              {live && selected.status === "running"
+              {!mc
+                ? selected.status === "running"
+                  ? tr("Updates every second")
+                  : tr("Updates every second while the server is running.")
+                : live && selected.status === "running"
                 ? selected.remoteHost
                   ? tr("TPS and entities every second, CPU and memory every 3 seconds (SSH)")
                   : tr("Updates every second")
@@ -7862,7 +7898,7 @@ function App() {
             <div>
               <span>{tr("Memory use")}</span>
               <strong>
-                {orDash(selected.status !== "running" ? null : live?.memoryMib != null ? live.memoryMib : resource ? resource.memoryMib : null, (v) => bytes(v))}
+                {orDash(selected.status !== "running" ? null : live?.memoryMib != null ? live.memoryMib : resource ? resource.memoryMib : null, (v) => (v < 1024 ? fileSize(v * 1048576) : bytes(v)))}
               </strong>
             </div>
             {live?.chunks != null && (
@@ -7877,20 +7913,24 @@ function App() {
                 <strong>{orDash(live.entities, (v) => Math.round(v).toLocaleString())}</strong>
               </div>
             )}
-            <div>
-              <span>TPS</span>
-              <strong>
-                {orDash(live?.tps ?? tps?.tps ?? null, (v) => v.toFixed(2))}
-              </strong>
-            </div>
-            <div>
-              <span>MSPT</span>
-              <strong>
-                {orDash(live?.mspt ?? tps?.mspt ?? null, (v) => `${v.toFixed(1)} ms`)}
-              </strong>
-            </div>
+            {mc && (
+              <div>
+                <span>TPS</span>
+                <strong>
+                  {orDash(live?.tps ?? tps?.tps ?? null, (v) => v.toFixed(2))}
+                </strong>
+              </div>
+            )}
+            {mc && (
+              <div>
+                <span>MSPT</span>
+                <strong>
+                  {orDash(live?.mspt ?? tps?.mspt ?? null, (v) => `${v.toFixed(1)} ms`)}
+                </strong>
+              </div>
+            )}
           </div>
-          {selected.status === "running" && (
+          {mc && selected.status === "running" && (
             <div className="monitor-insight">
               <Card
                 className="lag-card"
@@ -8097,8 +8137,8 @@ function App() {
           {chartView === "past" && perfHistory.length > 0 ? null : selected.status !== "running" && history.length === 0 ? (
             <EmptyState
               icon="cpu"
-              title={tr("Start the server to see CPU, memory and TPS graphs.")}
-              hint={perfHistory.length > 0 ? tr("Past records from the add-on are below.") : tr("With the add-on installed, performance is recorded every minute, so you can look back at times the app was closed.")}
+              title={mc ? tr("Start the server to see CPU, memory and TPS graphs.") : tr("Start the server to see CPU and memory graphs.")}
+              hint={!mc ? undefined : perfHistory.length > 0 ? tr("Past records from the add-on are below.") : tr("With the add-on installed, performance is recorded every minute, so you can look back at times the app was closed.")}
             />
           ) : (
           <div className="chart-stack">
@@ -8115,13 +8155,14 @@ function App() {
             <Sparkline
               label={tr("Memory")}
               unit=" GB"
-              max={selected.maxMemoryMib / 1024}
+              max={mc ? selected.maxMemoryMib / 1024 : undefined}
               format={(value) => value.toFixed(1)}
               samples={recentHistory.map((sample) => ({
                 at: sample.at,
                 value: sample.memoryMib == null ? null : sample.memoryMib / 1024,
               }))}
             />
+            {mc && (
             <Sparkline
               label="TPS"
               unit=""
@@ -8133,6 +8174,7 @@ function App() {
                 value: sample.tps,
               }))}
             />
+            )}
           </div>
           )}
           {chartView === "past" && perfHistory.length > 0 && (
@@ -8172,7 +8214,57 @@ function App() {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
+      {!toolLoading && tool === "reach" && (() => {
+        const ports = isCustom(selected.core) ? { protocol: reachProtocol, count: 1 } : portsOf(selected.core);
+        const span = ports.count > 1 ? `${selected.port}-${selected.port + ports.count - 1}` : String(selected.port);
+        const proto = ports.protocol === "both" ? "TCP+UDP" : ports.protocol.toUpperCase();
+        const tunnel = playit?.tunnels.find((one) => one.localPort === selected.port);
+        const rows = [
+          { label: tr("This PC"), value: `localhost:${selected.port}` },
+          { label: tr("Same Wi-Fi"), value: lanIp ? `${lanIp}:${selected.port}` : "" },
+          { label: "playit.gg", value: tunnel?.address ?? "" },
+        ];
+        return (
+        <div className="tool-content reach-page">
+          <div className="tool-top">
+            <p>{tr("Addresses friends can use to join.")}</p>
+          </div>
+          <div className="setting-card">
+            <span className="setting-title">{tr("Addresses")}</span>
+            {rows.map((row) => (
+              <div className="setting-row reach-row" key={row.label}>
+                <strong>{row.label}</strong>
+                {row.value ? (
+                  <button
+                    className={`web-link copy-mark ${copiedKey === "reach-" + row.label ? "done" : ""}`}
+                    onClick={() => {
+                      flashCopied("reach-" + row.label);
+                      void navigator.clipboard.writeText(row.value);
+                      setNotice(tr("Address copied!"));
+                    }}
+                  >
+                    <code>{row.value}</code>
+                    <Icon name={copiedKey === "reach-" + row.label ? "check" : "copy"} />
+                  </button>
+                ) : (
+                  <small className="muted">{tr("Off")}</small>
+                )}
+              </div>
+            ))}
+          </div>
+          {playitCard()}
+          <div className="setting-card">
+            <span className="setting-title">{tr("Port forwarding")}</span>
+            <p className="reach-note">
+              {tr("In your router, forward {0} {1} to {2}. Friends then join with your public IP.", [proto, span, lanIp || tr("this PC")])}
+            </p>
+            <small className="muted">{tr("Your home IP is visible to friends.")}</small>
+          </div>
+        </div>
+        );
+      })()}
       {trimOpen && selected && (
         <TrimDialog
           server={selected}
@@ -10487,6 +10579,7 @@ function App() {
                     {tr("Sync server list")}
                   </Button>
                 </div>
+                <Suspense fallback={null}>
                 <PanelAdmin
                   hosts={panelHostViews}
                   onError={setError}
@@ -10502,6 +10595,7 @@ function App() {
                     setSessionOpen({ tab: "panel", adding: true });
                   }}
                 />
+                </Suspense>
               </>
             )}
             {modal === "sftp" && (
@@ -10512,6 +10606,7 @@ function App() {
                     <p className="modal-copy">{tr("Choose local or a server at the top of each pane. Select files and use the button below to send them across, or drag and drop them.")}</p>
                   </div>
                 </div>
+                <Suspense fallback={null}>
                 <SftpPage
                   sshHosts={sshHostViews}
                   panelServers={instances.filter((one) => one.panelHost).map((one) => ({ id: one.id, name: one.name }))}
@@ -10521,6 +10616,7 @@ function App() {
                   confirm={confirmAction}
                   ask={askText}
                 />
+                </Suspense>
               </>
             )}
             {modal === "trash" && (

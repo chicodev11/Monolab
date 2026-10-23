@@ -218,3 +218,19 @@
 .sidebar.compact .rail-servers button { width: 44px; height: 44px; }
 .sidebar.compact .rail-tile { width: 36px; height: 36px; }
 .sidebar.compact .rail-tile > .status-dot { right: -2px; bottom: -2px; width: 11px; height: 11px; }
+
+/* Console header: the playit "Disable public access" button keeps its full label; the address shrinks instead. */
+.live-head .playit-chip > .button { flex: none; white-space: nowrap; }
+
+/* Server Network tab. */
+.reach-page { display: grid; gap: 12px; align-content: start; }
+.reach-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.reach-row .web-link { min-width: 0; max-width: 62%; }
+.reach-note { margin: 8px 0 4px; color: var(--text-2); line-height: 1.5; }
+.reach-page .setting-card { min-width: 0; }
+.reach-page .playit-row > div { min-width: 0; }
+.reach-page .playit-address { max-width: 100%; min-width: 0; }
+.reach-page .playit-address small, .reach-page .playit-row > div > small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reach-page .setting-card { grid-template-columns: minmax(0, 1fr); }
+.reach-page .playit-row > div { flex: 1 1 0; }
+.reach-page .playit-address small { flex: 1 1 0; }
