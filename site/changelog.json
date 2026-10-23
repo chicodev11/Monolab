@@ -1,6 +1,14 @@
 [
   {
     "kind": "app",
+    "version": "1.3.2",
+    "date": "2026-10-23",
+    "fixed": [
+      "Tunnel helpers (Cloudflare, playit) kept running after the app closed by an update or a crash, so addresses stayed open and duplicate tunnels piled up. They are stopped before an update and cleaned up on the next start."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.3.1",
     "date": "2026-10-23",
     "added": [

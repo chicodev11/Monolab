@@ -15724,6 +15724,9 @@ fn import_settings(app: AppHandle, source: String) -> Result<ImportSummary, Stri
 #[tauri::command(async)]
 #[specta::specta]
 fn stop_servers_for_update(app: AppHandle, state: State<'_, AppState>) -> Result<usize, String> {
+    // The installer ends the app without RunEvent::Exit, so the tunnel helpers would outlive it.
+    tunnel::stop(&app);
+    playit::stop();
     let running = {
         let processes = state
             .processes
@@ -15744,6 +15747,31 @@ fn stop_servers_for_update(app: AppHandle, state: State<'_, AppState>) -> Result
         "All running servers were stopped before installing the update.",
     );
     Ok(running)
+}
+
+/// cloudflared and playitd started by an earlier run that ended without cleaning up (crash, force quit, update).
+/// Only our own copies in the app data folder whose Monolab is gone; another running Monolab keeps its own.
+fn sweep_stray_helpers(app: &AppHandle) {
+    let Ok(dir) = app.path().app_data_dir() else { return };
+    let dir = dir.to_string_lossy().to_lowercase();
+    let mut system = sysinfo::System::new();
+    system.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::All,
+        true,
+        sysinfo::ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::Always),
+    );
+    for process in system.processes().values() {
+        let Some(exe) = process.exe() else { continue };
+        let path = exe.to_string_lossy().to_lowercase();
+        let name = exe.file_name().map(|one| one.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let owned = process
+            .parent()
+            .and_then(|pid| system.process(pid))
+            .is_some_and(|parent| parent.name().to_string_lossy().to_lowercase().starts_with("monolab"));
+        if !owned && path.starts_with(&dir) && (name == "cloudflared.exe" || name.starts_with("playitd")) {
+            process.kill();
+        }
+    }
 }
 
 fn shutdown_managed_servers(app: &AppHandle) {
@@ -16185,6 +16213,7 @@ pub fn run() {
                 thread::sleep(Duration::from_secs(2));
                 start_marked_servers(&handle);
             });
+            sweep_stray_helpers(app.handle());
             if playit::read_secret(app.handle()).is_some() {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {

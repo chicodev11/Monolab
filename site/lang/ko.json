@@ -120,5 +120,6 @@
   "Custom program servers started from a .bat or Ruby/Python script showed an empty console.": ".bat이나 Ruby·Python 스크립트로 켠 직접 실행 서버의 콘솔이 비어 있던 문제를 고쳤어요.",
   "Stopping a .bat server no longer stops at \"Terminate batch job (Y/N)?\".": ".bat 서버를 끌 때 \"일괄 작업을 끝내시겠습니까 (Y/N)?\"에서 멈추지 않아요.",
   "Terraria stops cleanly instead of being killed.": "테라리아가 강제 종료되지 않고 저장한 뒤 꺼져요.",
-  "The playit button in the console header was cut off.": "콘솔 위 playit 버튼이 잘리던 문제를 고쳤어요."
+  "The playit button in the console header was cut off.": "콘솔 위 playit 버튼이 잘리던 문제를 고쳤어요.",
+  "Tunnel helpers (Cloudflare, playit) kept running after the app closed by an update or a crash, so addresses stayed open and duplicate tunnels piled up. They are stopped before an update and cleaned up on the next start.": "업데이트나 튕김으로 앱이 꺼진 뒤에도 터널 프로그램(Cloudflare, playit)이 남아 주소가 계속 열려 있고 터널이 겹쳐 쌓이던 문제를 고쳤어요. 업데이트 전에 끄고, 다음에 켤 때 남은 것을 정리해요."
 }
