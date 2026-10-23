@@ -27,6 +27,7 @@
     "status.stopped": "Stopped",
     "status.stopping": "Stopping",
     "status.unreachable": "Disconnected",
+    "status.missing": "Folder missing",
     "suffix.at": "",
     "suffix.count": "",
     "suffix.items": "",

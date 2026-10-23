@@ -73,7 +73,7 @@ impl Game {
     /// Fills the launch template: {name}, {name_bare}, {port}, {port+1}, {password}.
     pub fn launch_args(&self, setup: &Setup) -> String {
         self.args
-            .replace("{name_bare}", &setup.name.replace([' ', '?', '"'], "_"))
+            .replace("{name_bare}", &bare(setup.name))
             .replace("{name}", &quoted(setup.name))
             .replace("{port+1}", &(setup.port + 1).to_string())
             .replace("{port}", &setup.port.to_string())
@@ -83,6 +83,11 @@ impl Game {
 
 /// The launch arguments live in this file in the server folder, so they can be changed like any other setting.
 pub const LAUNCH_FILE: &str = "monolab-launch.txt";
+
+/// A name that can sit unquoted inside an argument (ARK's `?SessionName=` chain): letters, digits, `-` and `.` only.
+fn bare(text: &str) -> String {
+    text.chars().map(|one| if one.is_alphanumeric() || one == '-' || one == '.' { one } else { '_' }).collect()
+}
 
 fn quoted(text: &str) -> String {
     format!("\"{}\"", text.replace('"', "'"))
@@ -94,6 +99,37 @@ pub fn all() -> &'static [Game] {
 
 pub fn find(core: &str) -> Option<&'static Game> {
     all().iter().find(|one| one.id == core)
+}
+
+/// The downloadable game whose server program sits in this folder, for importing a folder the user already has.
+pub fn in_folder(folder: &Path) -> Option<&'static Game> {
+    all().iter().find(|one| one.source.is_some() && folder.join(&one.exe).is_file())
+}
+
+/// Readies an imported game folder the way a fresh install would, without touching what is already there.
+/// Returns the port the server will use.
+pub fn adopt(game: &Game, folder: &Path, name: &str) -> Result<u16, String> {
+    let password = crate::web::make_key()[..10].to_string();
+    let setup = Setup { name, password: &password, port: game.port };
+    if !folder.join(LAUNCH_FILE).is_file() {
+        fs::write(
+            folder.join(LAUNCH_FILE),
+            format!("# Launch options for {}. Change them here and restart the server.\n{}\n", game.id, game.launch_args(&setup)),
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    if game.id == "Terraria" {
+        let config = folder.join("serverconfig.txt");
+        if !config.is_file() {
+            write_terraria_config(folder, &setup)?;
+        }
+        let port = fs::read_to_string(&config)
+            .unwrap_or_default()
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("port=").and_then(|value| value.trim().parse().ok()));
+        return Ok(port.unwrap_or(game.port));
+    }
+    Ok(game.port)
 }
 
 pub fn is_game(core: &str) -> bool {
@@ -582,5 +618,47 @@ mod tests {
         fs::write(dir.join(LAUNCH_FILE), "# note\n-name \"My Server\" -port 2456\n").unwrap();
         assert_eq!(launch_args(&dir).unwrap(), vec!["-name", "My Server", "-port", "2456"]);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn any_folder_name_makes_launch_args_that_parse() {
+        for name in ["Bob's server", "My \"Best\" World", "a?b&c;d", "서버 1", "$HOME `x`", r"back\slash"] {
+            let setup = Setup { name, password: "pw12345678", port: 7777 };
+            for game in all() {
+                let line = game.launch_args(&setup);
+                assert!(shell_words::split(&line).is_ok(), "{} with {name:?}: {line}", game.id);
+            }
+        }
+    }
+
+    #[test]
+    fn recognises_and_readies_an_imported_game_folder() {
+        let dir = std::env::temp_dir().join("monolab-games-import");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        assert!(in_folder(&dir).is_none());
+
+        fs::write(dir.join("TerrariaServer.exe"), b"MZ").unwrap();
+        fs::write(dir.join("serverconfig.txt"), "world=C:\\worlds\\Mine.wld\nport=7790\n").unwrap();
+        let game = in_folder(&dir).expect("Terraria");
+        assert_eq!(game.id, "Terraria");
+        assert_eq!(adopt(game, &dir, "Mine").unwrap(), 7790);
+        assert_eq!(launch_args(&dir).unwrap(), vec!["-config", "serverconfig.txt"]);
+        assert!(fs::read_to_string(dir.join("serverconfig.txt")).unwrap().contains("Mine.wld"));
+
+        fs::write(dir.join(LAUNCH_FILE), "-config mine.txt\n").unwrap();
+        adopt(game, &dir, "Mine").unwrap();
+        assert_eq!(launch_args(&dir).unwrap(), vec!["-config", "mine.txt"]);
+        let _ = fs::remove_dir_all(&dir);
+
+        let valheim = std::env::temp_dir().join("monolab-games-import-valheim");
+        let _ = fs::remove_dir_all(&valheim);
+        fs::create_dir_all(&valheim).unwrap();
+        fs::write(valheim.join("valheim_server.exe"), b"MZ").unwrap();
+        let game = in_folder(&valheim).expect("Valheim");
+        assert_eq!(adopt(game, &valheim, "My Valheim").unwrap(), 2456);
+        let args = launch_args(&valheim).unwrap();
+        assert!(args.windows(2).any(|pair| pair == ["-name", "My Valheim"]));
+        let _ = fs::remove_dir_all(&valheim);
     }
 }

@@ -831,6 +831,8 @@ export type InstanceView = {
 	ready: boolean,
 	checking?: boolean,
 	unreachable?: boolean,
+	/**  A server on this computer whose folder is gone (moved, renamed, deleted or on an unplugged drive). */
+	missing?: boolean,
 } & ServerInstance;
 
 export type InventoryItem = {

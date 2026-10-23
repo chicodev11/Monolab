@@ -1,8 +1,9 @@
 export type Status = "running" | "stopped" | "stopping" | "crashed";
-export type ShownStatus = Status | "starting" | "checking" | "unreachable";
+export type ShownStatus = Status | "starting" | "checking" | "unreachable" | "missing";
 
-export function shownStatus(instance: { status: string; ready?: boolean; checking?: boolean; unreachable?: boolean }): ShownStatus {
+export function shownStatus(instance: { status: string; ready?: boolean; checking?: boolean; unreachable?: boolean; missing?: boolean }): ShownStatus {
   if (instance.checking) return "checking";
+  if (instance.missing && instance.status !== "running") return "missing";
   if (instance.unreachable && instance.status !== "running") return "unreachable";
   if (instance.status === "running" && instance.ready === false) return "starting";
   return instance.status as ShownStatus;
@@ -31,6 +32,8 @@ export function statusInfo(status: string): StatusInfo {
       return { label: t("status.stopping"), tone: "warn", shape: "square" };
     case "unreachable":
       return { label: t("status.unreachable"), tone: "warn", shape: "diamond" };
+    case "missing":
+      return { label: t("status.missing"), tone: "danger", shape: "diamond" };
     case "crashed":
       return { label: t("status.crashed"), tone: "danger", shape: "diamond" };
     default:

@@ -1005,7 +1005,7 @@ mod tests {
             assert!(
                 builds
                     .iter()
-                    .all(|one| !one.label.contains("build") && !one.label.contains("loader")),
+                    .all(|one| !one.label.trim().is_empty() && !one.label.contains(' ')),
                 "the {core} label was given a made-up name"
             );
         }

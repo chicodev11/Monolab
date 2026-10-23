@@ -45,6 +45,7 @@ mod rcon;
 mod runlog;
 mod remote;
 mod sniff;
+mod store;
 mod spark;
 mod tasks;
 mod trim;
@@ -316,6 +317,9 @@ struct InstanceView {
     checking: bool,
     #[serde(default)]
     unreachable: bool,
+    /// A server on this computer whose folder is gone (moved, renamed, deleted or on an unplugged drive).
+    #[serde(default)]
+    missing: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
@@ -613,18 +617,13 @@ fn trash_entries_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn load_trash_entries(app: &AppHandle) -> Result<Vec<TrashEntry>, String> {
-    let path = trash_entries_path(app)?;
-    if !path.is_file() {
-        return Ok(Vec::new());
-    }
-    serde_json::from_str(&fs::read_to_string(path).map_err(|error| error.to_string())?)
-        .map_err(|error| format!("The trash record is malformed: {error}"))
+    Ok(store::read(&trash_entries_path(app)?)?.unwrap_or_default())
 }
 
 fn save_trash_entries(app: &AppHandle, entries: &[TrashEntry]) -> Result<(), String> {
-    fs::write(
-        trash_entries_path(app)?,
-        serde_json::to_string_pretty(entries).map_err(|error| error.to_string())?,
+    store::write(
+        &trash_entries_path(app)?,
+        &serde_json::to_string_pretty(entries).map_err(|error| error.to_string())?,
     )
     .map_err(|error| format!("Could not save the trash record: {error}"))
 }
@@ -749,13 +748,9 @@ fn record_audit(app: &AppHandle, server_id: &str, category: &str, action: &str, 
 
 fn load_instances(app: &AppHandle) -> Result<Vec<ServerInstance>, String> {
     let path = instances_path(app)?;
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let text = fs::read_to_string(&path)
-        .map_err(|error| format!("Could not read the server list: {error}"))?;
-    let mut instances: Vec<ServerInstance> = serde_json::from_str(&text)
-        .map_err(|error| format!("The server list is malformed: {error}"))?;
+    let mut instances: Vec<ServerInstance> = store::read(&path)
+        .map_err(|error| format!("Could not read the server list: {error}"))?
+        .unwrap_or_default();
     for instance in &mut instances {
         instance.path = plain_path(PathBuf::from(&instance.path))
             .to_string_lossy()
@@ -805,7 +800,7 @@ fn inside_any(path: &str, homes: &[String]) -> bool {
 fn save_instances(app: &AppHandle, instances: &[ServerInstance]) -> Result<(), String> {
     let path = instances_path(app)?;
     let text = serde_json::to_string_pretty(instances).map_err(|error| error.to_string())?;
-    fs::write(path, text).map_err(|error| format!("Could not save the server list: {error}"))
+    store::write(&path, &text).map_err(|error| format!("Could not save the server list: {error}"))
 }
 
 fn mark_last_run(app: &AppHandle, id: &str) {
@@ -980,12 +975,16 @@ fn app_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 pub(crate) fn read_app_settings(app: &AppHandle) -> AppSettings {
-    let mut settings: AppSettings = app_settings_path(app)
-        .ok()
-        .filter(|path| path.is_file())
-        .and_then(|path| fs::read_to_string(path).ok())
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
+    let mut settings: AppSettings = match app_settings_path(app) {
+        Ok(path) => match store::read(&path) {
+            Ok(found) => found.unwrap_or_default(),
+            Err(_) => {
+                store::set_aside(&path);
+                AppSettings::default()
+            }
+        },
+        Err(_) => AppSettings::default(),
+    };
     if settings.web_panel_port == OLD_WEB_PORT {
         settings.web_panel_port = default_web_port();
     }
@@ -1018,9 +1017,9 @@ fn set_app_settings(app: AppHandle, settings: AppSettings) -> Result<AppSettings
         web_accounts: read_app_settings(&app).web_accounts,
         ..settings
     };
-    fs::write(
-        app_settings_path(&app)?,
-        serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
+    store::write(
+        &app_settings_path(&app)?,
+        &serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
     )
     .map_err(|error| format!("Could not save settings: {error}"))?;
     Ok(settings.without_secrets())
@@ -1098,9 +1097,9 @@ fn read_tasks(app: &AppHandle) -> Vec<tasks::Task> {
 }
 
 fn write_tasks(app: &AppHandle, list: &[tasks::Task]) -> Result<(), String> {
-    fs::write(
-        tasks_path(app)?,
-        serde_json::to_string_pretty(list).map_err(|error| error.to_string())?,
+    store::write(
+        &tasks_path(app)?,
+        &serde_json::to_string_pretty(list).map_err(|error| error.to_string())?,
     )
     .map_err(|error| format!("Could not save the task: {error}"))
 }
@@ -2334,9 +2333,9 @@ fn set_web_direct(
 ) -> Result<WebPanelView, String> {
     let mut settings = read_app_settings(&app);
     settings.web_direct = on;
-    fs::write(
-        app_settings_path(&app)?,
-        serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
+    store::write(
+        &app_settings_path(&app)?,
+        &serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
     )
     .map_err(|error| format!("Could not save settings: {error}"))?;
     Ok(web_panel_state(app.clone(), running, tunnelling))
@@ -2434,9 +2433,9 @@ fn save_web_accounts(
     running: &State<'_, web::Running>,
     settings: AppSettings,
 ) -> Result<(), String> {
-    fs::write(
-        app_settings_path(app)?,
-        serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
+    store::write(
+        &app_settings_path(app)?,
+        &serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
     )
     .map_err(|error| format!("Could not save settings: {error}"))?;
     if let Some(panel) = running.lock().expect("web panel poisoned").as_ref() {
@@ -2466,9 +2465,9 @@ fn set_web_tunnel(
     }
     let mut settings = read_app_settings(&app);
     settings.web_tunnel = on;
-    fs::write(
-        app_settings_path(&app)?,
-        serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
+    store::write(
+        &app_settings_path(&app)?,
+        &serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
     )
     .map_err(|error| format!("Could not save settings: {error}"))?;
     Ok(web_panel_state(app.clone(), running, tunnelling))
@@ -3579,9 +3578,9 @@ fn set_web_panel(
     }
     settings.web_panel = on;
     settings.web_panel_port = port;
-    fs::write(
-        app_settings_path(&app)?,
-        serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
+    store::write(
+        &app_settings_path(&app)?,
+        &serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
     )
     .map_err(|error| format!("Could not save settings: {error}"))?;
     Ok(web_panel_state(app.clone(), running, tunnelling))
@@ -4581,6 +4580,7 @@ fn instance_view(instance: ServerInstance, state: &AppState) -> InstanceView {
             ready: now == "running",
             checking,
             unreachable,
+            missing: false,
             status: status.into(),
             instance,
         };
@@ -4621,6 +4621,7 @@ fn instance_view(instance: ServerInstance, state: &AppState) -> InstanceView {
             ready: live.is_some() && !starting,
             checking,
             unreachable,
+            missing: false,
         };
     }
     let process_map = state.processes.lock().expect("process state poisoned");
@@ -4643,8 +4644,11 @@ fn instance_view(instance: ServerInstance, state: &AppState) -> InstanceView {
             ready: process.ready,
             checking: false,
             unreachable: false,
+            missing: false,
         };
     }
+    drop(process_map);
+    let missing = !Path::new(&instance.path).is_dir();
     let crashed = state
         .crashed
         .lock()
@@ -4660,6 +4664,7 @@ fn instance_view(instance: ServerInstance, state: &AppState) -> InstanceView {
             ready: false,
             checking: false,
             unreachable: false,
+            missing,
         };
     }
     InstanceView {
@@ -4670,6 +4675,7 @@ fn instance_view(instance: ServerInstance, state: &AppState) -> InstanceView {
         ready: false,
         checking: false,
         unreachable: false,
+        missing,
     }
 }
 
@@ -4708,6 +4714,19 @@ fn resniff_unknown_cores(instances: &mut [ServerInstance]) -> bool {
         })
     {
         let folder = Path::new(&instance.path);
+        if let Some(game) = games::in_folder(folder) {
+            let Ok(port) = games::adopt(game, folder, &instance.name) else {
+                continue;
+            };
+            instance.core = game.id.clone();
+            instance.version = "latest".into();
+            instance.launch_mode = "game".into();
+            instance.server_jar = Some(folder.join(&game.exe).to_string_lossy().to_string());
+            instance.java_path = String::new();
+            instance.port = port;
+            changed = true;
+            continue;
+        }
         let pumpkin = folder.join(cores::PUMPKIN_EXE);
         let jar = instance
             .server_jar
@@ -4780,6 +4799,40 @@ fn import_instance(
         .and_then(|name| name.to_str())
         .unwrap_or("Unnamed server")
         .to_string();
+    if let Some(game) = games::in_folder(&folder) {
+        let port = games::adopt(game, &folder, &name)?;
+        let instance = ServerInstance {
+            id: instance_id(),
+            name,
+            path: folder.to_string_lossy().to_string(),
+            core: game.id.clone(),
+            version: "latest".into(),
+            launch_mode: "game".into(),
+            server_jar: Some(folder.join(&game.exe).to_string_lossy().to_string()),
+            java_path: String::new(),
+            max_memory_mib: 4096,
+            min_memory_mib: 4096,
+            jvm_args: String::new(),
+            port,
+            sort_order: 0,
+            start_with_app: false,
+            crash_restart: false,
+            core_build: String::new(),
+            created_at: unix_now(),
+            last_run_at: 0,
+            custom_command: String::new(),
+            start_script: String::new(),
+            start_script_hash: String::new(),
+            remote_host: String::new(),
+            linked: false,
+            panel_host: String::new(),
+            panel_server: String::new(),
+            panel_daemon: String::new(),
+        };
+        instances.push(instance.clone());
+        save_instances(&app, &instances)?;
+        return Ok(instance_view(instance, &state));
+    }
     let sniff::Sniffed { core, version } = sniff::sniff(&folder, jar.as_deref());
     let version = version.unwrap_or_else(|| "Needs review".into());
     let probe = ServerInstance {
@@ -4853,6 +4906,9 @@ fn copy_into_managed_root(app: &AppHandle, source: &Path) -> Result<PathBuf, Str
     if source.starts_with(&root_real) || source.starts_with(&root) {
         return Ok(source.to_path_buf());
     }
+    if root_real.starts_with(source) || root.starts_with(source) || source.parent().is_none() {
+        return Err("This folder holds the app's own server folder (or is a whole drive), so it can't be copied into it. Choose the server's own folder.".into());
+    }
     let name = source
         .file_name()
         .and_then(|name| name.to_str())
@@ -4893,19 +4949,29 @@ fn archive_root_prefix(names: &[String]) -> Option<String> {
         "velocity.toml",
         "bungeecord.jar",
     ];
-    if names.iter().any(|name| {
-        markers
-            .iter()
-            .any(|marker| name.eq_ignore_ascii_case(marker))
-    }) {
+    let is_marker = |name: &str| markers.iter().any(|marker| name.eq_ignore_ascii_case(marker));
+    if names.iter().any(|name| is_marker(name)) {
         return None;
+    }
+    // Official game zips nest the server (Terraria: 1458/Windows/TerrariaServer.exe next to Linux and Mac copies).
+    let game_prefix = names
+        .iter()
+        .filter_map(|name| {
+            let lower = name.to_ascii_lowercase();
+            games::all().iter().find_map(|game| {
+                lower
+                    .strip_suffix(&game.exe.to_ascii_lowercase())
+                    .filter(|prefix| prefix.is_empty() || prefix.ends_with('/'))
+                    .map(|prefix| name[..prefix.len()].to_string())
+            })
+        })
+        .min_by_key(|prefix| (!prefix.to_ascii_lowercase().contains("windows"), prefix.matches('/').count()));
+    if let Some(prefix) = game_prefix {
+        return (!prefix.is_empty()).then_some(prefix);
     }
     names.iter().find_map(|name| {
         let (prefix, rest) = name.split_once('/')?;
-        markers
-            .iter()
-            .any(|marker| rest.eq_ignore_ascii_case(marker))
-            .then(|| format!("{prefix}/"))
+        is_marker(rest).then(|| format!("{prefix}/"))
     })
 }
 
@@ -5231,6 +5297,14 @@ async fn trash_instance(
         return Ok(());
     }
     let source = PathBuf::from(&instance.path);
+    if !source.exists() {
+        let _store = lock_instance_store();
+        let mut instances = load_instances(&app)?;
+        instances.retain(|saved| saved.id != id);
+        save_instances(&app, &instances)?;
+        record_audit(&app, &id, "Server", "Remove from list (folder was already gone)", &instance.path);
+        return Ok(());
+    }
     if !source.is_dir() {
         return Err("Server folder not found.".into());
     }
@@ -6338,6 +6412,17 @@ fn start_marked_servers(app: &AppHandle) {
     }
 }
 
+/// Says plainly that the folder is gone, rather than the OS error a launch in a missing folder gives ("The directory name is invalid").
+fn ensure_folder_present(instance: &ServerInstance) -> Result<(), String> {
+    if Path::new(&instance.path).is_dir() {
+        return Ok(());
+    }
+    let path = &instance.path;
+    Err(format!(
+        "The server folder {path} is missing. It may have been moved, renamed or deleted, or its drive is unplugged. Put it back, or remove the server from the list."
+    ))
+}
+
 fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<(), String> {
     if state
         .processes
@@ -6357,6 +6442,7 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
         .into_iter()
         .find(|instance| instance.id == id)
         .ok_or("Server not found.")?;
+    ensure_folder_present(&instance)?;
     ensure_port_available(port_from_properties(&instance))?;
     apply_pending_addons(&app, &instance);
     if pumpkin::is_pumpkin(&instance.core)
@@ -16594,6 +16680,29 @@ mod tests {
     }
 
     use super::{parse_tps_line, replace_config_line};
+
+    #[test]
+    fn unwraps_a_zipped_game_server_folder() {
+        let names = |list: &[&str]| list.iter().map(|one| one.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            super::archive_root_prefix(&names(&["MyTerraria/", "MyTerraria/TerrariaServer.exe", "MyTerraria/serverconfig.txt"])),
+            Some("MyTerraria/".into())
+        );
+        assert_eq!(super::archive_root_prefix(&names(&["TerrariaServer.exe", "serverconfig.txt"])), None);
+        assert_eq!(
+            super::archive_root_prefix(&names(&[
+                "1458/Linux/TerrariaServer.exe",
+                "1458/Mac/Terraria Server.app/Contents/Resources/TerrariaServer.exe",
+                "1458/Windows/TerrariaServer.exe",
+                "1458/Windows/serverconfig.txt",
+            ])),
+            Some("1458/Windows/".into())
+        );
+        assert_eq!(
+            super::archive_root_prefix(&names(&["Pack/server.jar", "Pack/eula.txt"])),
+            Some("Pack/".into())
+        );
+    }
 
     #[test]
     fn unpacks_where_you_point_it() {

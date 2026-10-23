@@ -99,32 +99,25 @@ fn secrets_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 pub fn load_hosts(app: &AppHandle) -> Result<Vec<SshHost>, String> {
-    let path = hosts_path(app)?;
-    let text = match std::fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(format!("Could not read ssh-hosts.json: {error}")),
-    };
-    serde_json::from_str(&text).map_err(|error| format!("Could not read ssh-hosts.json: {error}"))
+    Ok(crate::store::read(&hosts_path(app)?)?.unwrap_or_default())
 }
 
 fn save_hosts(app: &AppHandle, hosts: &[SshHost]) -> Result<(), String> {
     let text = serde_json::to_string_pretty(hosts).map_err(|error| error.to_string())?;
-    std::fs::write(hosts_path(app)?, text)
+    crate::store::write(&hosts_path(app)?, &text)
         .map_err(|error| format!("Could not write ssh-hosts.json: {error}"))
 }
 
 fn load_secrets(app: &AppHandle) -> HashMap<String, String> {
     secrets_path(app)
         .ok()
-        .and_then(|path| std::fs::read_to_string(path).ok())
-        .and_then(|text| serde_json::from_str(&text).ok())
+        .and_then(|path| crate::store::read(&path).ok().flatten())
         .unwrap_or_default()
 }
 
 fn save_secrets(app: &AppHandle, secrets: &HashMap<String, String>) -> Result<(), String> {
     let text = serde_json::to_string_pretty(secrets).map_err(|error| error.to_string())?;
-    std::fs::write(secrets_path(app)?, text)
+    crate::store::write(&secrets_path(app)?, &text)
         .map_err(|error| format!("Could not write ssh-secrets.json: {error}"))
 }
 

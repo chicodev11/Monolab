@@ -1,7 +1,7 @@
 import { ko } from "../test/lang";
 import { afterAll, beforeAll, describe, expect, it, test } from "vitest";
 import { setLanguage } from "./i18n";
-import { bytes, clock, date, fileSize, isImage, isProxy, realVersion, relativeTime, roughSize, statusInfo, today, uptime, used } from "./format";
+import { bytes, clock, date, fileSize, isImage, isProxy, realVersion, relativeTime, roughSize, shownStatus, statusInfo, today, uptime, used } from "./format";
 
 describe("bytes converts MiB to GB", () => {
   test.each([
@@ -167,4 +167,13 @@ test("roughSize rounds estimates", () => {
   expect(roughSize(27e6)).toBe("30 MB");
   expect(roughSize(2.11e9)).toBe("2.0 GB");
   expect(roughSize(15.54e9)).toBe("14 GB");
+});
+
+describe("a server whose folder is gone", () => {
+  it("shows as missing unless it is still running", () => {
+    expect(shownStatus({ status: "stopped", missing: true })).toBe("missing");
+    expect(shownStatus({ status: "crashed", missing: true })).toBe("missing");
+    expect(shownStatus({ status: "running", ready: true, missing: true })).toBe("running");
+    expect(statusInfo("missing").tone).toBe("danger");
+  });
 });

@@ -2820,6 +2820,10 @@ function App() {
       setNotice(tr("Still checking whether {0} is running — try again in a moment.", [instance.name]));
       return;
     }
+    if (instance.missing && instance.status !== "running") {
+      setError(tr("The folder of {0} is missing. Put it back, or remove the server from the list.", [instance.name]));
+      return;
+    }
     const starting = instance.status !== "running";
     if (starting && !skipCheck) {
       const found = await commands.precheckInstance(instance.id).catch(() => [] as Finding[]);
