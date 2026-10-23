@@ -3547,60 +3547,6 @@ function App() {
       </div>
     );
   }
-  function playitChip() {
-    if (!playit || !selected || (isGame(selected.core) && !isCustom(selected.core))) return null;
-    if (!playit.hasSecret) {
-      const waiting = playit.claim?.state === "waiting";
-      return (
-        <button
-          className="button ghost small playit-chip"
-          disabled={playitBusy || waiting}
-          onClick={() => void beginPlayitClaim()}
-        >
-          <Icon name="cloud" />
-          {waiting ? tr("Waiting for approval…") : tr("Link playit")}
-        </button>
-      );
-    }
-    const tunnel = playit.tunnels.find((one) => one.localPort === selected.port);
-    if (!tunnel) {
-      return (
-        <button
-          className="button secondary small playit-chip"
-          disabled={playitBusy}
-          onClick={() => void setPlayitExposed(true)}
-        >
-          <Icon name="cloud" />
-          {playitBusy ? tr("One moment…") : tr("Enable public access")}
-        </button>
-      );
-    }
-    return (
-      <span className="playit-chip">
-        <button
-          className={`web-link copy-mark ${copiedKey === "playit" ? "done" : ""}`}
-          disabled={!tunnel.address}
-          data-tip={tr("Click to copy")}
-          onClick={() => {
-            flashCopied("playit");
-            void navigator.clipboard.writeText(tunnel.address);
-            setNotice(tr("Address copied!"));
-          }}
-        >
-          <span>{tr("Address")}</span>
-          <code>{tunnel.address || tr("Assigning an address…")}</code>
-          <Icon name={copiedKey === "playit" ? "check" : "copy"} />
-        </button>
-        <button
-          className="button ghost small"
-          disabled={playitBusy}
-          onClick={() => void setPlayitExposed(false)}
-        >
-          {tr("Disable public access")}
-        </button>
-      </span>
-    );
-  }
   async function setStartWithApp(on: boolean) {
     if (!selected) return;
     await call(
@@ -6109,7 +6055,6 @@ function App() {
               ]}
             />
             <span className="live-spacer" />
-            {playitChip()}
             <label className="search console-search">
               <Icon name="search" />
               <input
@@ -8222,34 +8167,41 @@ function App() {
         const proto = ports.protocol === "both" ? "TCP+UDP" : ports.protocol.toUpperCase();
         const tunnel = playit?.tunnels.find((one) => one.localPort === selected.port);
         const rows = [
-          { label: tr("This PC"), value: `localhost:${selected.port}` },
-          { label: tr("Same Wi-Fi"), value: lanIp ? `${lanIp}:${selected.port}` : "" },
-          { label: "playit.gg", value: tunnel?.address ?? "" },
+          { key: "local", icon: "monitor", label: tr("This PC"), who: tr("This PC only"), value: `localhost:${selected.port}` },
+          { key: "lan", icon: "home", label: tr("Same Wi-Fi"), who: tr("Friends on your Wi-Fi"), value: lanIp ? `${lanIp}:${selected.port}` : "" },
+          { key: "playit", icon: "cloud", label: "playit.gg", who: tr("Friends anywhere"), value: tunnel?.address ?? "" },
         ];
         return (
         <div className="tool-content reach-page">
           <div className="tool-top">
             <p>{tr("Addresses friends can use to join.")}</p>
+            <span className="reach-port">{proto} {span}</span>
           </div>
-          <div className="setting-card">
-            <span className="setting-title">{tr("Addresses")}</span>
+          <div className="reach-tiles">
             {rows.map((row) => (
-              <div className="setting-row reach-row" key={row.label}>
-                <strong>{row.label}</strong>
+              <div className={`reach-tile${row.value ? "" : " off"}`} key={row.key}>
+                <div className="reach-tile-head">
+                  <span className="reach-icon"><Icon name={row.icon} /></span>
+                  <div>
+                    <strong>{row.label}</strong>
+                    <small>{row.who}</small>
+                  </div>
+                </div>
                 {row.value ? (
                   <button
-                    className={`web-link copy-mark ${copiedKey === "reach-" + row.label ? "done" : ""}`}
+                    className={`reach-address${copiedKey === "reach-" + row.key ? " done" : ""}`}
+                    data-tip={tr("Click to copy")}
                     onClick={() => {
-                      flashCopied("reach-" + row.label);
+                      flashCopied("reach-" + row.key);
                       void navigator.clipboard.writeText(row.value);
                       setNotice(tr("Address copied!"));
                     }}
                   >
                     <code>{row.value}</code>
-                    <Icon name={copiedKey === "reach-" + row.label ? "check" : "copy"} />
+                    <Icon name={copiedKey === "reach-" + row.key ? "check" : "copy"} />
                   </button>
                 ) : (
-                  <small className="muted">{tr("Off")}</small>
+                  <span className="reach-address empty">{tr("Off")}</span>
                 )}
               </div>
             ))}

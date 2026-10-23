@@ -224,8 +224,6 @@
 
 /* Server Network tab. */
 .reach-page { display: grid; gap: 12px; align-content: start; }
-.reach-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.reach-row .web-link { min-width: 0; max-width: 62%; }
 .reach-note { margin: 8px 0 4px; color: var(--text-2); line-height: 1.5; }
 .reach-page .setting-card { min-width: 0; }
 .reach-page .playit-row > div { min-width: 0; }
@@ -234,3 +232,20 @@
 .reach-page .setting-card { grid-template-columns: minmax(0, 1fr); }
 .reach-page .playit-row > div { flex: 1 1 0; }
 .reach-page .playit-address small { flex: 1 1 0; }
+.reach-page .tool-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.reach-port { padding: 4px 10px; border-radius: var(--r-full); background: var(--raise); color: var(--text-2); font-family: var(--code); font-size: 12.5px; white-space: nowrap; }
+.reach-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.reach-tile { display: grid; gap: 14px; min-width: 0; padding: 16px; border-radius: var(--r-lg, 16px); background: var(--panel); }
+.reach-tile-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.reach-tile-head > div { display: grid; gap: 2px; min-width: 0; }
+.reach-tile-head strong { font-size: 15px; }
+.reach-tile-head small { color: var(--text-3); font-size: 12.5px; }
+.reach-icon { display: grid; flex: none; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: var(--raise); color: var(--text-2); }
+.reach-icon svg { width: 18px; height: 18px; }
+.reach-address { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; height: 40px; padding: 0 12px; border: 0; border-radius: 10px; background: var(--inset); color: var(--text); font: inherit; cursor: pointer; }
+.reach-address code { overflow: hidden; font-family: var(--code); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.reach-address svg { width: 15px; height: 15px; flex: none; color: var(--text-3); }
+.reach-address:hover svg, .reach-address.done svg { color: var(--text); }
+.reach-address.empty { color: var(--text-4); cursor: default; }
+.reach-tile.off .reach-icon { color: var(--text-4); }
+@media (max-width: 1100px) { .reach-tiles { grid-template-columns: minmax(0, 1fr); } }

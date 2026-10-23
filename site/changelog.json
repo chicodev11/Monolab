@@ -5,6 +5,10 @@
     "date": "2026-10-23",
     "fixed": [
       "Tunnel helpers (Cloudflare, playit) kept running after the app closed by an update or a crash, so addresses stayed open and duplicate tunnels piled up. They are stopped before an update and cleaned up on the next start."
+    ],
+    "changed": [
+      "The Network tab shows each address as its own card, with the server's protocol and port.",
+      "playit is turned on and off from the Network tab; the button above the console is gone."
     ]
   },
   {
