@@ -1,6 +1,18 @@
 [
   {
     "kind": "app",
+    "version": "1.4.1",
+    "date": "2026-10-25",
+    "changed": [
+      "The Trash is in the top menu, next to Settings."
+    ],
+    "fixed": [
+      "Text fields showed two outlines when focused. Now the field border lights up once.",
+      "Creating a server from a modpack ignored the SSH server chosen under Create on and made it on this PC."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.4.0",
     "date": "2026-10-25",
     "added": [

@@ -11704,3 +11704,10 @@ textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; b
 /* Start + menu at the right end of the overview heading when the server is off */
 .app-shell.wb .overview-head { display: flex; align-items: center; }
 .app-shell.wb .overview-head > .wb-run { margin-left: auto; padding-bottom: 0; }
+
+/* One focus ring: the field border lights up, no outline around it */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus-visible,
+textarea:focus-visible { outline: none; box-shadow: none; border-color: var(--accent-line); }
+:is(.search, .palette-input, .path-picker):focus-within { outline: none; border-color: var(--accent-line); }
+:is(.search, .palette-input, .path-picker) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus-visible { border-color: transparent; }
+.wb-menu .wb-count { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }

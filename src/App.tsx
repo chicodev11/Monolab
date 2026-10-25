@@ -2825,18 +2825,19 @@ function App() {
     setCreateOperationId(null);
     setDownload(null);
     if (!ok) return;
-    const host = createWhere;
-    if (host !== "local") {
-      await refresh();
-      const made = instancesRef.current.find((instance) => !before.has(instance.id));
-      if (made) {
-        const moved = await call(() => commands.moveInstanceToHost(made.id, host), tr("Moved {0} to the SSH server.", [name]));
-        await refresh();
-        if (!moved) return;
-      }
-    }
+    if (!(await moveToChosenHost(before, name))) return;
     celebrateCreatedServer(before);
     resetForm();
+  }
+  async function moveToChosenHost(before: Set<string>, name: string) {
+    const host = createWhere;
+    if (host === "local") return true;
+    await refresh();
+    const made = instancesRef.current.find((instance) => !before.has(instance.id));
+    if (!made) return true;
+    const moved = await call(() => commands.moveInstanceToHost(made.id, host), tr("Moved {0} to the SSH server.", [name]));
+    await refresh();
+    return !!moved;
   }
   async function createCustom(folder: string, port: number, program: CustomProgram) {
     const before = new Set(instancesRef.current.map((instance) => instance.id));
@@ -2864,7 +2865,7 @@ function App() {
     setPackCreating(null);
     setCreateOperationId(null);
     setDownload(null);
-    if (ok) {
+    if (ok && (await moveToChosenHost(before, hit.title))) {
       celebrateCreatedServer(before);
       resetForm();
     }
@@ -2921,7 +2922,7 @@ function App() {
       setPackCreating(null);
       setCreateOperationId(null);
       setDownload(null);
-      if (ok) {
+      if (ok && (await moveToChosenHost(before, tr("Selected modpack")))) {
         celebrateCreatedServer(before);
         resetForm();
       }
@@ -9890,19 +9891,17 @@ function App() {
               {tr("Settings")}
             </button>
           )}
+          <button
+            type="button"
+            className={modal === "trash" ? "on" : ""}
+            onClick={() => setModal("trash")}
+          >
+            <Icon name="trash" />
+            {tr("Trash")}
+            {trashEntries.length > 0 && <span className="wb-count">{trashEntries.length}</span>}
+          </button>
         </nav>
         <div className="wb-top-end">
-          {trashEntries.length > 0 && (
-            <button
-              type="button"
-              className={`wb-icon ${modal === "trash" ? "on" : ""}`}
-              aria-label={tr("Trash")}
-              data-tip={`${tr("Trash")} ${trashEntries.length}`}
-              onClick={() => setModal("trash")}
-            >
-              <Icon name="trash" />
-            </button>
-          )}
           <button
             type="button"
             className="wb-search"
