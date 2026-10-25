@@ -100,7 +100,23 @@ pub(crate) fn query_at(host: &str, port: u16) -> Result<PingSnapshot, String> {
             .and_then(|value| value.as_u64())
             .unwrap_or_default()
             .min(u64::from(u32::MAX)) as u32,
+        names: sample_names(players.get("sample")),
     })
+}
+
+fn sample_names(sample: Option<&serde_json::Value>) -> Vec<String> {
+    sample
+        .and_then(|value| value.as_array())
+        .map(|list| {
+            list.iter()
+                .filter(|one| one.get("id").and_then(|id| id.as_str()) != Some("00000000-0000-0000-0000-000000000000"))
+                .filter_map(|one| one.get("name").and_then(|name| name.as_str()))
+                .filter(|name| (3..=16).contains(&name.len()) && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+                .take(12)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

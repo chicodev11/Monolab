@@ -117,6 +117,7 @@ const READS: &[&str] = &[
     "list_java_processes",
     "list_pending_addons",
     "item_names",
+    "enchantment_names",
     "item_icons",
     "playit_state",
     "lan_ip",

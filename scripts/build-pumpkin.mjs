@@ -23,7 +23,8 @@ if (targets.length !== 1) {
   throw new Error("targets.json must list exactly one release.");
 }
 const [target] = targets;
-if (!cargoToml.includes(`pumpkin-plugin-api = "${target.api}"`)) {
+const apiPin = [`pumpkin-plugin-api = "${target.api}"`, `tag = "${target.api}"`];
+if (!apiPin.some((pin) => cargoToml.includes(pin))) {
   throw new Error(
     `pumpkin-plugin-api in addon/pumpkin/Cargo.toml differs from api (${target.api}) in targets.json.`,
   );

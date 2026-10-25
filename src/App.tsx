@@ -67,15 +67,17 @@ import type {
   CustomProgram,
 } from "./lib/bindings";
 import { lagLine, tpCommand, type LagAction } from "./lib/lag";
+import { enchantLevel, maxDurability } from "./lib/items";
 const SPARK_MODRINTH_ID = "l6YH9Als";
 import type { Sent } from "./lib/sent";
 import { listenTo, onWeb, webSession } from "./lib/bridge";
+import { ContextMenu, type ContextItem } from "./components/ui/ContextMenu";
 import { WebLogin } from "./components/dialogs/WebLogin";
 import { offerDownload, pickFiles, pickRawFiles, uploadRaw } from "./lib/pickFile";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 
-const CHANGELOG_URL = "https://chicodev11.github.io/Monolab/changelog";
+const CHANGELOG_URL = "https://mnlab.cc/changelog";
 import {
   isPermissionGranted,
   requestPermission,
@@ -87,6 +89,7 @@ import { Dropdown } from "./components/ui/Dropdown";
 import { GameFacts, GamePicker } from "./components/create/GamePicker";
 import { CustomCreate, CustomProgramCard } from "./components/create/CustomProgram";
 import { GameFilter } from "./components/servers/GameFilter";
+import { PlayerPeek } from "./components/servers/PlayerPeek";
 import { AskDialog, type AskRequest } from "./components/dialogs/AskDialog";
 import { Sparkline } from "./components/ui/Sparkline";
 import { RemoteImport } from "./components/panels/RemoteImport";
@@ -125,13 +128,16 @@ import { period, useAttention } from "./lib/polling";
 import { CATEGORIES, propertyMatches, propertyMeta, propertyOrder, type Category } from "./lib/properties";
 import { Badge, Banner, Button, Card, DropdownMenu, EmptyState, IconButton, SegmentedControl } from "./components/primitives";
 import { QrCode } from "./components/panels/QrCode";
-import { ConsoleOutput, LogLines, type ConsoleLevel } from "./components/console/ConsoleOutput";
+import { ConsoleLevels, ConsoleOutput, LogLines, type ConsoleLevel } from "./components/console/ConsoleOutput";
 import { ServerStats } from "./components/console/ServerStats";
 import { FileRows } from "./components/files/FileRows";
 import { TextureView } from "./components/files/TextureView";
 import type { Cursor } from "./components/files/CodeEditor";
 import { languageName } from "./lib/fileLang";
 const CodeEditor = lazy(() => import("./components/files/CodeEditor").then((module) => ({ default: module.CodeEditor })));
+const LangEditor = import.meta.env.DEV
+  ? lazy(() => import("./components/dev/LangEditor").then((module) => ({ default: module.LangEditor })))
+  : null;
 const PanelAdmin = lazy(() => import("./components/panels/PanelAdmin").then((module) => ({ default: module.PanelAdmin })));
 const PanelServerTools = lazy(() => import("./components/panels/PanelServerTools").then((module) => ({ default: module.PanelServerTools })));
 const SftpPage = lazy(() => import("./components/panels/SftpPage").then((module) => ({ default: module.SftpPage })));
@@ -225,7 +231,7 @@ const modalShell: Record<Modal, string> = {
   import: "narrow",
   mrpack: "mid",
   precheck: "narrow",
-  create: "mid",
+  create: "as-panel",
   java: "as-panel",
   tasks: "as-panel",
   web: "as-panel",
@@ -391,7 +397,19 @@ type NavPoint = {
   activeFile?: string | null;
   browse?: boolean;
   project?: CatalogHit | null;
+  panel?: Modal;
 };
+function samePlace(a: NavPoint, b: NavPoint) {
+  return (
+    a.page === b.page &&
+    a.instanceId === b.instanceId &&
+    a.tool === b.tool &&
+    (a.browsePath ?? "") === (b.browsePath ?? "") &&
+    (a.activeFile ?? null) === (b.activeFile ?? null) &&
+    !!a.browse === !!b.browse &&
+    (a.project?.projectId ?? null) === (b.project?.projectId ?? null)
+  );
+}
 type DownloadProgress = {
   stage: string;
   core: string;
@@ -812,6 +830,41 @@ function App() {
   const historyAt = useRef(-1);
   const travelling = useRef(false);
   const [navState, setNavState] = useState({ back: false, forward: false });
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: ContextItem[] } | null>(null);
+  const contextBuilder = useRef<(target: HTMLElement) => ContextItem[]>(() => []);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const menuBox = useRef<HTMLElement>(null);
+  const [menuMark, setMenuMark] = useState<{ left: number; width: number } | null>(null);
+  useEffect(() => {
+    const nav = menuBox.current;
+    if (!nav) return;
+    const place = () => {
+      const on = nav.querySelector<HTMLElement>("button.on");
+      setMenuMark((was) => {
+        if (!on) return null;
+        const next = { left: on.offsetLeft, width: on.offsetWidth };
+        return was && was.left === next.left && was.width === next.width ? was : next;
+      });
+    };
+    place();
+    const watch = new ResizeObserver(place);
+    watch.observe(nav);
+    nav.querySelectorAll("button").forEach((one) => watch.observe(one));
+    return () => watch.disconnect();
+  });
+  useEffect(() => {
+    function open(event: MouseEvent) {
+      if (event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      event.preventDefault();
+      const items = contextBuilder.current(target);
+      if (!items.some((one) => one !== "-")) return;
+      setContextMenu({ x: event.clientX, y: event.clientY, items });
+    }
+    document.addEventListener("contextmenu", open);
+    return () => document.removeEventListener("contextmenu", open);
+  }, []);
   const [serversRoot, setServersRoot] = useState("");
   const [taskList, setTaskList] = useState<Task[]>([]);
   const [taskDraft, setTaskDraft] = useState<Task | null>(null);
@@ -868,7 +921,11 @@ function App() {
   );
   const [modal, setModal] = useState<Modal>("none");
   const [createStep, setCreateStep] = useState<"core" | "version" | "modpack">("core");
-  const [createPage, setCreatePage] = useState<"game" | "core" | "finish">("game");
+  const [createPage, setCreatePage] = useState<"game" | "core" | "finish" | "confirm">("game");
+  const [createVersionQuery, setCreateVersionQuery] = useState("");
+  const [createVersionMore, setCreateVersionMore] = useState(false);
+  const [createSnapshots, setCreateSnapshots] = useState(false);
+  const [upgradeSnapshots, setUpgradeSnapshots] = useState(false);
   const [createWhere, setCreateWhere] = useState("local");
   const [createGame, setCreateGame] = useState("Minecraft");
   const [createFree, setCreateFree] = useState<number | null>(null);
@@ -979,7 +1036,7 @@ function App() {
     flat: [],
   });
   const [consoleFilter, setConsoleFilter] = useState("");
-  const [railCompact, setRailCompact] = useState(() => localStorage.getItem("monolab-rail") === "compact");
+  const [railCompact] = useState(() => localStorage.getItem("monolab-rail") === "compact");
   useEffect(() => {
     const buttons = document.querySelectorAll<HTMLElement>(".sidebar button");
     for (const button of buttons) {
@@ -1011,7 +1068,15 @@ function App() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [savedProperties, setSavedProperties] = useState<Property[]>([]);
   const [propertyQuery, setPropertyQuery] = useState("");
-  const [closedSections, setClosedSections] = useState<Record<string, boolean>>({ "Advanced": true });
+  const [propsTab, setPropsTab] = useState<Category>("Gameplay");
+  const [wide, setWide] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(min-width: 1280px)").matches);
+  useEffect(() => {
+    const query = window.matchMedia?.("(min-width: 1280px)");
+    if (!query) return;
+    const change = () => setWide(query.matches);
+    query.addEventListener("change", change);
+    return () => query.removeEventListener("change", change);
+  }, []);
   const [resource, setResource] = useState<Resource | null>(null);
   const [tps, setTps] = useState<Tps | null>(null);
   const [resources, setResources] = useState<Record<string, Resource>>({});
@@ -1118,6 +1183,8 @@ function App() {
   const [reachProtocol, setReachProtocol] = useState<Protocol>("tcp");
   const [itemNames, setItemNames] = useState<Record<string, string>>({});
   const [itemIcons, setItemIcons] = useState<Record<string, string>>({});
+  const [enchantNames, setEnchantNames] = useState<Record<string, string>>({});
+  const [invTab, setInvTab] = useState<"bag" | "ender">("bag");
   const [live, setLive] = useState<LiveState | null>(null);
   const [automationHistory, setAutomationHistory] = useState<
     AutomationHistory[]
@@ -1169,6 +1236,11 @@ function App() {
   const [accountDraft, setAccountDraft] = useState<
     (WebAccount & { password: string; isNew: boolean }) | null
   >(null);
+  useEffect(() => {
+    if (modal !== "tasks") setTaskDraft(null);
+    if (modal !== "web") setAccountDraft(null);
+    setSessionOpen(null);
+  }, [modal]);
   const [tunnelBusy, setTunnelBusy] = useState(false);
   const [openOutside, setOpenOutside] = useState(false);
   const [openDirect, setOpenDirect] = useState(false);
@@ -1285,38 +1357,6 @@ function App() {
     ],
     [sshHosts, instances],
   );
-  const railGroups = useMemo(() => {
-    const matched = instances.filter((item) =>
-      item.name.toLowerCase().includes(filter.toLowerCase()),
-    );
-    const panelPlaces = [
-      ...new Set([...Object.keys(panelHosts), ...instances.map((one) => one.panelHost).filter(Boolean)]),
-    ];
-    if (remotePlaces.length === 0 && panelPlaces.length === 0) {
-      return [{ id: "local", label: tr("Server"), items: matched, split: false }];
-    }
-    const groups = [
-      {
-        id: "local",
-        label: tr("Local"),
-        items: matched.filter((one) => !one.remoteHost && !one.panelHost),
-        split: true,
-      },
-      ...panelPlaces.map((host) => ({
-        id: `panel:${host}`,
-        label: panelHosts[host] ?? tr("Panel"),
-        items: matched.filter((one) => one.panelHost === host),
-        split: true,
-      })),
-      ...remotePlaces.map((host) => ({
-        id: host,
-        label: sshHosts[host] ?? tr("SSH server"),
-        items: matched.filter((one) => one.remoteHost === host),
-        split: true,
-      })),
-    ];
-    return groups.filter((group) => group.items.length > 0);
-  }, [instances, filter, remotePlaces, sshHosts, panelHosts]);
   const adoptRemoteServers = useCallback(
     async (hostId: string) => {
       try {
@@ -1344,7 +1384,41 @@ function App() {
     const panelAlive = place.startsWith("panel:") && place.slice(6) in panelHosts;
     if (place !== "local" && !panelAlive && !remotePlaces.includes(place)) setPlace("local");
   }, [place, remotePlaces, panelHosts]);
-  const running = instances.filter((item) => item.status === "running").length;
+
+  const [, setLangTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setLangTick((n) => n + 1);
+    window.addEventListener("monolab-lang-edit", bump);
+    return () => window.removeEventListener("monolab-lang-edit", bump);
+  }, []);
+  const summaryPills = (() => {
+    const liveOnes = list.filter((one) => one.status === "running" || one.status === "stopping");
+    const online = liveOnes.reduce((sum, one) => sum + (pings[one.id]?.online ?? 0), 0);
+    const onlineNames = [...new Set(liveOnes.flatMap((one) => pings[one.id]?.names ?? []))];
+    const ram = liveOnes.reduce((sum, one) => sum + (resources[one.id]?.memoryMib ?? 0), 0);
+    const ramCap = liveOnes.reduce((sum, one) => sum + (has(one.core, "java") ? one.maxMemoryMib : 0), 0);
+    return list.length ? (
+      <div className="monitor-grid list-summary">
+        <div>
+          <span>{tr("Server")}</span>
+          <strong>{list.length}</strong>
+        </div>
+        <div>
+          <span>{tr("Running")}</span>
+          <strong className={liveOnes.length ? "on" : ""}>{liveOnes.length}</strong>
+        </div>
+        <div className="player-peek-host">
+          <span>{tr("Players")}</span>
+          <strong>{liveOnes.length ? online : "—"}</strong>
+          <PlayerPeek names={onlineNames} online={online} />
+        </div>
+        <div>
+          <span>{tr("Memory use")}</span>
+          <strong>{liveOnes.length ? <>{used(ram)} <small>/ {bytes(ramCap)}</small></> : "—"}</strong>
+        </div>
+      </div>
+    ) : null;
+  })();
 
   function confirmAction(
     title: string,
@@ -1642,6 +1716,19 @@ function App() {
     const timer = window.setInterval(() => void loadPlayit(), playitPeriod);
     return () => window.clearInterval(timer);
   }, [webReady, page, tool, playitPeriod]);
+  const liveInvPeriod = period(5_000, attention);
+  const liveInvKey = playerSnapshot?.live && selected ? `${selected.id}/${playerSnapshot.uuid}` : null;
+  useEffect(() => {
+    if (!liveInvKey || liveInvPeriod === null) return;
+    const [server, uuid] = liveInvKey.split("/");
+    const timer = window.setInterval(() => {
+      void commands.readPlayerNbt(server, uuid).then(
+        (next) => setPlayerSnapshot((was) => (was && was.uuid === uuid ? next : was)),
+        () => undefined,
+      );
+    }, liveInvPeriod);
+    return () => window.clearInterval(timer);
+  }, [liveInvKey, liveInvPeriod]);
   const chunkPeriod = period(5_000, attention);
   const chunkServer = mapOpen ? selected?.id ?? null : null;
   useEffect(() => {
@@ -1689,12 +1776,16 @@ function App() {
   }, [instances, busyPeriod]);
   const resourcePeriod = period(1_000, attention);
   const visibleRunning =
-    page === "home" && modal === "none"
-      ? instances
-          .filter((instance) => instance.status === "running")
-          .map((instance) => instance.id)
-          .join(",")
-      : "";
+    modal !== "none"
+      ? ""
+      : page === "home"
+        ? instances
+            .filter((instance) => instance.status === "running")
+            .map((instance) => instance.id)
+            .join(",")
+        : selected?.status === "running"
+          ? selected.id
+          : "";
   useEffect(() => {
     if (!visibleRunning) {
       setResources({});
@@ -1705,7 +1796,8 @@ function App() {
     let tick = 0;
     const read = () => {
       tick += 1;
-      const running = instancesRef.current.filter((instance) => instance.status === "running");
+      const wanted = visibleRunning.split(",");
+      const running = instancesRef.current.filter((instance) => instance.status === "running" && wanted.includes(instance.id));
       void refreshResources(running, tick % 4 === 1).catch(() => undefined);
     };
     read();
@@ -1774,8 +1866,11 @@ function App() {
     resetForm();
     setCreateStep("core");
     setCreatePage("game");
+    setCreateVersionQuery("");
+    setCreateVersionMore(false);
+    setCreateSnapshots(false);
     setCreateWhere("local");
-    setCreateGame("Minecraft");
+    setCreateGame("");
     setCreateFree(null);
     setModal("create");
     if (!onWeb) void commands.serversRootFreeBytes().then(setCreateFree).catch(() => setCreateFree(null));
@@ -1803,25 +1898,11 @@ function App() {
     if (versionless) return;
     setVersionsBusy(true);
     try {
-      const list = await commands.listCoreVersions(core);
+      const list = await commands.listCoreVersions(core, createSnapshots);
       setVersions(list.length ? list : fallbackVersions);
-      const first = list[0] ?? fallbackVersions[0];
-      setForm((current) => ({
-        ...current,
-        core,
-        version: first,
-        coreBuild: "",
-      }));
-      void loadCoreBuilds(core, first);
     } catch (cause) {
       setError(String(cause));
       setVersions(fallbackVersions);
-      setForm((current) => ({
-        ...current,
-        core,
-        version: fallbackVersions[0],
-        coreBuild: "",
-      }));
     } finally {
       setVersionsBusy(false);
     }
@@ -2630,6 +2711,48 @@ function App() {
       setToolLoading(false);
     }
   }
+  const [serverTabs, setServerTabs] = useState<string[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("monolab-tabs") ?? "[]");
+      return Array.isArray(saved) ? saved.filter((one): one is string => typeof one === "string") : [];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    if (page === "instance" && selectedId)
+      setServerTabs((old) => (old.includes(selectedId) ? old : [...old, selectedId]));
+  }, [page, selectedId]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("monolab-tabs", JSON.stringify(serverTabs));
+    } catch {
+      /* private window */
+    }
+  }, [serverTabs]);
+  async function retrySsh(host: string) {
+    await commands.retrySshHost(host).catch(() => {});
+    setNotice(tr("Trying to connect again…"));
+    window.setTimeout(() => void refresh(), 4000);
+  }
+  function goHome() {
+    setModal("none");
+    setTaskDraft(null);
+    setSessionOpen(null);
+    setPage("home");
+    setSelectedId(null);
+  }
+  function closeServerTab(id: string) {
+    const rest = serverTabs.filter((one) => one !== id);
+    setServerTabs(rest);
+    if (selectedId !== id) return;
+    const next = rest
+      .map((one) => instances.find((item) => item.id === one))
+      .filter((one): one is Instance => !!one)
+      .at(-1);
+    if (next) openManage(next);
+    else goHome();
+  }
   function openManage(instance: Instance) {
     setModal("none");
     setTaskDraft(null);
@@ -3139,6 +3262,12 @@ function App() {
     const found = await commands.itemNames(instance.version, fresh).catch(() => ({}) as Record<string, string>);
     if (Object.keys(found).length) setItemNames((was) => ({ ...was, ...found }));
   }
+  async function loadEnchantNames(instance: Instance, ids: string[]) {
+    const fresh = [...new Set(ids)].filter((id) => !(id in enchantNames));
+    if (!fresh.length) return;
+    const found = await commands.enchantmentNames(instance.version, fresh).catch(() => ({}) as Record<string, string>);
+    if (Object.keys(found).length) setEnchantNames((was) => ({ ...was, ...found }));
+  }
   async function loadItemIcons(instance: Instance, ids: string[]) {
     const fresh = [...new Set(ids)].filter((id) => !(id in itemIcons));
     if (!fresh.length) return;
@@ -3323,7 +3452,8 @@ function App() {
     setUpgradeBuilds([]);
     setUpgradeBuild("");
     void commands.listUpgradeHistory(instance.id).then(setUpgradeHistory).catch(() => setUpgradeHistory([]));
-    void commands.listCoreVersions(instance.core).then(setUpgradeVersions).catch(() => setUpgradeVersions([]));
+    setUpgradeSnapshots(false);
+    void commands.listCoreVersions(instance.core, false).then(setUpgradeVersions).catch(() => setUpgradeVersions([]));
     void loadUpgradeBuilds(instance.version);
   }
   async function loadUpgradeBuilds(version: string) {
@@ -4195,7 +4325,8 @@ function App() {
     await applyPlayerAccess(player.name, player.uuid, action, current);
   }
   const [playerAddKind, setPlayerAddKind] = useState<"whitelist" | "operator" | "ban">("whitelist");
-  const [playerTab, setPlayerTab] = useState<"all" | "whitelist" | "operator" | "ban" | "recent">("all");
+  const [playerTab, setPlayerTab] = useState<"online" | "all" | "whitelist" | "operator" | "ban" | "recent">("all");
+  const [playerQuery, setPlayerQuery] = useState("");
   async function addPlayerHere() {
     if (playerAddKind === "ban") {
       const ok = await confirmAction(
@@ -4248,9 +4379,12 @@ function App() {
       setError(null);
       const snapshot = await commands.readPlayerNbt(selected.id, player.uuid);
       setPlayerSnapshot(snapshot);
-      const ids = snapshot.inventory.map((one) => one.id);
+      setInvTab("bag");
+      const items = [...snapshot.inventory, ...snapshot.enderItems];
+      const ids = items.map((one) => one.id);
       void loadItemNames(selected, ids);
       void loadItemIcons(selected, ids);
+      void loadEnchantNames(selected, items.flatMap((one) => one.enchantments.map((e) => e.id)));
     } catch (cause) {
       setPlayerSnapshot(null);
       setError(String(cause));
@@ -4949,7 +5083,7 @@ function App() {
     setBrowseOpen(true);
     void searchCatalog("", 0, [], catalogEnvironment, versions, catalogLoader);
     const core = selected.core;
-    void commands.listCoreVersions(core)
+    void commands.listCoreVersions(core, false)
       .then((list) => {
         const merged =
           !realVersion(selected.version) || list.includes(selected.version)
@@ -5356,17 +5490,10 @@ function App() {
       ...(page === "instance" && tool === "addons"
         ? { browse: browseOpen, project: projectView?.hit ?? null }
         : {}),
+      ...(modalShell[modal] === "as-panel" && modal !== "create" ? { panel: modal } : {}),
     };
     const current = historyRef.current[historyAt.current];
-    const same =
-      !!current &&
-      current.page === point.page &&
-      current.instanceId === point.instanceId &&
-      current.tool === point.tool &&
-      (current.browsePath ?? "") === (point.browsePath ?? "") &&
-      (current.activeFile ?? null) === (point.activeFile ?? null) &&
-      !!current.browse === !!point.browse &&
-      (current.project?.projectId ?? null) === (point.project?.projectId ?? null);
+    const same = !!current && samePlace(current, point) && current.panel === point.panel;
     if (
       travelling.current &&
       current &&
@@ -5413,7 +5540,7 @@ function App() {
       } catch {}
     }
     syncNavState();
-  }, [page, selected, tool, browsePath, activeFile, browseOpen, projectView?.hit.projectId]);
+  }, [page, selected, tool, browsePath, activeFile, browseOpen, projectView?.hit.projectId, modal]);
   useEffect(() => {
     if (!onWeb) return;
     function onPop(event: PopStateEvent) {
@@ -5425,12 +5552,113 @@ function App() {
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   });
+  contextBuilder.current = (target: HTMLElement) => {
+    const items: ContextItem[] = [];
+    const field = target.closest("input, textarea, [contenteditable='true'], .cm-content") as HTMLElement | null;
+    const editable =
+      !!field &&
+      !(field instanceof HTMLInputElement && ["checkbox", "radio", "range", "button", "file"].includes(field.type)) &&
+      !((field as HTMLInputElement).readOnly || (field as HTMLInputElement).disabled);
+    const inputPick =
+      field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement
+        ? field.value.slice(field.selectionStart ?? 0, field.selectionEnd ?? 0)
+        : "";
+    const picked = inputPick || (window.getSelection()?.toString() ?? "");
+    if (editable) {
+      field!.focus();
+      items.push(
+        { label: tr("Cut"), icon: "scissors", hint: "Ctrl+X", disabled: !picked, onSelect: () => document.execCommand("cut") },
+        { label: tr("Copy"), icon: "copy", hint: "Ctrl+C", disabled: !picked, onSelect: () => document.execCommand("copy") },
+        {
+          label: tr("Paste"),
+          icon: "paste",
+          hint: "Ctrl+V",
+          onSelect: () => {
+            field!.focus();
+            void navigator.clipboard
+              .readText()
+              .then((text) => {
+                field!.focus();
+                document.execCommand("insertText", false, text);
+              })
+              .catch(() => setError(tr("Press Ctrl+V to paste.")));
+          },
+        },
+        { label: tr("Select all"), icon: "select-all", hint: "Ctrl+A", onSelect: () => { field!.focus(); document.execCommand("selectAll"); } },
+        "-",
+      );
+    } else if (picked.trim()) {
+      items.push({ label: tr("Copy"), icon: "copy", hint: "Ctrl+C", onSelect: () => void navigator.clipboard.writeText(picked) }, "-");
+    }
+    const link = target.closest("a[href]") as HTMLAnchorElement | null;
+    if (link && /^https?:/.test(link.href)) {
+      items.push(
+        { label: tr("Open link"), icon: "external", onSelect: () => (onWeb ? void window.open(link.href, "_blank", "noopener") : void openUrl(link.href)) },
+        { label: tr("Copy link"), icon: "copy", onSelect: () => void navigator.clipboard.writeText(link.href) },
+        "-",
+      );
+    }
+    const cardId = (target.closest("[data-server-id]") as HTMLElement | null)?.dataset.serverId;
+    const server = cardId ? instances.find((one) => one.id === cardId) : page === "instance" && !editable ? selected : null;
+    if (server) {
+      const off = server.status === "stopped";
+      const local = !onWeb && !server.remoteHost && !server.panelHost;
+      if (cardId && !(page === "instance" && selected?.id === server.id)) {
+        items.push({ label: tr("Open"), icon: "arrow", onSelect: () => openManage(server) });
+      }
+      items.push(
+        off
+          ? { label: t("card.start"), icon: "play", disabled: !!server.checking || !!server.unreachable || !!server.missing, onSelect: () => void toggle(server) }
+          : { label: t("card.stop"), icon: "stop", disabled: server.status === "stopping", onSelect: () => void toggle(server) },
+      );
+      if (!off) {
+        items.push({ label: tr("Restart"), icon: "refresh", disabled: server.status === "stopping", onSelect: () => void restartInstance(server) });
+        items.push({
+          label: tr("Console"),
+          icon: "terminal",
+          onSelect: () => {
+            if (selected?.id !== server.id || page !== "instance") openManage(server);
+            void loadTool("console", server);
+          },
+        });
+      }
+      if (local) items.push({ label: t("card.folder"), icon: "folder", onSelect: () => void openServerFolder(server) });
+      items.push({ label: t("card.rename"), icon: "pencil", onSelect: () => void renameInstance(server) });
+      if (local) items.push({ label: tr("Duplicate"), icon: "copy", disabled: !off, onSelect: () => void duplicateInstance(server) });
+      items.push({ label: tr("Copy name"), icon: "copy", onSelect: () => void navigator.clipboard.writeText(server.name) });
+      items.push({ label: tr("Move to trash"), icon: "trash", danger: true, disabled: !off, onSelect: () => void trashInstance(server) });
+      items.push("-");
+    }
+    if (!editable) {
+      items.push(
+        { label: tr("Back"), icon: "arrow-left", disabled: !navState.back, onSelect: () => travelTo(-1) },
+        { label: tr("Forward"), icon: "arrow", disabled: !navState.forward, onSelect: () => travelTo(1) },
+        { label: tr("Refresh"), icon: "refresh", onSelect: () => { void refresh(); if (page === "instance" && selected && modal === "none") void loadTool(tool, selected, true); } },
+        "-",
+      );
+      if (page === "home" && modal === "none") {
+        items.push(
+          { label: tr("Create server"), icon: "plus", onSelect: () => void openCreate() },
+          { label: tr("Import server"), icon: "import", onSelect: () => setModal("import") },
+        );
+      }
+      if (page === "instance" && modal === "none") items.push({ label: tr("My servers"), icon: "home", onSelect: goHome });
+      if (!onWeb) items.push({ label: tr("Settings"), icon: "settings", onSelect: () => setModal("settings") });
+    }
+    return items;
+  };
   function travelTo(step: number) {
     const target = historyAt.current + step;
     const point = historyRef.current[target];
     if (!point) return;
+    const from = historyRef.current[historyAt.current];
     historyAt.current = target;
     travelling.current = true;
+    setModal(point.panel ?? "none");
+    if (from && samePlace(from, point)) {
+      syncNavState();
+      return;
+    }
     if (point.page === "home" || !point.instanceId) {
       setPage("home");
       setSelectedId(null);
@@ -5994,7 +6222,7 @@ function App() {
           )
         : null;
   const logTabs = (
-    <div className="event-tabs">
+    <div className="wb-seg" role="tablist" aria-label={tr("Logs")}>
         {[
           { id: "read", label: tr("Logs") },
           { id: "events", label: tr("Summary") },
@@ -6004,7 +6232,10 @@ function App() {
         ].map((one) => (
           <button
             key={one.id}
-            className={logView === one.id ? "chosen" : ""}
+            type="button"
+            role="tab"
+            aria-selected={logView === one.id}
+            className={logView === one.id ? "on" : ""}
             onClick={() => setLogView(one.id)}
           >
             {one.label}
@@ -6012,6 +6243,181 @@ function App() {
         ))}
     </div>
   );
+  const propsChanged = properties.filter((entry) => {
+    const before = savedProperties.find((one) => one.key === entry.key);
+    return before ? before.value !== entry.value : true;
+  });
+
+  const lagCardView = () => selected && (
+    <Card
+      className="lag-card"
+      title={tr("Lag diagnosis")}
+      aside={
+        lagReport ? (
+          !lagReport.hasLive ? (
+            <Badge tone="subtle">{tr("No add-on")}</Badge>
+          ) : lagReport.lagging ? (
+            <Badge tone="danger">{tr("Lagging")}{lagReport.tps != null ? ` · ${lagReport.tps.toFixed(1)} TPS` : ""}</Badge>
+          ) : (
+            <Badge tone="ok">{tr("Smooth")}{lagReport.tps != null ? ` · ${lagReport.tps.toFixed(1)} TPS` : ""}</Badge>
+          )
+        ) : (
+          <Badge tone="subtle">{tr("Checking")}</Badge>
+        )
+      }
+    >
+      {!lagReport ? (
+        <p className="muted lag-note">{tr("Collecting server and system metrics.")}</p>
+      ) : (
+        <>
+          {!lagReport.hasLive && (
+            <p className="muted lag-note">
+              {tr("Monolab {0} is required to view server details (entities, chunks and heap). Only memory settings and CPU have been checked.", [addon?.kind ?? tr("add-on")])}
+            </p>
+          )}
+          {lagReport.findings.length === 0 ? (
+            <p className="muted lag-note">
+              {lagReport.lagging
+                ? tr("No cause found inside the server. A plugin or mod may be responsible. Try disabling recent additions one at a time, or use the spark profiler to find what's slowing down ticks.")
+                : tr("If TPS drops, the cause appears here.")}
+            </p>
+          ) : (
+            <ul className="lag-list">
+              {lagReport.findings.map((one, index) => {
+                const line = lagLine(one);
+                const action = line.action;
+                const key = `lag-${index}`;
+                return (
+                  <li key={key} className={`lag-row ${one.level}`}>
+                    <span className="lag-mark" aria-hidden="true" />
+                    <div className="lag-body">
+                      <strong>{line.title}</strong>
+                      {line.detail && <small>{line.detail}</small>}
+                    </div>
+                    {action && (
+                      <button
+                        type="button"
+                        className={`button small ${action.kind === "console" ? "danger" : "ghost"} ${action.kind === "copy" ? "copy-mark" : ""} ${copiedKey === key ? "done" : ""}`}
+                        onClick={() => void runLagAction(action, key)}
+                      >
+                        {action.kind === "copy" && <Icon name={copiedKey === key ? "check" : "copy"} />}
+                        {action.kind === "overview"
+                          ? tr("Open overview")
+                          : action.kind === "properties"
+                            ? tr("Open server settings")
+                            : action.kind === "copy"
+                              ? tr("Copy command")
+                              : tr("Remove")}
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {lagReport.spark && (lagReport.spark.available || lagReport.spark.installable || selected.core === "Paper" || selected.core === "Purpur" || selected.core === "Folia") && (
+            <div className="spark-row">
+              <div className="lag-body">
+                <strong>{tr("spark profiler")}</strong>
+                <small>
+                  {lagReport.spark.available
+                    ? sparkBusy
+                      ? tr("Profiling… The results link will appear here in 30 seconds.")
+                      : tr("Profiles for 30 seconds to find plugins or mods slowing down ticks. View the results on the spark website.")
+                    : lagReport.spark.installable
+                      ? tr("Not installed yet. Install it to see which mods are slowing down ticks. Applies on the next start.")
+                      : tr("Included with Paper 1.21 and later. For this version, add spark to the plugins folder manually.")}
+                  {sparkReport && !sparkBusy && (
+                    <> · {tr("Last result")} {relativeTime(Math.floor(sparkReport.at / 1000))}</>
+                  )}
+                </small>
+              </div>
+              {lagReport.spark.available ? (
+                <div className="spark-actions">
+                  {sparkReport && (
+                    <button type="button" className="button small ghost" onClick={() => void openExternal(sparkReport.url)}>
+                      <Icon name="arrow" />{tr("View results")}
+                    </button>
+                  )}
+                  <button type="button" className="button small secondary" disabled={sparkBusy} onClick={() => void startSpark()}>
+                    <Icon name={sparkBusy ? "clock" : "gauge"} />{sparkBusy ? tr("Profiling") : tr("Profile for 30 s")}
+                  </button>
+                </div>
+              ) : lagReport.spark.installable ? (
+                <button type="button" className="button small secondary" onClick={() => void installSpark()}>
+                  <Icon name="import" />{tr("Install spark")}
+                </button>
+              ) : (
+                <button type="button" className="button small ghost" onClick={() => void openExternal("https://spark.lucko.me/download")}>
+                  {tr("Download")}
+                </button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+
+  const sidePanel = page === "instance" && (tool === "console" || (tool === "properties" && propsChanged.length > 0));
+  const sideShown = !!selected && sidePanel && wide;
+  const runControls = selected ? (
+  <div className="wb-run">
+    {!onWeb && !selected.remoteHost && !selected.panelHost && (
+      <button type="button" className="wb-icon ghost" aria-label={t("card.folder")} data-tip={t("card.folder")} onClick={() => void openServerFolder(selected)}>
+        <Icon name="folder" />
+      </button>
+    )}
+    <button type="button" className="wb-icon ghost" aria-label={t("card.rename")} data-tip={t("card.rename")} onClick={() => void renameInstance(selected)}>
+      <Icon name="pencil" />
+    </button>
+    {selected.status !== "stopped" && (
+      <button type="button" className="wb-icon ghost danger" aria-label={tr("End task")} data-tip={tr("End task")} onClick={() => void forceStop(selected)}>
+        <Icon name="alert" />
+      </button>
+    )}
+    {selected.status === "stopped" && selected.unreachable && selected.remoteHost ? (
+      <button type="button" className="button secondary wb-pill" onClick={() => void retrySsh(selected.remoteHost)}>
+        <Icon name="refresh" />
+        {tr("Retry connection")}
+      </button>
+    ) : selected.status === "stopped" ? (
+      <button
+        type="button"
+        className="button primary wb-pill"
+        disabled={!!selected.checking || !!selected.unreachable || !!selected.missing}
+        onClick={() => void toggle(selected)}
+      >
+        <Icon name="play" />
+        {t("card.start")}
+      </button>
+    ) : (
+      <>
+        <button
+          type="button"
+          className="wb-icon"
+          aria-label={tr("Restart")}
+          data-tip={tr("Restart")}
+          disabled={selected.status === "stopping"}
+          onClick={() => void restartInstance(selected)}
+        >
+          <Icon name="refresh" />
+        </button>
+        <button
+          type="button"
+          className="wb-icon danger"
+          aria-label={t("card.stop")}
+          data-tip={selected.status === "stopping" ? t("status.stopping") : t("card.stop")}
+          disabled={selected.status === "stopping"}
+          onClick={() => void toggle(selected)}
+        >
+          <Icon name="stop" />
+        </button>
+      </>
+    )}
+  </div>
+  ) : null;
+
   const manage = selected && (
     <>
       {toolLoading && (
@@ -6046,20 +6452,11 @@ function App() {
         <div className="tool-content overview-console">
           <div className="console-split">
           <div className="console-main">
-          <div className="live-head">
-            <SegmentedControl
-              className="console-levels"
-              value={consoleLevel}
-              onChange={setConsoleLevel}
-              options={[
-                { value: "all", label: tr("All") },
-                { value: "error", label: tr("Errors") },
-                { value: "warn", label: tr("Warnings") },
-                { value: "info", label: tr("Info") },
-              ]}
-            />
+          <div className="wb-head live-head">
+            <h1>{tr("Console")}</h1>
+            <ConsoleLevels serverId={selected.id} value={consoleLevel} onChange={setConsoleLevel} />
             <span className="live-spacer" />
-            <label className="search console-search">
+            <label className="search console-search wb-search-field">
               <Icon name="search" />
               <input
                 value={consoleFilter}
@@ -6068,9 +6465,10 @@ function App() {
               />
             </label>
           </div>
+          <div className="wb-console-box">
           <ConsoleOutput serverId={selected.id} filter={consoleFilter} level={consoleLevel} />
           <form
-            className="console-input"
+            className="console-input wb-console-input"
             onSubmit={(event) => {
               event.preventDefault();
               setHistoryIndex(-1);
@@ -6141,19 +6539,27 @@ function App() {
               </div>
             )}
             <button
-              className="button primary"
+              className="wb-send"
+              aria-label={tr("Send")}
+              data-tip={tr("Send")}
               disabled={selected.status !== "running"}
             >
-              {tr("Send")}</button>
+              <Icon name="arrow-up" />
+            </button>
           </form>
           </div>
-          <ServerStats server={{ id: selected.id, name: selected.name, panelHost: selected.panelHost, maxMemoryMib: kindOf(selected.core).family === "minecraft" ? selected.maxMemoryMib : 0, port: selected.port, status: selected.status, uptimeSeconds: selected.uptimeSeconds }} onOpenPlayer={() => void loadTool("players")} />
+          </div>
+          {!wide && <ServerStats server={{ id: selected.id, name: selected.name, panelHost: selected.panelHost, maxMemoryMib: kindOf(selected.core).family === "minecraft" ? selected.maxMemoryMib : 0, port: selected.port, status: selected.status, uptimeSeconds: selected.uptimeSeconds }} onOpenPlayer={() => void loadTool("players")} />}
           </div>
         </div>
       )}
       {!toolLoading && tool === "overview" && (
         <div className="tool-content overview">
           <div className="overview-scroll">
+          <div className="wb-head overview-head">
+            <h1>{tr("Overview")}</h1>
+            {selected.status === "stopped" && runControls}
+          </div>
           {selected.crashReason && (
             <Banner tone="warn">{tr("Exit reason")}: {trBack(selected.crashReason)}</Banner>
           )}
@@ -6730,12 +7136,13 @@ function App() {
         );
         return (
         <div className="tool-content props-page">
-          {running && (
-            <Banner tone="info">
-              {tr("The server is running. Saved settings apply on the next start.")}
-            </Banner>
-          )}
-          <label className="search props-search">
+          <div className="wb-head">
+            <div className="wb-head-title">
+              <h1>{tr("Server settings")}</h1>
+              <code>{isNative(selected.core) ? "pumpkin.toml" : "server.properties"}</code>
+            </div>
+            <span className="live-spacer" />
+          <label className="search props-search wb-search-field">
             <Icon name="search" />
             <input
               value={propertyQuery}
@@ -6753,10 +7160,15 @@ function App() {
               </button>
             )}
           </label>
-          <button className="button ghost small props-compare" onClick={() => setCompareOpen(true)}>
+          <button className="wb-icon props-compare" aria-label={tr("Compare with another server")} data-tip={tr("Compare with another server")} onClick={() => setCompareOpen(true)}>
             <Icon name="sliders" />
-            {tr("Compare with another server")}
           </button>
+          </div>
+          {running && (
+            <Banner tone="info">
+              {tr("The server is running. Saved settings apply on the next start.")}
+            </Banner>
+          )}
           {properties.length === 0 && (
             <p className="muted tool-empty">
               {isNative(selected.core)
@@ -6766,57 +7178,49 @@ function App() {
           {properties.length > 0 && searching && grouped.size === 0 && (
             <p className="muted tool-empty">{tr("No matching settings.")}</p>
           )}
-          <div className="props-layout">
-          {properties.length > 0 && (
-            <nav className="props-toc" aria-label={tr("Settings categories")}>
-              {CATEGORIES.map((category) => {
-                const count = (grouped.get(category) ?? []).length + (category === "General" && !searching ? 1 : 0);
-                if (!count) return null;
-                return (
-                  <button
-                    type="button"
-                    key={category}
-                    onClick={() => {
-                      setClosedSections((now) => ({ ...now, [category]: false }));
-                      requestAnimationFrame(() =>
-                        document.getElementById(`props-${category}`)?.scrollIntoView({ block: "start", behavior: "smooth" }),
-                      );
-                    }}
-                  >
-                    <span>{tr(category)}</span>
-                    <small>{count}</small>
-                  </button>
-                );
-              })}
-            </nav>
-          )}
+          {(() => {
+            const tabs = CATEGORIES.filter((category) => (grouped.get(category) ?? []).length > 0 || (category === "General" && !searching && properties.length > 0));
+            const tab = tabs.includes(propsTab) ? propsTab : tabs[0];
+            const shown = searching ? tabs : tabs.filter((category) => category === tab);
+            const segment = (entry: Property) =>
+              entry.kind === "choice" && entry.options.length <= 4 && entry.options.join("").length <= 40;
+            return (
+              <>
+              {properties.length > 0 && !searching && (
+                <div className="wb-chips" role="tablist" aria-label={tr("Settings categories")}>
+                  {tabs.map((category) => (
+                    <button
+                      type="button"
+                      role="tab"
+                      key={category}
+                      aria-selected={category === tab}
+                      className={`wb-chip ${category === tab ? "on" : ""}`}
+                      onClick={() => setPropsTab(category)}
+                    >
+                      {tr(category)}
+                      {[...changed].some((key) => propertyMeta(key).category === category) && <i className="wb-chip-dot" aria-label={tr("Changed")} />}
+                    </button>
+                  ))}
+                </div>
+              )}
           <fieldset className="props-lock" disabled={locked}>
-            {CATEGORIES.map((category) => {
+            {shown.map((category) => {
               const rows = grouped.get(category) ?? [];
               const showIcon = category === "General" && !searching && properties.length > 0;
               if (!rows.length && !showIcon) return null;
-              const open = searching || !closedSections[category];
               return (
-                <details
-                  className="props-section"
-                  id={`props-${category}`}
-                  key={category}
-                  open={open}
-                  onToggle={(event) => {
-                    if (searching) return;
-                    const isOpen = event.currentTarget.open;
-                    setClosedSections((now) => ({ ...now, [category]: !isOpen }));
-                  }}
-                >
-                  <summary>
-                    <Icon name="chevron" />
-                    {tr(category)}
-                    <small>{rows.length + (showIcon ? 1 : 0)}</small>
-                  </summary>
+                <section className="props-section wb-props" id={`props-${category}`} key={category}>
+                  {searching && <h2 className="wb-sec">{tr(category)} <b>{rows.length}</b></h2>}
                   <div className="property-list">
                     {showIcon && iconCard}
                     {rows.map((entry) => {
                       const meta = propertyMeta(entry.key);
+                      const step = (by: number) => {
+                        let next = (Number(entry.value) || 0) + by;
+                        if (entry.min != null) next = Math.max(entry.min, next);
+                        if (entry.max != null) next = Math.min(entry.max, next);
+                        update(entry.key, String(next));
+                      };
                       return (
                         <div
                           className={`property-row ${changed.has(entry.key) ? "changed" : ""}`}
@@ -6846,6 +7250,21 @@ function App() {
                               />
                               <span />
                             </label>
+                          ) : segment(entry) ? (
+                            <div className="wb-seg" role="radiogroup" aria-label={meta.label}>
+                              {entry.options.map((option) => (
+                                <button
+                                  type="button"
+                                  role="radio"
+                                  key={option}
+                                  aria-checked={entry.value === option}
+                                  className={entry.value === option ? "on" : ""}
+                                  onClick={() => update(entry.key, option)}
+                                >
+                                  {option}
+                                </button>
+                              ))}
+                            </div>
                           ) : entry.kind === "choice" ? (
                             <Dropdown
                               value={entry.value}
@@ -6856,13 +7275,18 @@ function App() {
                               }))}
                             />
                           ) : entry.kind === "number" ? (
-                            <input
-                              type="number"
-                              value={entry.value}
-                              min={entry.min ?? undefined}
-                              max={entry.max ?? undefined}
-                              onChange={(event) => update(entry.key, event.target.value)}
-                            />
+                            <div className="wb-stepper">
+                              <button type="button" aria-label={tr("Decrease")} onClick={() => step(-1)}>−</button>
+                              <input
+                                type="number"
+                                value={entry.value}
+                                aria-label={meta.label}
+                                min={entry.min ?? undefined}
+                                max={entry.max ?? undefined}
+                                onChange={(event) => update(entry.key, event.target.value)}
+                              />
+                              <button type="button" aria-label={tr("Increase")} onClick={() => step(1)}>+</button>
+                            </div>
                           ) : (
                             <input
                               value={entry.value}
@@ -6873,11 +7297,13 @@ function App() {
                       );
                     })}
                   </div>
-                </details>
+                </section>
               );
             })}
           </fieldset>
-          </div>
+              </>
+            );
+          })()}
           {changed.size > 0 && !locked && (
             <div className="save-bar">
               <span>{tr("{0} changed", [changed.size])}</span>
@@ -6905,7 +7331,6 @@ function App() {
       })()}
       {!toolLoading && tool === "files" && (() => {
         const locked = false;
-        const running = selected.status !== "stopped";
         const loaded = browseEntries.length >= browseTotal;
         const query = fileQuery.trim().toLowerCase();
         const rows = [...browseEntries].filter((entry) => !query || entry.name.toLowerCase().includes(query)).sort((a, b) => {
@@ -6967,84 +7392,77 @@ function App() {
             </div>
           )}
           {!activeFile && (
-          <div className="file-bar">
+          <>
+          <div className="wb-head">
+            <h1>{tr("Files")}</h1>
+            <span className="live-spacer" />
+            <label className="search file-search wb-search-field">
+              <Icon name="search" />
+              <input
+                value={fileQuery}
+                onChange={(event) => setFileQuery(event.target.value)}
+                placeholder={tr("Find in this folder")}
+              />
+            </label>
             <button
-              className="icon-button"
-              aria-label={tr("Server folder")}
-              data-tip={tr("Server folder")}
-              onClick={() => void goFolder("")}
+              className="wb-icon"
+              aria-label={tr("Trash")}
+              data-tip={tr("Trash — restore files or delete them permanently")}
+              onClick={() => void openTrash()}
             >
-              <Icon name="home" />
+              <Icon name="trash" />
             </button>
-            <div className="crumbs">
-              <button onClick={() => void goFolder("")}>{selected.name}</button>
-              {browsePath
-                .split("/")
-                .filter(Boolean)
-                .map((piece, at, all) => (
-                  <button key={`${piece}-${at}`} onClick={() => void goFolder(all.slice(0, at + 1).join("/"))}>
-                    <Icon name="chevron" />
+            <button className="wb-icon" aria-label={tr("Refresh")} data-tip={tr("Refresh")} onClick={() => void browseTo(browsePath)}>
+              <Icon name="refresh" />
+            </button>
+            <DropdownMenu
+              trigger={
+                <button className="button primary wb-pill" disabled={locked}>
+                  <Icon name="plus" />
+                  {tr("Add")}
+                </button>
+              }
+              items={[
+                { label: tr("New file"), icon: "file", onSelect: () => void newFileHere() },
+                { label: tr("New folder"), icon: "folder", onSelect: () => void newFolderHere() },
+                { label: tr("Upload files"), icon: "import", onSelect: () => void addFilesHere() },
+                ...(onWeb
+                  ? []
+                  : [{ label: tr("Upload folder"), icon: "folder", onSelect: () => void addFolderHere() }]),
+                ...(onWeb || selected.remoteHost || selected.panelHost
+                  ? []
+                  : [{
+                      label: tr("Open in Explorer"),
+                      icon: "archive",
+                      onSelect: () => {
+                        void commands.openServerFolder(selected.id, browsePath || null).catch((cause) => setError(String(cause)));
+                      },
+                    }]),
+              ]}
+            />
+          </div>
+          <nav className="wb-crumbs" aria-label={tr("Path")}>
+            <button className={browsePath ? "" : "on"} onClick={() => void goFolder("")}>
+              <Icon name="home" />
+              {selected.name}
+            </button>
+            {browsePath
+              .split("/")
+              .filter(Boolean)
+              .map((piece, at, all) => (
+                <Fragment key={`${piece}-${at}`}>
+                  <span className="wb-crumb-gap" aria-hidden>›</span>
+                  <button
+                    className={at === all.length - 1 ? "on" : ""}
+                    onClick={() => void goFolder(all.slice(0, at + 1).join("/"))}
+                  >
                     {piece}
                   </button>
-                ))}
-              {activeFile && (
-                <span className="crumb-file">
-                  <Icon name="chevron" />
-                  {activeFile.split("/").pop()}
-                  {locked && <span className="chip subtle">{tr("Read-only")}</span>}
-                </span>
-              )}
-            </div>
-            {!activeFile && (
-              <>
-                <span className="file-count">{tr("count.items", [browseTotal])}</span>
-                <label className="search file-search">
-                  <Icon name="search" />
-                  <input
-                    value={fileQuery}
-                    onChange={(event) => setFileQuery(event.target.value)}
-                    placeholder={tr("Find in this folder")}
-                  />
-                </label>
-                <DropdownMenu
-                  trigger={
-                    <button className="button secondary split-menu" disabled={locked} aria-label={tr("Add")} data-tip={tr("New file · new folder · upload")}>
-                      <Icon name="plus" />
-                      <Icon name="chevron" />
-                    </button>
-                  }
-                  items={[
-                    { label: tr("New file"), icon: "file", onSelect: () => void newFileHere() },
-                    { label: tr("New folder"), icon: "folder", onSelect: () => void newFolderHere() },
-                    { label: tr("Upload files"), icon: "import", onSelect: () => void addFilesHere() },
-                    ...(onWeb
-                      ? []
-                      : [{ label: tr("Upload folder"), icon: "folder", onSelect: () => void addFolderHere() }]),
-                    ...(onWeb || selected.remoteHost || selected.panelHost
-                      ? []
-                      : [{
-                          label: tr("Open in Explorer"),
-                          icon: "archive",
-                          onSelect: () => {
-                            void commands.openServerFolder(selected.id, browsePath || null).catch((cause) => setError(String(cause)));
-                          },
-                        }]),
-                  ]}
-                />
-                <button
-                  className="icon-button"
-                  aria-label={tr("Trash")}
-                  data-tip={tr("Trash — restore files or delete them permanently")}
-                  onClick={() => void openTrash()}
-                >
-                  <Icon name="trash" />
-                </button>
-                <button className="icon-button" aria-label={tr("Refresh")} data-tip={tr("Refresh")} onClick={() => void browseTo(browsePath)}>
-                  <Icon name="refresh" />
-                </button>
-              </>
-            )}
-          </div>
+                </Fragment>
+              ))}
+            <span className="wb-crumb-count">{tr("count.items", [browseTotal])}</span>
+          </nav>
+          </>
           )}
           {activeFile ? (
             <div className="ide">
@@ -7135,15 +7553,6 @@ function App() {
                       </div>
                     );
                   })}
-                  <span className="ide-tabs-gap" />
-                  <button
-                    className="icon-button"
-                    aria-label={tr("Close all and return to list")}
-                    data-tip={tr("Close all and return to list")}
-                    onClick={() => void closeFile()}
-                  >
-                    <Icon name="close" />
-                  </button>
                 </div>
                 <div className="ide-crumbs">
                   <button onClick={() => void goFolder("")}>{selected.name}</button>
@@ -7161,6 +7570,26 @@ function App() {
                     {activeFile.split("/").pop()}
                   </span>
                   {locked && <span className="chip subtle">{tr("Read-only")}</span>}
+                  <span className="ide-crumbs-gap" />
+                  {!fileImage && !locked && fileContent !== fileSaved && (
+                    <>
+                      <button className="ide-action" onClick={() => setFileContent(fileSaved)}>
+                        <Icon name="undo" />
+                        {tr("Roll back")}
+                      </button>
+                      <button className="ide-action strong" onClick={() => void saveFile()} data-tip="Ctrl+S">
+                        {tr("Save")}
+                      </button>
+                    </>
+                  )}
+                  <button
+                    className="ide-action icon"
+                    aria-label={tr("Close all and return to list")}
+                    data-tip={tr("Close all and return to list")}
+                    onClick={() => void closeFile()}
+                  >
+                    <Icon name="close" />
+                  </button>
                 </div>
                 <div className="ide-body">
                   {fileImage ? (
@@ -7190,13 +7619,6 @@ function App() {
                         <i className="ide-dot" aria-hidden />
                         {tr("Unsaved changes")}
                       </span>
-                      <button className="ide-status-button" onClick={() => setFileContent(fileSaved)}>
-                        <Icon name="undo" />
-                        {tr("Roll back")}
-                      </button>
-                      <button className="ide-status-button strong" onClick={() => void saveFile()}>
-                        {tr("Save")} <kbd>Ctrl+S</kbd>
-                      </button>
                     </>
                   ) : (
                     <span>{locked ? tr("Read-only") : tr("Saved")}</span>
@@ -7219,11 +7641,6 @@ function App() {
             </div>
           ) : (
           <>
-          {running && !activeFile && (
-            <Banner tone="info">
-              {tr("The server is running. Edited files are read on the next start. Files in use, such as worlds and jars, may not be movable or deletable.")}
-            </Banner>
-          )}
             <div className="file-list" ref={fileListBox}>
               <div className="file-head">
                 <input
@@ -7321,6 +7738,9 @@ function App() {
       })()}
       {!toolLoading && tool === "worlds" && (
         <div className="tool-content world-page">
+          <div className="wb-head world-head">
+            <h1>{tr("Worlds")}</h1>
+          </div>
           <div className="world-stage map-page">
             <WorldSide
               worlds={worldTree.map(({ world, sizeMib }) => ({
@@ -7454,7 +7874,11 @@ function App() {
       )}
       {!toolLoading && tool === "logs" && (
         <div className="tool-content log-page">
-          {logView !== "read" && logTabs}
+          <div className="wb-head">
+            <h1>{tr("Logs")}</h1>
+            <span className="live-spacer" />
+            {logTabs}
+          </div>
           {logView === "audit" && (
             <div className="log-view audit">
           <section className="audit-center">
@@ -7527,7 +7951,6 @@ function App() {
           {logView === "read" && (
             <div className="log-view read overview-console log-console">
           <div className="live-head">
-            {logTabs}
             <SegmentedControl
               className="console-levels"
               value={logLevelView}
@@ -7659,12 +8082,12 @@ function App() {
       )}
       {!toolLoading && tool === "backups" && (
         <div className="tool-content backup-page">
-          <div className="tool-top">
-            <p>
-              {tr("Compresses and stores the entire server folder.")}
-            </p>
+          <div className="wb-head">
+            <h1>{tr("Backups")}</h1>
+            <span className="live-spacer" />
             <button
-              className="button primary"
+              className="button primary wb-pill"
+              data-tip={tr("Compresses and stores the entire server folder.")}
               disabled={backupBusy}
               onClick={() => void makeBackup()}
             >
@@ -7814,7 +8237,39 @@ function App() {
               )}
             </div>
           )}
-          <div className="tool-top">
+          <div className="wb-head">
+            <h1>{tr("Monitor")}</h1>
+            <span className="live-spacer" />
+            {chartView === "past" && perfHistory.length > 0 && perfDays.length > 1 && (
+              <Dropdown
+                value={perfDay}
+                onChange={(day) => void loadPerfHistory(day)}
+                options={perfDays.slice(0, 30).map((day) => ({ value: day, label: day }))}
+              />
+            )}
+            {perfHistory.length > 0 && (
+              <div className="wb-seg" role="tablist" aria-label={tr("Period")}>
+                {([["now", tr("Now")], ["past", tr("History")]] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="tab"
+                    aria-selected={chartView === value}
+                    className={chartView === value ? "on" : ""}
+                    onClick={() => setChartView(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {!selected.panelHost && (
+              <button className="wb-icon" aria-label={tr("Disk usage")} data-tip={tr("Disk usage")} onClick={() => setDiskOpen(true)}>
+                <Icon name="disk" />
+              </button>
+            )}
+          </div>
+          <div className="tool-top wb-note">
             <p>
               {!mc
                 ? selected.status === "running"
@@ -7830,12 +8285,6 @@ function App() {
                     ? tr("Data appears once the add-on sends it.")
                     : tr("TPS and player data require Monolab {0}.", [addon?.kind ?? tr("plugin")])}
             </p>
-            {!selected.panelHost && (
-              <button className="button secondary" onClick={() => setDiskOpen(true)}>
-                <Icon name="disk" />
-                {tr("Disk usage")}
-              </button>
-            )}
           </div>
           <div className="monitor-grid">
             <div>
@@ -7863,7 +8312,10 @@ function App() {
               </div>
             )}
             {mc && (
-              <div>
+              <div className={(() => {
+                const value = live?.tps ?? tps?.tps ?? null;
+                return value == null || selected.status !== "running" ? "" : value < 15 ? "danger" : value < 18 ? "warn" : "";
+              })()}>
                 <span>TPS</span>
                 <strong>
                   {orDash(live?.tps ?? tps?.tps ?? null, (v) => v.toFixed(2))}
@@ -7881,114 +8333,7 @@ function App() {
           </div>
           {mc && selected.status === "running" && (
             <div className="monitor-insight">
-              <Card
-                className="lag-card"
-                title={tr("Lag diagnosis")}
-                aside={
-                  lagReport ? (
-                    !lagReport.hasLive ? (
-                      <Badge tone="subtle">{tr("No add-on")}</Badge>
-                    ) : lagReport.lagging ? (
-                      <Badge tone="danger">{tr("Lagging")}{lagReport.tps != null ? ` · ${lagReport.tps.toFixed(1)} TPS` : ""}</Badge>
-                    ) : (
-                      <Badge tone="ok">{tr("Smooth")}{lagReport.tps != null ? ` · ${lagReport.tps.toFixed(1)} TPS` : ""}</Badge>
-                    )
-                  ) : (
-                    <Badge tone="subtle">{tr("Checking")}</Badge>
-                  )
-                }
-              >
-                {!lagReport ? (
-                  <p className="muted lag-note">{tr("Collecting server and system metrics.")}</p>
-                ) : (
-                  <>
-                    {!lagReport.hasLive && (
-                      <p className="muted lag-note">
-                        {tr("Monolab {0} is required to view server details (entities, chunks and heap). Only memory settings and CPU have been checked.", [addon?.kind ?? tr("add-on")])}
-                      </p>
-                    )}
-                    {lagReport.findings.length === 0 ? (
-                      <p className="muted lag-note">
-                        {lagReport.lagging
-                          ? tr("No cause found inside the server. A plugin or mod may be responsible. Try disabling recent additions one at a time, or use the spark profiler to find what's slowing down ticks.")
-                          : tr("If TPS drops, the cause appears here.")}
-                      </p>
-                    ) : (
-                      <ul className="lag-list">
-                        {lagReport.findings.map((one, index) => {
-                          const line = lagLine(one);
-                          const action = line.action;
-                          const key = `lag-${index}`;
-                          return (
-                            <li key={key} className={`lag-row ${one.level}`}>
-                              <span className="lag-mark" aria-hidden="true" />
-                              <div className="lag-body">
-                                <strong>{line.title}</strong>
-                                {line.detail && <small>{line.detail}</small>}
-                              </div>
-                              {action && (
-                                <button
-                                  type="button"
-                                  className={`button small ${action.kind === "console" ? "danger" : "ghost"} ${action.kind === "copy" ? "copy-mark" : ""} ${copiedKey === key ? "done" : ""}`}
-                                  onClick={() => void runLagAction(action, key)}
-                                >
-                                  {action.kind === "copy" && <Icon name={copiedKey === key ? "check" : "copy"} />}
-                                  {action.kind === "overview"
-                                    ? tr("Open overview")
-                                    : action.kind === "properties"
-                                      ? tr("Open server settings")
-                                      : action.kind === "copy"
-                                        ? tr("Copy command")
-                                        : tr("Remove")}
-                                </button>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                    {lagReport.spark && (lagReport.spark.available || lagReport.spark.installable || selected.core === "Paper" || selected.core === "Purpur" || selected.core === "Folia") && (
-                      <div className="spark-row">
-                        <div className="lag-body">
-                          <strong>{tr("spark profiler")}</strong>
-                          <small>
-                            {lagReport.spark.available
-                              ? sparkBusy
-                                ? tr("Profiling… The results link will appear here in 30 seconds.")
-                                : tr("Profiles for 30 seconds to find plugins or mods slowing down ticks. View the results on the spark website.")
-                              : lagReport.spark.installable
-                                ? tr("Not installed yet. Install it to see which mods are slowing down ticks. Applies on the next start.")
-                                : tr("Included with Paper 1.21 and later. For this version, add spark to the plugins folder manually.")}
-                            {sparkReport && !sparkBusy && (
-                              <> · {tr("Last result")} {relativeTime(Math.floor(sparkReport.at / 1000))}</>
-                            )}
-                          </small>
-                        </div>
-                        {lagReport.spark.available ? (
-                          <div className="spark-actions">
-                            {sparkReport && (
-                              <button type="button" className="button small ghost" onClick={() => void openExternal(sparkReport.url)}>
-                                <Icon name="arrow" />{tr("View results")}
-                              </button>
-                            )}
-                            <button type="button" className="button small secondary" disabled={sparkBusy} onClick={() => void startSpark()}>
-                              <Icon name={sparkBusy ? "clock" : "gauge"} />{sparkBusy ? tr("Profiling") : tr("Profile for 30 s")}
-                            </button>
-                          </div>
-                        ) : lagReport.spark.installable ? (
-                          <button type="button" className="button small secondary" onClick={() => void installSpark()}>
-                            <Icon name="import" />{tr("Install spark")}
-                          </button>
-                        ) : (
-                          <button type="button" className="button small ghost" onClick={() => void openExternal("https://spark.lucko.me/download")}>
-                            {tr("Download")}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
-              </Card>
+              {lagCardView()}
               <Card
                 className="entity-card"
                 title={tr("Entities")}
@@ -8061,26 +8406,6 @@ function App() {
                   </>
                 )}
               </Card>
-            </div>
-          )}
-          {perfHistory.length > 0 && (
-            <div className="monitor-chart-tabs">
-              <SegmentedControl<"now" | "past">
-                className="page-tabs"
-                value={chartView}
-                onChange={setChartView}
-                options={[
-                  { value: "now", label: tr("Now") },
-                  { value: "past", label: tr("History") },
-                ]}
-              />
-              {chartView === "past" && perfDays.length > 1 && (
-                <Dropdown
-                  value={perfDay}
-                  onChange={(day) => void loadPerfHistory(day)}
-                  options={perfDays.slice(0, 30).map((day) => ({ value: day, label: day }))}
-                />
-              )}
             </div>
           )}
           {chartView === "past" && perfHistory.length > 0 ? null : selected.status !== "running" && history.length === 0 ? (
@@ -8177,9 +8502,10 @@ function App() {
         ];
         return (
         <div className="tool-content reach-page">
-          <div className="tool-top">
-            <p>{tr("Addresses friends can use to join.")}</p>
-            <span className="reach-port">{proto} {span}</span>
+          <div className="wb-head">
+            <h1>{tr("Network")}</h1>
+            <span className="live-spacer" />
+            <span className="reach-port" data-tip={tr("Addresses friends can use to join.")}>{proto} {span}</span>
           </div>
           <div className="reach-tiles">
             {rows.map((row) => (
@@ -8295,7 +8621,24 @@ function App() {
             )}
             <div className="version-pick">
               <div className="version-field">
-                <span className="field-label">{tr("Minecraft version")}</span>
+                <span className="field-label">
+                  {tr("Minecraft version")}
+                  <label className="wb-toggle small">
+                    <span>{tr("Snapshots")}</span>
+                    <span className="switch">
+                      <input
+                        type="checkbox"
+                        checked={upgradeSnapshots}
+                        onChange={(event) => {
+                          const on = event.target.checked;
+                          setUpgradeSnapshots(on);
+                          void commands.listCoreVersions(selected.core, on).then(setUpgradeVersions).catch(() => {});
+                        }}
+                      />
+                      <span />
+                    </span>
+                  </label>
+                </span>
                 <Dropdown
                   value={upgradeVersion}
                   onChange={(version) => {
@@ -8530,16 +8873,20 @@ function App() {
         </div>
       )}
       {!toolLoading && tool === "players" && (
-        <div className="tool-content">
-          <div className="tool-top">
-            <p>
-              {selected.status === "running"
-                ? tr("The server is running, so changes apply through a console command. Only the name is needed.")
-                : tr("The server is stopped, so the list file is edited directly. The UUID is found automatically using the name.")}
-            </p>
-            <button className="button secondary" onClick={() => void loadTool("players")}>
+        <div className="tool-content player-page">
+          <div className="wb-head">
+            <h1>{tr("Players")}</h1>
+            <span className="live-spacer" />
+            <label className="search wb-search-field">
+              <Icon name="search" />
+              <input
+                value={playerQuery}
+                onChange={(event) => setPlayerQuery(event.target.value)}
+                placeholder={tr("Find a name")}
+              />
+            </label>
+            <button className="wb-icon" aria-label={tr("Refresh")} data-tip={tr("Refresh")} onClick={() => void loadTool("players")}>
               <Icon name="refresh" />
-              {tr("Refresh")}
             </button>
           </div>
           <div className="player-add">
@@ -8547,6 +8894,11 @@ function App() {
               value={playerName}
               onChange={(event) => setPlayerName(event.target.value)}
               placeholder={tr("Player name")}
+              data-tip={
+                selected.status === "running"
+                  ? tr("The server is running, so changes apply through a console command. Only the name is needed.")
+                  : tr("The server is stopped, so the list file is edited directly. The UUID is found automatically using the name.")
+              }
               onKeyDown={(event) => {
                 if (event.key === "Enter" && playerName.trim()) void addPlayerHere();
               }}
@@ -8561,11 +8913,11 @@ function App() {
               onChange={setPlayerAddKind}
             />
             <button
-              className={`button ${playerAddKind === "ban" ? "danger" : "primary"}`}
+              className={`button wb-pill ${playerAddKind === "ban" ? "danger" : "primary"}`}
               disabled={!playerName.trim()}
               onClick={() => void addPlayerHere()}
             >
-              {playerAddKind === "ban" ? tr("Ban") : tr("Add")}
+              {playerAddKind === "ban" ? tr("Ban") : <><Icon name="plus" />{tr("Add")}</>}
             </button>
           </div>
           {playerSnapshot && (
@@ -8588,10 +8940,12 @@ function App() {
                   />
                 )}
                 <div>
-                  <strong>{tr("Saved player data")}</strong>
+                  <strong>{playerSnapshot.live ? tr("Live player data") : tr("Saved player data")}</strong>
                   <small>
                     {playerSnapshot.dimension || tr("No dimension info")}
-                    {playerSnapshot.modifiedAt > 0 && <> · {date(playerSnapshot.modifiedAt)} {tr("Threshold")}</>}</small>
+                    {playerSnapshot.live
+                      ? <> · {tr("Refreshes every 5 seconds")}</>
+                      : playerSnapshot.modifiedAt > 0 && <> · {date(playerSnapshot.modifiedAt)} {tr("Threshold")}</>}</small>
                 </div>
                 <button
                   className="close in-flow"
@@ -8629,10 +8983,9 @@ function App() {
                   </strong>
                 </div>
               </div>
-              {playerSnapshot.inventory.length > 0 && (() => {
-                const bySlot = new Map(
-                  playerSnapshot.inventory.map((one) => [one.slot, one]),
-                );
+              {(playerSnapshot.inventory.length > 0 || playerSnapshot.enderItems.length > 0) && (() => {
+                const shown = invTab === "ender" ? playerSnapshot.enderItems : playerSnapshot.inventory;
+                const bySlot = new Map(shown.map((one) => [one.slot, one]));
                 const row = (from: number, count: number) =>
                   Array.from({ length: count }, (_, at) => from + at);
                 const slot = (at: number, mark?: string) => {
@@ -8647,11 +9000,28 @@ function App() {
                   const name =
                     itemNames[item.id] ?? item.id.replace("minecraft:", "");
                   const icon = itemIcons[item.id];
+                  const lines = [
+                    `${item.name || name}${item.count > 1 ? ` ×${item.count}` : ""}`,
+                    ...(item.name ? [`(${name})`] : []),
+                    ...item.enchantments.map((one) =>
+                      [enchantNames[one.id] ?? one.id.replace("minecraft:", ""), enchantLevel(one.id, one.level)]
+                        .filter(Boolean)
+                        .join(" "),
+                    ),
+                  ];
+                  const most = item.maxDamage || maxDurability(item.id);
+                  if (item.damage > 0) {
+                    lines.push(
+                      most
+                        ? tr("Durability: {0} / {1}", [Math.max(most - item.damage, 0), most])
+                        : tr("Damage: {0}", [item.damage]),
+                    );
+                  }
                   return (
                     <div
-                      className="inv-slot"
+                      className={`inv-slot${item.enchantments.length ? " enchanted" : ""}`}
                       key={at}
-                      data-tip={`${name}${item.count > 1 ? ` ×${item.count}` : ""}`}
+                      data-tip={lines.join("\n")}
                     >
                       {icon ? (
                         <img src={icon} alt="" />
@@ -8662,12 +9032,34 @@ function App() {
                     </div>
                   );
                 };
-                const unknown = playerSnapshot.inventory
+                const unknown = shown
                   .filter((one) => !itemIcons[one.id])
                   .map(
                     (one) => itemNames[one.id] ?? one.id.replace("minecraft:", ""),
                   );
                 return (
+                  <>
+                  <SegmentedControl
+                    className="page-tabs"
+                    value={invTab}
+                    onChange={setInvTab}
+                    options={[
+                      { value: "bag", label: tr("Inventory") },
+                      { value: "ender", label: `${tr("Ender chest")} ${playerSnapshot.enderItems.length}` },
+                    ]}
+                  />
+                  {invTab === "ender" ? (
+                  <div className="inv-screen">
+                    <div className="inv-bag">
+                      {row(0, 27).map((at) => slot(at))}
+                    </div>
+                    {unknown.length > 0 && (
+                      <p className="inv-unknown-list">
+                        <b>?</b> {[...new Set(unknown)].join(" · ")}
+                      </p>
+                    )}
+                  </div>
+                  ) : (
                   <div className="inv-screen">
                     <div className="inv-gear">
                       <div className="inv-row four">
@@ -8694,29 +9086,41 @@ function App() {
                       </p>
                     )}
                   </div>
+                  )}
+                  </>
                 );
               })()}
             </div>
             </div>
           )}
           {(() => {
+            const onlineNames = new Set((live?.players ?? []).map((one) => one.name));
             const tabs = [
+              ...(selected.status === "running" ? [{ id: "online" as const, label: tr("Online"), count: players.filter((one) => onlineNames.has(one.name)).length }] : []),
               { id: "all" as const, label: tr("All"), count: players.length },
               { id: "whitelist" as const, label: tr("Whitelist"), count: players.filter((one) => one.whitelisted).length },
               { id: "operator" as const, label: "OP", count: players.filter((one) => one.operator).length },
               { id: "ban" as const, label: tr("Ban"), count: players.filter((one) => one.banned).length },
               { id: "recent" as const, label: tr("Recent"), count: playerActivity.length },
             ];
-            const shown =
-              playerTab === "whitelist"
+            const needle = playerQuery.trim().toLowerCase();
+            const picked =
+              playerTab === "online"
+                ? players.filter((one) => onlineNames.has(one.name))
+                : playerTab === "whitelist"
                 ? players.filter((one) => one.whitelisted)
                 : playerTab === "operator"
                   ? players.filter((one) => one.operator)
                   : playerTab === "ban"
                     ? players.filter((one) => one.banned)
                     : players;
+            const shown = needle ? picked.filter((one) => one.name.toLowerCase().includes(needle)) : picked;
             const emptyTitle =
-              playerTab === "whitelist"
+              needle
+                ? tr("No matching players.")
+                : playerTab === "online"
+                ? tr("No one is online.")
+                : playerTab === "whitelist"
                 ? tr("The whitelist is empty")
                 : playerTab === "operator"
                   ? tr("No operators")
@@ -8725,21 +9129,24 @@ function App() {
                     : tr("No player data yet");
             return (
               <>
-              <div className="event-tabs player-tabs">
+              <div className="wb-chips" role="tablist" aria-label={tr("Player lists")}>
                 {tabs.map((one) => (
                   <button
                     key={one.id}
-                    className={playerTab === one.id ? "chosen" : ""}
+                    type="button"
+                    role="tab"
+                    aria-selected={playerTab === one.id}
+                    className={`wb-chip ${playerTab === one.id ? "on" : ""}`}
                     onClick={() => setPlayerTab(one.id)}
                   >
                     {one.label}
-                    <em>{one.count}</em>
+                    <b>{one.count}</b>
                   </button>
                 ))}
               </div>
               {playerTab === "recent" ? (
                 playerActivity.length ? (
-                  <div className="player-rows">
+                  <div className="player-rows wb-list">
                     {playerActivity.slice(0, 30).map((entry) => (
                       <div className="player-row" key={entry.name}>
                         <span className="player-cell">
@@ -8764,11 +9171,20 @@ function App() {
                   />
                 )
               ) : shown.length ? (
-                <div className="player-rows">
+                <div className="player-grid">
                   {shown.map((player) => {
                     const here = (live?.players ?? []).some((one) => one.name === player.name);
                     return (
-                      <div className="player-row" key={player.uuid}>
+                      <div
+                        className={`player-card ${here ? "here" : ""}`}
+                        key={player.uuid}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => void loadPlayerSnapshot(player)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") void loadPlayerSnapshot(player);
+                        }}
+                      >
                         <span className="player-cell">
                           <span
                             className={`player-face ${here ? "on" : "off"}`}
@@ -8781,14 +9197,58 @@ function App() {
                             )}
                             <i />
                           </span>
-                          {player.name}
+                          <span className="player-card-text">
+                            <strong>{player.name}</strong>
+                            <small className={player.banned ? "danger" : ""}>
+                              {[
+                                player.banned ? tr("Banned") : null,
+                                player.operator ? "OP" : null,
+                                player.whitelisted ? tr("Whitelist") : null,
+                              ].filter(Boolean).join(" · ") || (here ? tr("Online now") : tr("Offline"))}
+                            </small>
+                          </span>
                         </span>
-                        <code className="player-uuid" data-tip={player.uuid}>{player.uuid}</code>
-                        <span className="player-flags">
-                          {player.banned && <span className="chip danger-chip">{tr("Banned")}</span>}
-                          {player.operator && <span className="chip subtle">OP</span>}
-                          {player.whitelisted && <span className="chip subtle">{tr("Whitelist")}</span>}
+                        <span className="player-quick" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                          <button
+                            type="button"
+                            className={`player-quick-button ${player.whitelisted ? "on" : ""}`}
+                            onClick={() => void updatePlayer(player, "whitelist")}
+                            data-tip={player.whitelisted ? tr("Remove from whitelist") : tr("Add to whitelist")}
+                          >
+                            <Icon name="list" />
+                            {tr("Whitelist")}
+                          </button>
+                          <button
+                            type="button"
+                            className={`player-quick-button ${player.operator ? "on" : ""}`}
+                            onClick={() => void updatePlayer(player, "operator")}
+                            data-tip={player.operator ? tr("Remove operator") : tr("Make operator")}
+                          >
+                            <Icon name="shield" />
+                            OP
+                          </button>
+                          {selected.status === "running" && here && (
+                            <button
+                              type="button"
+                              className="player-quick-button"
+                              onClick={() => void applyPlayerAccess(player.name, player.uuid, "kick")}
+                              data-tip={tr("Kick from server")}
+                            >
+                              <Icon name="exit" />
+                              {tr("Kick")}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className={`player-quick-button danger ${player.banned ? "on" : ""}`}
+                            onClick={() => void banPlayer(player)}
+                            data-tip={player.banned ? tr("Unban") : tr("Ban from server")}
+                          >
+                            <Icon name="ban" />
+                            {player.banned ? tr("Unban") : tr("Ban")}
+                          </button>
                         </span>
+                        <span className="player-card-menu" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                         <DropdownMenu
                           trigger={
                             <button className="icon-button" aria-label={tr("{0} menu", [player.name])}>
@@ -8796,29 +9256,6 @@ function App() {
                             </button>
                           }
                           items={[
-                            {
-                              label: player.whitelisted ? tr("Remove from whitelist") : tr("Add to whitelist"),
-                              icon: "list",
-                              onSelect: () => void updatePlayer(player, "whitelist"),
-                            },
-                            {
-                              label: player.operator ? tr("Remove operator") : tr("Make operator"),
-                              icon: "shield",
-                              onSelect: () => void updatePlayer(player, "operator"),
-                            },
-                            {
-                              label: player.banned ? tr("Unban") : tr("Ban from server"),
-                              icon: "ban",
-                              danger: !player.banned,
-                              onSelect: () => void banPlayer(player),
-                            },
-                            ...(selected.status === "running"
-                              ? [{
-                                  label: tr("Kick from server"),
-                                  icon: "exit",
-                                  onSelect: () => void applyPlayerAccess(player.name, player.uuid, "kick"),
-                                }]
-                              : []),
                             {
                               label: tr("Copy UUID"),
                               icon: "copy",
@@ -8830,6 +9267,7 @@ function App() {
                             { label: tr("Details"), icon: "info", onSelect: () => void loadPlayerSnapshot(player) },
                           ]}
                         />
+                        </span>
                       </div>
                     );
                   })}
@@ -8877,7 +9315,9 @@ function App() {
               ))}
             </div>
           )}
-          <div className="addon-bar">
+          <div className="wb-head addon-bar">
+            <h1>{addonKind(selected.core) === "mod" ? tr("Mods") : tr("Plugins")}</h1>
+            <span className="live-spacer" />
             {!addonKind(selected.core) && tabAddons.length === 0 && (
               <p className="muted addon-note">
                 {isNative(selected.core)
@@ -8886,7 +9326,7 @@ function App() {
               </p>
             )}
             {tabAddons.length > 0 && (
-            <label className="addon-search">
+            <label className="search addon-search wb-search-field">
               <Icon name="search" />
               <input
                 value={addonQuery}
@@ -8923,7 +9363,7 @@ function App() {
               {tr("Modpack")}</button>
             )}
             <button
-              className="button primary"
+              className="button primary wb-pill"
               disabled={!addonKind(selected.core) || addonTab !== addonKind(selected.core)}
               data-tip={addonKind(selected.core) && addonTab !== addonKind(selected.core) ? tr("Install from a tab supported by this server.") : undefined}
               onClick={() => void openBrowse()}
@@ -9354,101 +9794,200 @@ function App() {
           onForward: () => travelTo(1),
         }}
       />
-      <div className="app-shell">
-      <aside className={`sidebar ${railCompact ? "compact" : ""}`}>
-        <div className="brand">
-          <span className="brand-mark">
-            <img className="brand-img" src={appIcon} alt="" draggable={false} />
-          </span>
-          <span className="brand-name">
-            Monolab
-            <small>{t("app.tagline")}</small>
-          </span>
+      <div className={`app-shell wb ${selected && page === "instance" ? "in-server" : ""}`}>
+      <header className="wb-top">
+        <button
+          type="button"
+          className="wb-brand"
+          aria-label={t("nav.servers")}
+          onClick={goHome}
+        >
+          <img className="brand-img" src={appIcon} alt="" draggable={false} />
+          <span>Monolab</span>
+        </button>
+        <nav className="wb-menu" aria-label={tr("Menu")} ref={menuBox}>
+          <span className="wb-menu-mark" aria-hidden style={menuMark ?? { opacity: 0 }} />
           <button
             type="button"
-            className="rail-collapse"
-            aria-label={railCompact ? tr("Expand sidebar") : tr("Collapse sidebar")}
-            data-tip={railCompact ? tr("Expand sidebar") : tr("Collapse sidebar")}
-            onClick={() => {
-              const next = !railCompact;
-              setRailCompact(next);
-              localStorage.setItem("monolab-rail", next ? "compact" : "wide");
-            }}
+            className={modal === "none" ? "on" : ""}
+            onClick={goHome}
           >
-            <Icon name={railCompact ? "panel-open" : "panel-close"} />
+            <Icon name="server" />
+            {t("nav.servers")}
           </button>
-        </div>
-        {selected && page === "instance" ? (
-          <>
+          {!onWeb && (
             <button
-              className="rail-back"
               type="button"
-              data-tip={railCompact ? t("nav.servers") : undefined}
+              className={modal === "web" ? "on" : ""}
               onClick={() => {
-                setModal("none");
-                setTaskDraft(null);
-                setPage("home");
-                setSelectedId(null);
-                
+                setModal("web");
+                setAccountDraft(null);
+                void refreshWebPanel();
+                void refreshWebAccounts();
               }}
             >
-              <Icon name="arrow" />
-              {t("nav.servers")}
+              <Icon name="cloud" />
+              {tr("Web panel")}
+              {webPanel.on && <b className="wb-dot ok" aria-label={tr("On")} />}
             </button>
-            <div className="rail-server">
-              <span className="core-mark small" data-tip={selected.core}>
-                <CoreIcon core={selected.core} />
-              </span>
-              <span className="rail-server-body">
-                <strong>{selected.name}</strong>
-                <small>
-                  {`${coreLabel(selected.core, selected.version)}${selected.coreBuild ? ` · ${selected.coreBuild}` : ""}`}
-                </small>
-                {selected.remoteHost && (
-                  <small className="rail-host">
-                    <Icon name="plug" />
-                    {sshHosts[selected.remoteHost] ?? tr("SSH server")}
-                  </small>
-                )}
-                {selected.panelHost && (
-                  <small className="rail-host">
-                    <Icon name="cloud" />
-                    {panelHosts[selected.panelHost] ?? tr("Panel")}
-                  </small>
-                )}
-              </span>
-            </div>
-            <nav className="instance-nav" ref={navRef}>
-              <span
-                className={`nav-mark ${navMark.ready ? "ready" : ""}`}
-                style={{
-                  top: `${navMark.top}px`,
-                  height: `${navMark.height}px`,
-                }}
-                aria-hidden
-              />
-              {(selected.panelHost ? panelNav : instanceNav).map((item) => {
-                if (!toolAllowed(selected.core, item.id)) return null;
-                if (item.id === "claude" && onWeb) return null;
-                if (item.id === "software" && (panelHostViews.find((one) => one.id === selected.panelHost)?.kind ?? "hydrodactyl") !== "hydrodactyl") return null;
-
-                const live =
-                  selected.status === "running" ||
-                  selected.status === "stopping";
-                const slot =
-                  item.id === "overview" && live
-                    ? { id: "console" as Tool, label: tr("Console"), icon: selected.panelHost ? "terminal" : "console" }
-                    : item;
-                const section = "section" in item ? (item.section as string | undefined) : undefined;
-                const locked =
-                  (!!selected.remoteHost || !!selected.panelHost) && !REMOTE_TOOLS.includes(slot.id);
-                return (
-                  <Fragment key={slot.id}>
+          )}
+          {!onWeb && (sshHostViews.length > 0 || panelHostViews.length > 0) && (
+            <button
+              type="button"
+              className={modal === "sftp" ? "on" : ""}
+              onClick={() => {
+                reloadSshHosts();
+                setModal("sftp");
+              }}
+            >
+              <Icon name="truck" />
+              SFTP
+            </button>
+          )}
+          {!onWeb && panelHostViews.length > 0 && (
+            <button
+              type="button"
+              className={modal === "hydro" ? "on" : ""}
+              onClick={() => {
+                reloadPanelHosts();
+                setModal("hydro");
+              }}
+            >
+              <Icon name="blocks" />
+              {panelsName(panelHostViews)}
+            </button>
+          )}
+          <button
+            type="button"
+            className={modal === "tasks" ? "on" : ""}
+            onClick={() => setModal("tasks")}
+          >
+            <Icon name="refresh" />
+            {tr("Tasks")}
+          </button>
+          <button
+            type="button"
+            className={modal === "java" ? "on" : ""}
+            onClick={() => {
+              void refreshJavaProcs();
+              setModal("java");
+            }}
+          >
+            <Icon name={javaProcs.some((proc) => proc.orphan) ? "alert" : "cpu"} />
+            {tr("Java processes")}
+            {javaProcs.some((proc) => proc.orphan) && <b className="wb-dot warn" />}
+          </button>
+          {!onWeb && (
+            <button
+              type="button"
+              className={modal === "settings" ? "on" : ""}
+              onClick={() => {
+                setModal("settings");
+                void refreshJavaList();
+              }}
+            >
+              <Icon name="settings" />
+              {tr("Settings")}
+            </button>
+          )}
+        </nav>
+        <div className="wb-top-end">
+          {trashEntries.length > 0 && (
+            <button
+              type="button"
+              className={`wb-icon ${modal === "trash" ? "on" : ""}`}
+              aria-label={tr("Trash")}
+              data-tip={`${tr("Trash")} ${trashEntries.length}`}
+              onClick={() => setModal("trash")}
+            >
+              <Icon name="trash" />
+            </button>
+          )}
+          <button
+            type="button"
+            className="wb-search"
+            onClick={() => {
+              setPaletteQuery("");
+              setPaletteIndex(0);
+              setPaletteOpen(true);
+            }}
+          >
+            <Icon name="search" />
+            {t("nav.quickRun")}
+            <kbd>Ctrl K</kbd>
+          </button>
+        </div>
+      </header>
+      {selected && page === "instance" && (
+        <div className="wb-tabs" role="tablist" aria-label={tr("Open servers")}>
+          {serverTabs.map((id) => {
+            const one = instances.find((item) => item.id === id);
+            if (!one) return null;
+            const on = one.id === selected.id;
+            return (
+              <div key={id} className={`wb-tab ${on ? "on" : ""}`}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={on}
+                  onClick={() => !on && openManage(one)}
+                >
+                  <span className={`status-dot status-${shownStatus(one)}`} />
+                  {one.name}
+                </button>
+                <button
+                  type="button"
+                  className="wb-tab-close"
+                  aria-label={tr("Close {0}", [one.name])}
+                  onClick={() => closeServerTab(id)}
+                >
+                  <Icon name="close" />
+                </button>
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            className="wb-tab-add"
+            aria-label={tr("Open another server")}
+            data-tip={tr("Open another server")}
+            onClick={goHome}
+          >
+            <Icon name="plus" />
+          </button>
+          <span className="wb-tabs-gap" />
+          {!sideShown && !(tool === "overview" && selected.status === "stopped") && runControls}
+        </div>
+      )}
+      <div className="wb-body">
+        {selected && page === "instance" && (
+          <nav className="wb-rail" ref={navRef} aria-label={tr("Server tools")}>
+            <span
+              className={`nav-mark ${navMark.ready ? "ready" : ""}`}
+              style={{ top: `${navMark.top}px`, height: `${navMark.height}px` }}
+              aria-hidden
+            />
+            {(selected.panelHost ? panelNav : instanceNav).map((item) => {
+              if (!toolAllowed(selected.core, item.id)) return null;
+              if (item.id === "claude" && onWeb) return null;
+              if (item.id === "software" && (panelHostViews.find((one) => one.id === selected.panelHost)?.kind ?? "hydrodactyl") !== "hydrodactyl") return null;
+              const live = selected.status === "running" || selected.status === "stopping";
+              const slot =
+                item.id === "overview" && live
+                  ? { id: "console" as Tool, label: tr("Console"), icon: selected.panelHost ? "terminal" : "console" }
+                  : item;
+              const section = "section" in item ? (item.section as string | undefined) : undefined;
+              const locked = (!!selected.remoteHost || !!selected.panelHost) && !REMOTE_TOOLS.includes(slot.id);
+              const label = slot.id === "addons" ? (addonKind(selected.core) === "mod" ? tr("Mods") : tr("Plugins")) : slot.label;
+              return (
+                <Fragment key={slot.id}>
                   {section && <span className="nav-section">{section}</span>}
                   <button
+                    type="button"
                     className={`${tool === slot.id ? "selected" : ""} ${locked ? "locked" : ""}`}
                     data-tool={slot.id}
                     disabled={locked}
+                    aria-current={tool === slot.id ? "page" : undefined}
                     data-tip={
                       locked
                         ? selected.panelHost
@@ -9459,207 +9998,13 @@ function App() {
                     onClick={() => void loadTool(slot.id)}
                   >
                     <Icon name={slot.icon} />
-                    {slot.id === "addons" ? (addonKind(selected.core) === "mod" ? tr("Mods") : tr("Plugins")) : slot.label}
+                    <span>{label}</span>
                   </button>
-                  </Fragment>
-                );
-              })}
-            </nav>
-          </>
-        ) : (
-          <>
-            <nav>
-              <button
-                className={`nav-item ${modal === "none" ? "active" : ""}`}
-                type="button"
-                onClick={() => {
-                  if (modal !== "none") 
-                  setModal("none");
-                }}
-              >
-                <span className="nav-icon">
-                  <Icon name="server" />
-                </span>
-                {t("nav.servers")}
-                <b className="nav-count">{instances.length}</b>
-              </button>
-            </nav>
-            {!onWeb && (
-            <button
-              className={`nav-item ${modal === "web" ? "active" : ""}`}
-              type="button"
-              onClick={() => {
-                setModal("web");
-                setAccountDraft(null);
-                void refreshWebPanel();
-                void refreshWebAccounts();
-              }}
-            >
-              <span className="nav-icon">
-                <Icon name="cloud" />
-              </span>
-              {tr("Web panel")}{webPanel.on && <b className="nav-count">{tr("On")}</b>}
-            </button>
-            )}
-            <button
-              className={`nav-item ${javaProcs.some((proc) => proc.orphan) ? "warn" : ""} ${modal === "java" ? "active" : ""}`}
-              type="button"
-              onClick={() => {
-                void refreshJavaProcs();
-                setModal("java");
-              }}
-            >
-              <span className="nav-icon">
-                <Icon
-                  name={
-                    javaProcs.some((proc) => proc.orphan) ? "alert" : "cpu"
-                  }
-                />
-              </span>
-              <span className="nav-label">{tr("Java processes")}</span>
-              {javaProcs.length > 0 && (
-                <b className="nav-count">{javaProcs.length}</b>
-              )}
-            </button>
-            <button
-              className={`nav-item ${modal === "tasks" ? "active" : ""}`}
-              type="button"
-              onClick={() => setModal("tasks")}
-            >
-              <span className="nav-icon">
-                <Icon name="refresh" />
-              </span>
-              {tr("Tasks")}{taskList.filter((task) => task.enabled).length > 0 && (
-                <b className="nav-count">
-                  {taskList.filter((task) => task.enabled).length}
-                </b>
-              )}
-            </button>
-            {!onWeb && panelHostViews.length > 0 && (
-              <button
-                className={`nav-item ${modal === "hydro" ? "active" : ""}`}
-                type="button"
-                onClick={() => {
-                  reloadPanelHosts();
-                  setModal("hydro");
-                }}
-              >
-                <span className="nav-icon">
-                  <Icon name="blocks" />
-                </span>
-                <span className="nav-label">{panelsName(panelHostViews)}</span>
-              </button>
-            )}
-            {!onWeb && (sshHostViews.length > 0 || panelHostViews.length > 0) && (
-              <button
-                className={`nav-item ${modal === "sftp" ? "active" : ""}`}
-                type="button"
-                onClick={() => {
-                  reloadSshHosts();
-                  setModal("sftp");
-                }}
-              >
-                <span className="nav-icon">
-                  <Icon name="truck" />
-                </span>
-                <span className="nav-label">SFTP</span>
-              </button>
-            )}
-            {railGroups.map((group) => (
-            <Fragment key={group.id}>
-            <div className="rail-section" aria-hidden>
-              <span>{group.label}</span>
-            </div>
-            <div className={`rail-servers ${group.split ? "split" : ""}`}>
-              {group.items.map((instance) => (
-                <button
-                  key={instance.id}
-                  onClick={() => openManage(instance)}
-                  data-tip={`${instance.core} ${instance.version} · :${instance.port}${
-                    instance.remoteHost
-                      ? ` · ${sshHosts[instance.remoteHost] ?? tr("SSH server")}`
-                      : instance.panelHost
-                        ? ` · ${panelHosts[instance.panelHost] ?? tr("Panel")}`
-                        : ""
-                  }`}
-                >
-                  <span className="rail-tile">
-                    {serverIcons[instance.id] ? (
-                      <img src={serverIcons[instance.id]} alt="" />
-                    ) : (
-                      <CoreIcon core={instance.core} />
-                    )}
-                    <span className={`status-dot status-${shownStatus(instance)}`} />
-                  </span>
-                  <span className="rail-server-name">{instance.name}</span>
-                  {instance.remoteHost && !group.split && <Icon name="plug" />}
-                  {instance.panelHost && !group.split && <Icon name="cloud" />}
-                  {resources[instance.id] && (
-                    <small>
-                      {Math.round(resources[instance.id].cpuPercent ?? 0)}%
-                    </small>
-                  )}
-                </button>
-              ))}
-            </div>
-            </Fragment>
-            ))}
-            {railGroups.length === 0 && (
-              <>
-                <div className="rail-section" aria-hidden>
-                  <span>{tr("Server")}</span>
-                </div>
-                <p className="rail-empty">
-                  {filter.trim() ? tr("No matching servers.") : tr("No servers yet")}
-                </p>
-              </>
-            )}
-          </>
+                </Fragment>
+              );
+            })}
+          </nav>
         )}
-        {!(selected && page === "instance") && (
-          <div className="sidebar-footer">
-            {trashEntries.length > 0 && (
-              <button
-                className={`nav-item ${modal === "trash" ? "active" : ""}`}
-                type="button"
-                onClick={() => setModal("trash")}
-              >
-                <span className="nav-icon">
-                  <Icon name="trash" />
-                </span>
-                <span className="nav-label">{tr("Trash")}</span>
-                <b className="nav-count">{trashEntries.length}</b>
-              </button>
-            )}
-            <button
-              className="palette-hint"
-              onClick={() => {
-                setPaletteQuery("");
-                setPaletteIndex(0);
-                setPaletteOpen(true);
-              }}
-            >
-              <Icon name="search" />
-              {t("nav.quickRun")}
-              <kbd>Ctrl K</kbd>
-            </button>
-            {!onWeb && (
-            <button
-              className={`nav-item ${modal === "settings" ? "active" : ""}`}
-              type="button"
-              onClick={() => {
-                setModal("settings");
-                void refreshJavaList();
-              }}
-            >
-              <span className="nav-icon">
-                <Icon name="settings" />
-              </span>
-              {tr("Settings")}</button>
-            )}
-          </div>
-        )}
-      </aside>
       <section className="workspace" key={selected && page === "instance" ? `in-${selected.id}` : "home"}>
         {selected && page === "instance" ? (
           <>
@@ -9775,12 +10120,6 @@ function App() {
         <header className="topbar">
           <div className="topbar-title">
             <h1>{t("top.title")}</h1>
-            <p>
-              {t("top.subtitle", {
-                total: instances.length,
-                running,
-              })}
-            </p>
           </div>
           <div className="topbar-actions">
             <label className="search">
@@ -9791,6 +10130,15 @@ function App() {
                 placeholder={t("top.search")}
               />
             </label>
+            <GameFilter
+              value={shownGame}
+              counts={gameCounts}
+              total={instances.length}
+              onChange={(next) => {
+                setGameFilter(next);
+                localStorage.setItem("monolab-game-filter", next);
+              }}
+            />
             {!place.startsWith("panel:") && (
               <>
                 <button
@@ -9849,15 +10197,7 @@ function App() {
                   ))}
                 </div>
               )}
-              <GameFilter
-                value={shownGame}
-                counts={gameCounts}
-                total={instances.length}
-                onChange={(next) => {
-                  setGameFilter(next);
-                  localStorage.setItem("monolab-game-filter", next);
-                }}
-              />
+              {summaryPills}
               {!onWeb && (
                 <div className="place-actions">
                   <button
@@ -9921,151 +10261,158 @@ function App() {
           ) : list.length || creating ? (
             <>
             {(() => {
-              const liveOnes = list.filter((one) => one.status === "running" || one.status === "stopping");
-              const online = liveOnes.reduce((sum, one) => sum + (pings[one.id]?.online ?? 0), 0);
-              const ram = liveOnes.reduce((sum, one) => sum + (resources[one.id]?.memoryMib ?? 0), 0);
-              const ramCap = liveOnes.reduce((sum, one) => sum + (has(one.core, "java") ? one.maxMemoryMib : 0), 0);
-              return (
-                <div className="monitor-grid list-summary">
-                  <div>
-                    <span>{tr("Server")}</span>
-                    <strong>{list.length}</strong>
-                  </div>
-                  <div>
-                    <span>{tr("Running")}</span>
-                    <strong className={liveOnes.length ? "on" : ""}>{liveOnes.length}</strong>
-                  </div>
-                  <div>
-                    <span>{tr("Players")}</span>
-                    <strong>{liveOnes.length ? online : "—"}</strong>
-                  </div>
-                  <div>
-                    <span>{tr("Memory use")}</span>
-                    <strong>{liveOnes.length ? <>{used(ram)} <small>/ {bytes(ramCap)}</small></> : "—"}</strong>
-                  </div>
-                </div>
-              );
-            })()}
-            <div className="server-layout cards">
-              {list.map((item) => {
+              const card = (item: Instance) => {
                 const live = item.status === "running" || item.status === "stopping";
                 const res = resources[item.id];
-                const runLabel =
-                  item.status === "running"
-                    ? t("card.stop")
-                    : item.status === "stopping"
-                      ? t("status.stopping")
-                      : t("card.start");
+                const info = statusInfo(shownStatus(item));
+                const keep = (event: { stopPropagation: () => void }) => event.stopPropagation();
                 return (
-                <article
-                  className={`server-card ${item.status} ${draggedInstanceId === item.id ? "dragging" : ""}`}
-                  key={item.id}
-                  data-server-id={item.id}
-                  onClick={() => {
-                    if (draggedJustNow.current) return;
-                    openManage(item);
-                  }}
-                  onPointerDown={(event) => grabInstance(event, item.id)}
-                >
-                  <div className="sc-logo" data-tip={coreLabel(item.core, item.version)}>
-                    {serverIcons[item.id] ? (
-                      <img className="server-icon card" src={serverIcons[item.id]} alt="" />
-                    ) : (
-                      <CoreIcon core={item.core} />
-                    )}
-                  </div>
-                  <div className="sc-body">
-                    <p className="server-name">
-                      <span className="server-name-text">{item.name}</span>
-                      <span className={`status-badge ${statusInfo(shownStatus(item)).tone}`}>
-                        <span className={`status-dot status-${shownStatus(item)}`} />
-                        {statusInfo(shownStatus(item)).label}
-                      </span>
-                    </p>
-                    <p className="sc-meta">
-                      <span className="sc-meta-text">
-                        {coreLabel(item.core, item.version)} · :{item.port}
-                      </span>
-                      {hostChip(item)}
-                    </p>
-                    <p className={`sc-stats ${live ? "" : "idle"}`}>
-                      <span>
-                        CPU <b>{live && res ? orDash(res.cpuPercent ?? 0, (v) => `${Math.round(v)}%`) : "—"}</b>
-                      </span>
-                      <span>
-                        RAM <b>{live && res ? used(res.memoryMib) : "—"}</b>{has(item.core, "java") && <> / {bytes(item.maxMemoryMib)}</>}
-                      </span>
-                      {has(item.core, "ping") && (
-                      <span>
-                        {tr("Players")}{" "}
-                        <b>
-                          {live
-                            ? pings[item.id]
-                              ? `${pings[item.id].online} / ${pings[item.id].max}`
-                              : tr("Checking")
-                            : "—"}
-                        </b>
-                      </span>
+                  <article
+                    className={`server-card wb-card ${live ? "live" : "off"} ${item.status} ${draggedInstanceId === item.id ? "dragging" : ""}`}
+                    key={item.id}
+                    data-server-id={item.id}
+                    onClick={() => {
+                      if (draggedJustNow.current) return;
+                      openManage(item);
+                    }}
+                    onPointerDown={(event) => grabInstance(event, item.id)}
+                  >
+                    <div className="sc-logo" data-tip={coreLabel(item.core, item.version)}>
+                      {serverIcons[item.id] ? (
+                        <img className="server-icon card" src={serverIcons[item.id]} alt="" />
+                      ) : (
+                        <CoreIcon core={item.core} />
                       )}
-                    </p>
-                  </div>
-                  <div className="sc-side">
-                    <div className="card-actions">
-                      <button
-                        className="icon-button"
-                        aria-label={t("card.rename")}
-                        data-tip={t("card.rename")}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void renameInstance(item);
-                        }}
-                      >
-                        <Icon name="pencil" />
-                      </button>
-                      {!item.panelHost && (
+                    </div>
+                    <div className="sc-body">
+                      <p className="server-name">
+                        <span className="server-name-text">{item.name}</span>
+                      </p>
+                      <p className="sc-meta">
+                        <span className={`wb-state ${info.tone}`}>
+                          <span className={`status-dot status-${shownStatus(item)}`} />
+                          {info.label}
+                        </span>
+                        <span className="sc-meta-text">
+                          {coreLabel(item.core, item.version)} · :{item.port}
+                        </span>
+                        {hostChip(item)}
+                      </p>
+                    </div>
+                    <div className="sc-side" onClick={keep} onPointerDown={keep}>
+                      {live ? (
+                        <>
+                          <button
+                            type="button"
+                            className="wb-icon"
+                            aria-label={tr("Restart")}
+                            data-tip={tr("Restart")}
+                            disabled={item.status === "stopping"}
+                            onClick={() => void restartInstance(item)}
+                          >
+                            <Icon name="refresh" />
+                          </button>
+                          <button
+                            type="button"
+                            className="wb-icon danger"
+                            aria-label={t("card.stop")}
+                            data-tip={item.status === "stopping" ? t("status.stopping") : t("card.stop")}
+                            disabled={item.status === "stopping"}
+                            onClick={() => void toggle(item)}
+                          >
+                            <Icon name="stop" />
+                          </button>
+                        </>
+                      ) : item.unreachable && item.remoteHost ? (
+                        <button type="button" className="button secondary small wb-run" onClick={() => void retrySsh(item.remoteHost)}>
+                          <Icon name="refresh" />
+                          {tr("Retry connection")}
+                        </button>
+                      ) : (
                         <button
-                          className="icon-button"
-                          aria-label={t("card.duplicate")}
-                          data-tip={t("card.duplicate")}
-                          disabled={item.status !== "stopped"}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void duplicateInstance(item);
-                          }}
+                          type="button"
+                          className="button primary small wb-run"
+                          disabled={!!item.checking || !!item.unreachable}
+                          onClick={() => void toggle(item)}
                         >
-                          <Icon name="copy" />
+                          <Icon name="play" />
+                          {t("card.start")}
                         </button>
                       )}
-                      <button
-                        className="icon-button danger"
-                        aria-label={item.linked || item.remoteHost ? tr("Remove from list") : t("card.trash")}
-                        data-tip={item.linked || item.remoteHost ? tr("Remove from list") : t("card.trash")}
-                        disabled={item.status !== "stopped"}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void trashInstance(item);
-                        }}
-                      >
-                        <Icon name="trash" />
-                      </button>
+                      <DropdownMenu
+                        trigger={
+                          <button type="button" className="wb-icon ghost" aria-label={tr("More")}>
+                            <Icon name="dots" />
+                          </button>
+                        }
+                        items={[
+                          { label: t("card.rename"), icon: "pencil", onSelect: () => void renameInstance(item) },
+                          ...(!item.panelHost && item.status === "stopped"
+                            ? [{ label: t("card.duplicate"), icon: "copy", onSelect: () => void duplicateInstance(item) }]
+                            : []),
+                          ...(item.status === "stopped"
+                            ? [{
+                                label: item.linked || item.remoteHost ? tr("Remove from list") : t("card.trash"),
+                                icon: "trash",
+                                danger: true,
+                                onSelect: () => void trashInstance(item),
+                              }]
+                            : []),
+                        ]}
+                      />
                     </div>
-                    <button
-                      className={`run-round ${live ? "stop" : ""}`}
-                      aria-label={runLabel}
-                      data-tip={runLabel}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void toggle(item);
-                      }}
-                      disabled={item.status === "stopping"}
-                    >
-                      <Icon name={live ? "stop" : "play"} />
-                    </button>
-                  </div>
-                </article>
+                    {live && (
+                      <div className="sc-tiles">
+                        <div>
+                          <span>CPU</span>
+                          <strong>{res ? orDash(res.cpuPercent ?? 0, (v) => `${Math.round(v)}%`) : "—"}</strong>
+                        </div>
+                        <div>
+                          <span>{tr("Memory")}</span>
+                          <strong>
+                            {res ? used(res.memoryMib) : "—"}
+                            {has(item.core, "java") && <small> / {bytes(item.maxMemoryMib)}</small>}
+                          </strong>
+                        </div>
+                        {has(item.core, "ping") && (
+                          <div className="player-peek-host">
+                            <span>{tr("Players")}</span>
+                            <strong>
+                              {pings[item.id] ? (
+                                <>
+                                  {pings[item.id].online}
+                                  <small> / {pings[item.id].max}</small>
+                                </>
+                              ) : (
+                                "—"
+                              )}
+                            </strong>
+                            {pings[item.id] && <PlayerPeek names={pings[item.id].names} online={pings[item.id].online} />}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </article>
                 );
-              })}
-            </div>
+              };
+              const liveList = list.filter((one) => one.status === "running" || one.status === "stopping");
+              const offList = list.filter((one) => !(one.status === "running" || one.status === "stopping"));
+              return (
+                <>
+                  {liveList.length > 0 && <div className="server-layout cards wb-live">{liveList.map(card)}</div>}
+                  {offList.length > 0 && (
+                    <section className="wb-off" aria-label={tr("Stopped servers")}>
+                      {liveList.length > 0 && (
+                        <h2 className="wb-sec">
+                          {tr("Stopped servers")} <b>{offList.length}</b>
+                        </h2>
+                      )}
+                      <div className="server-layout rows">{offList.map(card)}</div>
+                    </section>
+                  )}
+                </>
+              );
+            })()}
             {draggedInstanceId && dragY !== null && grabRef.current && (
               <div className="server-layout cards drag-ghost-layer" aria-hidden>
                 <article
@@ -10138,6 +10485,61 @@ function App() {
           </>
         )}
       </section>
+        {selected && sidePanel && (
+          <aside className="wb-side" aria-label={tr("Server status")}>
+            <div className="wb-side-head">
+              <div className="wb-side-title">
+                <span className={`wb-state ${statusInfo(shownStatus(selected)).tone}`}>
+                  <span className={`status-dot status-${shownStatus(selected)}`} />
+                  {statusInfo(shownStatus(selected)).label}
+                </span>
+                <strong>{selected.name}</strong>
+                {tool === "console" && (
+                  <small>
+                    {`${coreLabel(selected.core, selected.version)}${selected.coreBuild ? ` · ${selected.coreBuild}` : ""} · :${selected.port}`}
+                  </small>
+                )}
+              </div>
+              {runControls}
+            </div>
+            {hostChip(selected)}
+            {tool === "console" && wide && selected.status === "running" && (
+              <ServerStats bare server={{ id: selected.id, name: selected.name, panelHost: selected.panelHost, maxMemoryMib: kindOf(selected.core).family === "minecraft" ? selected.maxMemoryMib : 0, port: selected.port, status: selected.status, uptimeSeconds: selected.uptimeSeconds }} onOpenPlayer={() => void loadTool("players")} />
+            )}
+            {tool === "properties" && propsChanged.length > 0 && (
+              <div className="wb-changes">
+                <span className="wb-side-label">{tr("Not saved yet")}</span>
+                <strong className="wb-side-big">{tr("{0} changed", [propsChanged.length])}</strong>
+                <ul>
+                  {propsChanged.slice(0, 12).map((entry) => {
+                    const before = savedProperties.find((one) => one.key === entry.key);
+                    return (
+                      <li key={entry.key}>
+                        <span>{propertyMeta(entry.key).label}</span>
+                        <code>
+                          <s>{before ? before.value || "—" : "—"}</s>
+                          <i aria-hidden>→</i>
+                          <b>{entry.value || "—"}</b>
+                        </code>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {selected.status !== "stopped" && <small>{tr("Applies on the next start.")}</small>}
+                <div className="wb-side-actions">
+                  <button className="button primary wb-start" onClick={() => void saveProperties()}>
+                    {tr("Save")}
+                  </button>
+                  <button className="button secondary wb-start" onClick={() => setProperties(savedProperties)}>
+                    <Icon name="undo" />
+                    {tr("Roll back")}
+                  </button>
+                </div>
+              </div>
+            )}
+          </aside>
+        )}
+      </div>
       </div>
       {modal !== "none" && (
         <div
@@ -10155,7 +10557,7 @@ function App() {
             aria-modal="true"
             onClick={(event) => event.stopPropagation()}
           >
-            {modalShell[modal] !== "as-panel" && (
+            {(modalShell[modal] !== "as-panel" || modal === "create") && (
               <button
                 className="close"
                 data-tip={tr("Close")}
@@ -11284,36 +11686,53 @@ function App() {
             {modal === "create" && createStep !== "modpack" && (() => {
               const isMinecraft = createGame === "Minecraft";
               const isCustom = createGame === customProgram.id;
-              const pages: { id: "game" | "core" | "finish"; label: string }[] = [
+              const hasVersionStep = isMinecraft && !!form.core && has(form.core, "versions");
+              const pages: { id: "game" | "core" | "finish" | "confirm"; label: string }[] = [
                 { id: "game", label: tr("Game") },
-                ...(isMinecraft ? [{ id: "core" as const, label: tr("Core") }] : []),
-                { id: "finish", label: isCustom ? tr(customProgram.id) : isMinecraft ? tr("Version") : tr("Confirm") },
+                ...(isMinecraft || !createGame ? [{ id: "core" as const, label: tr("Core") }] : []),
+                ...(isCustom
+                  ? [{ id: "finish" as const, label: tr(customProgram.id) }]
+                  : [
+                      ...((isMinecraft || !createGame) && (!form.core || hasVersionStep) ? [{ id: "finish" as const, label: tr("Version") }] : []),
+                      { id: "confirm" as const, label: tr("Confirm") },
+                    ]),
               ];
-              const at = Math.max(0, pages.findIndex((one) => one.id === createPage));
+              const page = !isCustom && createPage === "finish" && !hasVersionStep && !(isMinecraft && !form.core) ? "confirm" : createPage;
+              const at = Math.max(0, pages.findIndex((one) => one.id === page));
               const back = () => setCreatePage(pages[Math.max(0, at - 1)].id);
               const where = createWhere === "local" ? tr("Local") : sshHostViews.find((one) => one.id === createWhere)?.name ?? createWhere;
               const ready = !!form.core && !versionsBusy && (isProxy(form.core) || !!form.version);
               const game = !isMinecraft && !isCustom ? findGame(createGame) : undefined;
               return (
-              <div className="create-flow create-wizard">
-                <div className="create-flow-head">
-                  <h2>{tr("New server")}</h2>
+              <div className="create-flow create-wizard wb-create">
+                <div className="wb-create-top">
+                  <ol className="wizard-steps">
+                    {pages.map((one, index) => (
+                      <li key={one.id} className={index === at ? "now" : index < at ? "done" : ""}>
+                        <button type="button" disabled={index >= at} aria-current={index === at ? "step" : undefined} onClick={() => setCreatePage(one.id)}>
+                          <b>{index < at ? <Icon name="check" /> : index + 1}</b>
+                          {one.label}
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
-                <ol className="wizard-steps">
-                  {pages.map((one, index) => (
-                    <li key={one.id} className={index === at ? "now" : index < at ? "done" : ""}>
-                      <button type="button" disabled={index >= at} onClick={() => setCreatePage(one.id)}>
-                        <b>{index < at ? <Icon name="check" /> : index + 1}</b>
-                        {one.label}
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-                <div className="wizard-body" key={createPage}>
-                  {createPage === "game" && (
+                <div className="wizard-body" key={page}>
+                  <h1 className="wb-create-title">
+                    {page === "game"
+                      ? tr("Which game?")
+                      : page === "core"
+                        ? tr("Which server should we make?")
+                        : page === "finish" && !isCustom
+                          ? tr("Which version?")
+                          : page === "finish"
+                            ? tr(customProgram.id)
+                            : tr("Create it like this?")}
+                  </h1>
+                  {page === "game" && (
                     <GamePicker value={createGame} onPick={pickGame} gamesLocked={onWeb} />
                   )}
-                  {createPage === "core" && (
+                  {page === "core" && (
                     <>
                       {!onWeb && sshHostViews.length > 0 && (
                         <div className="wizard-where">
@@ -11364,8 +11783,78 @@ function App() {
                       </div>
                     </>
                   )}
-                  {createPage === "finish" && isCustom && <CustomCreate onCreate={createCustom} />}
-                  {createPage === "finish" && !isCustom && (
+                  {page === "finish" && isCustom && <CustomCreate onCreate={createCustom} />}
+                  {page === "finish" && !isCustom && (() => {
+                    const needle = createVersionQuery.trim().toLowerCase();
+                    const found = versions.filter((one) => !needle || one.toLowerCase().includes(needle));
+                    const shown = createVersionMore || needle ? found : found.slice(0, 12);
+                    return (
+                      <div className="wb-version-step">
+                        <div className="wb-version-tools">
+                        <label className="search wb-search-field wb-version-search">
+                          <Icon name="search" />
+                          <input
+                            value={createVersionQuery}
+                            onChange={(event) => setCreateVersionQuery(event.target.value)}
+                            placeholder={tr("Search versions")}
+                          />
+                        </label>
+                        {form.core !== "Pumpkin" && (
+                          <label className="wb-toggle">
+                            <span>{tr("Snapshots")}</span>
+                            <span className="switch">
+                              <input
+                                type="checkbox"
+                                checked={createSnapshots}
+                                onChange={(event) => {
+                                  const on = event.target.checked;
+                                  setCreateSnapshots(on);
+                                  setVersionsBusy(true);
+                                  void commands
+                                    .listCoreVersions(form.core, on)
+                                    .then((list) => setVersions(list.length ? list : versions))
+                                    .catch(() => {})
+                                    .finally(() => setVersionsBusy(false));
+                                }}
+                              />
+                              <span />
+                            </span>
+                          </label>
+                        )}
+                        </div>
+                        <div className="wb-version-list" role="radiogroup" aria-label={tr("Version")}>
+                          {versionsBusy && <p className="muted">{tr("Loading…")}</p>}
+                          {!versionsBusy && shown.map((version) => (
+                            <button
+                              type="button"
+                              role="radio"
+                              key={version}
+                              aria-checked={form.version === version}
+                              className={form.version === version ? "on" : ""}
+                              onClick={() => {
+                                if (version !== form.version) {
+                                  setForm({ ...form, version, coreBuild: "" });
+                                  void loadCoreBuilds(form.core, version);
+                                }
+                                setCreatePage("confirm");
+                              }}
+                            >
+                              <span className="wb-radio" aria-hidden />
+                              <strong>{version}</strong>
+                              {version === versions[0] && <span className="chip subtle">{tr("Latest")}</span>}
+                            </button>
+                          ))}
+                          {!versionsBusy && found.length === 0 && <p className="muted">{tr("No matching versions.")}</p>}
+                          {!versionsBusy && !needle && !createVersionMore && found.length > 12 && (
+                            <button type="button" className="wb-version-more" onClick={() => setCreateVersionMore(true)}>
+                              {tr("Show more")} · {found.length - 12}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                  {page === "confirm" && (
                     <div className="wizard-finish">
                       <div className="wizard-pick">
                         <span className="wizard-pick-mark"><CoreIcon core={form.core || createGame} /></span>
@@ -11377,26 +11866,18 @@ function App() {
                           {tr("Change")}
                         </button>
                       </div>
-                      {form.core && has(form.core, "versions") && (
-                        <div className="create-two">
-                          <label className="create-field">
-                            <span>{form.core === "Pumpkin" ? tr("Release") : tr("Minecraft version")}</span>
-                            <Dropdown
-                              value={form.version}
-                              disabled={versionsBusy}
-                              placeholder={versionsBusy ? tr("Loading…") : tr("Choose")}
-                              search={tr("Search versions")}
-                              options={versions.map((version, index) => ({ value: version, label: version, hint: index === 0 ? tr("Latest") : undefined }))}
-                              onChange={(version) => {
-                                if (version === form.version) return;
-                                setForm({ ...form, version, coreBuild: "" });
-                                void loadCoreBuilds(form.core, version);
-                              }}
-                            />
-                          </label>
-                          {(buildsBusy || coreBuilds.length > 0) && (
-                            <label className="create-field">
-                              <span>{form.core === "Fabric" ? tr("Loader version") : tr("Core build")}</span>
+                      <dl className="wb-summary">
+                        <div><dt>{tr("Name")}</dt><dd>{suggestedName}</dd></div>
+                        {isMinecraft && form.version && (
+                          <div>
+                            <dt>{form.core === "Pumpkin" ? tr("Release") : tr("Minecraft version")}</dt>
+                            <dd>{form.version}{hasVersionStep && <button type="button" className="button ghost small" onClick={() => setCreatePage("finish")}>{tr("Change")}</button>}</dd>
+                          </div>
+                        )}
+                        {(buildsBusy || coreBuilds.length > 0) && (
+                          <div>
+                            <dt>{form.core === "Fabric" ? tr("Loader version") : tr("Core build")}</dt>
+                            <dd className="wb-summary-pick">
                               <Dropdown
                                 value={form.coreBuild}
                                 disabled={buildsBusy}
@@ -11405,10 +11886,12 @@ function App() {
                                 options={coreBuilds.map((build) => ({ value: build.id, label: build.label, hint: build.channel || undefined }))}
                                 onChange={(coreBuild) => setForm({ ...form, coreBuild })}
                               />
-                            </label>
-                          )}
-                        </div>
-                      )}
+                            </dd>
+                          </div>
+                        )}
+                        {isMinecraft && <div><dt>{tr("Create on")}</dt><dd>{where}</dd></div>}
+                        <div><dt>{tr("Memory")}</dt><dd>{bytes(form.maxMemoryMib)}</dd></div>
+                      </dl>
                       {isMinecraft && form.core && (kindOf(form.core).sizeBytes > 0 || (createWhere === "local" && createFree !== null)) && (
                         <div className="game-facts">
                           {kindOf(form.core).sizeBytes > 0 && (
@@ -11444,26 +11927,14 @@ function App() {
                   ) : (
                     <span />
                   )}
-                  {createPage === "finish" && !isCustom && (
+                  {page === "confirm" && (
                     <div className="wizard-go">
                       <span className="consent-note">{isGame(form.core) ? tr("Creating a server means you accept the game's server terms. Large games can take a while to download.") : isProxy(form.core) ? tr("Creating a server means you accept its terms.") : tr("Creating a server means you accept the Minecraft EULA.")}</span>
-                      <button className="button primary" disabled={creating || !ready} onClick={() => void create()}>
+                      <button className="button primary wb-pill" disabled={creating || !ready} onClick={() => void create()}>
                         <Icon name="plus" />
                         {tr("Create")}
                       </button>
                     </div>
-                  )}
-                  {createPage === "game" && (
-                    <button type="button" className="button secondary" onClick={() => pickGame(createGame)}>
-                      {tr("Next")}
-                      <Icon name="arrow" />
-                    </button>
-                  )}
-                  {createPage === "core" && form.core && (
-                    <button type="button" className="button secondary" onClick={() => setCreatePage("finish")}>
-                      {tr("Next")}
-                      <Icon name="arrow" />
-                    </button>
                   )}
                 </div>
               </div>
@@ -11471,6 +11942,14 @@ function App() {
             })()}
           </section>
         </div>
+      )}
+      {contextMenu && (
+        <ContextMenu x={contextMenu.x} y={contextMenu.y} items={contextMenu.items} onClose={closeContextMenu} />
+      )}
+      {LangEditor && !onWeb && (
+        <Suspense fallback={null}>
+          <LangEditor />
+        </Suspense>
       )}
       {paletteOpen && (
         <CommandPalette
@@ -11524,56 +12003,56 @@ function App() {
         </div>
       )}
       {sessionOpen && !onWeb && (
-        <div className="modal-backdrop roomy" onClick={() => setSessionOpen(null)}>
-          <div
-            className="add-modal ssh-dialog"
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="tool-top">
-              <p>
-                <strong>{sessionOpen.adding ? tr("New session") : tr("Manage sessions")}</strong> ·{" "}
-                {sessionOpen.tab === "ssh"
-                  ? tr("Connect to servers on another computer, such as an Ubuntu machine, over SSH")
-                  : tr("Pterodactyl, Pelican or Hydrodactyl panels")}
-              </p>
-              <div className="modal-top-actions">
-                <button className="close in-flow" data-tip={tr("Close")} aria-label={tr("Close")} onClick={() => setSessionOpen(null)}>
-                  <Icon name="close" />
-                </button>
+        <div className="modal-backdrop as-panel session-page">
+          <section className="add-modal modal-session" role="dialog" aria-modal="true">
+            <button className="close session-close" data-tip={tr("Close")} aria-label={tr("Close")} onClick={() => setSessionOpen(null)}>
+              <Icon name="close" />
+            </button>
+            <div className="session-wrap">
+              <h1 className="wb-create-title">{sessionOpen.adding ? tr("New session") : tr("Manage sessions")}</h1>
+              <div className="session-kinds" role="tablist">
+                {([
+                  { value: "ssh", icon: "plug", label: "SSH", hint: tr("Another computer over SSH") },
+                  { value: "panel", icon: "cloud", label: tr("Panel"), hint: "Pterodactyl · Pelican · Hydrodactyl" },
+                ] as const).map((one) => (
+                  <button
+                    key={one.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={sessionOpen.tab === one.value}
+                    className={sessionOpen.tab === one.value ? "on" : ""}
+                    onClick={() => setSessionOpen({ ...sessionOpen, tab: one.value })}
+                  >
+                    <span className="session-kind-mark"><Icon name={one.icon} /></span>
+                    <span className="session-kind-text">
+                      <strong>{one.label}</strong>
+                      <small>{one.hint}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="ssh-dialog-body session-body" key={sessionOpen.tab}>
+                {sessionOpen.tab === "ssh" ? (
+                  <SshHosts
+                    startAdding={sessionOpen.adding}
+                    confirm={confirmAction}
+                    onError={(message) => setError(message)}
+                    onNotice={(message) => setNotice(message)}
+                    onImported={() => void refresh()}
+                    onChanged={reloadSshHosts}
+                  />
+                ) : (
+                  <PanelHosts
+                    startAdding={sessionOpen.adding}
+                    confirm={confirmAction}
+                    onError={(message) => setError(message)}
+                    onNotice={(message) => setNotice(message)}
+                    onChanged={reloadPanelHosts}
+                  />
+                )}
               </div>
             </div>
-            <SegmentedControl
-              className="session-tabs even"
-              value={sessionOpen.tab}
-              options={[
-                { value: "ssh", label: "SSH" },
-                { value: "panel", label: tr("Panel") },
-              ]}
-              onChange={(tab) => setSessionOpen({ ...sessionOpen, tab })}
-            />
-            <div className="ssh-dialog-body" key={sessionOpen.tab}>
-              {sessionOpen.tab === "ssh" ? (
-                <SshHosts
-                  startAdding={sessionOpen.adding}
-                  confirm={confirmAction}
-                  onError={(message) => setError(message)}
-                  onNotice={(message) => setNotice(message)}
-                  onImported={() => void refresh()}
-                  onChanged={reloadSshHosts}
-                />
-              ) : (
-                <PanelHosts
-                  startAdding={sessionOpen.adding}
-                  confirm={confirmAction}
-                  onError={(message) => setError(message)}
-                  onNotice={(message) => setNotice(message)}
-                  onChanged={reloadPanelHosts}
-                />
-              )}
-            </div>
-          </div>
+          </section>
         </div>
       )}
       {trashList && selected && (

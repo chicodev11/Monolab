@@ -29,6 +29,7 @@ public final class MonolabMod {
     private static final int PERF_TICKS = 20 * 60;
 
     private static final Logger LOGGER = LoggerFactory.getLogger("Monolab");
+    private boolean inventoriesBroken;
 
     public MonolabMod() {
         NeoForge.EVENT_BUS.register(this);
@@ -203,6 +204,33 @@ public final class MonolabMod {
         return tally;
     }
 
+private static String itemId(net.minecraft.world.item.ItemStack stack) {
+        Object key = net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(stack.getItem());
+        return key == null ? null : key.toString();
+    }
+
+    private static String inventories(MinecraftServer server) {
+        Inventories all = new Inventories();
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            all.player(player.getScoreboardName(), player.getUUID().toString());
+            var bag = player.getInventory();
+            for (int at = 0; at < bag.getContainerSize(); at++) {
+                var stack = bag.getItem(at);
+                if (!stack.isEmpty()) {
+                    all.bag(at, itemId(stack), stack.getCount(), stack.getDamageValue());
+                }
+            }
+            var ender = player.getEnderChestInventory();
+            for (int at = 0; at < ender.getContainerSize(); at++) {
+                var stack = ender.getItem(at);
+                if (!stack.isEmpty()) {
+                    all.ender(at, itemId(stack), stack.getCount(), stack.getDamageValue());
+                }
+            }
+        }
+        return all.json();
+    }
+
     private static String typeId(Entity entity) {
         Object key = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
         return key == null ? null : key.toString();
@@ -220,6 +248,14 @@ public final class MonolabMod {
                 byName.put(worldName(server, Bridge.dimensionId(level)), level);
             }
             log.setLoaded(chunks.json(name -> byName.containsKey(name) ? forcedOf(byName.get(name)) : null));
+            if (!inventoriesBroken) {
+                try {
+                    log.setInventories(inventories(server));
+                } catch (Throwable trouble) {
+                    inventoriesBroken = true;
+                    LOGGER.warn("Couldn't read player inventories; skipping them.", trouble);
+                }
+            }
         }
 
         StringBuilder people = new StringBuilder("[");

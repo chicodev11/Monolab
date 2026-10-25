@@ -40,7 +40,6 @@
     "top.create": "New server",
     "top.import": "Import server",
     "top.search": "Find a server",
-    "top.subtitle": "{total, plural, one {# server} other {# servers}} · {running} running",
     "top.title": "My servers"
   }
 }

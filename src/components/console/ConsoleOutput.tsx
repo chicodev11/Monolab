@@ -24,6 +24,52 @@ export function ConsoleOutput({
   return <LogLines logs={logs} filter={filter} level={level} />;
 }
 
+export function ConsoleLevels({
+  serverId,
+  value,
+  onChange,
+}: {
+  serverId: string;
+  value: ConsoleLevel;
+  onChange: (level: ConsoleLevel) => void;
+}) {
+  const logs = useServerLogs(serverId);
+  const counts = useMemo(() => {
+    let error = 0;
+    let warn = 0;
+    for (const log of logs) {
+      if (log.noise) continue;
+      const found = readLevel(log.line);
+      if (found === "error" || (log.stream === "stderr" && !isErrorTail(log.line))) error += 1;
+      else if (found === "warn") warn += 1;
+    }
+    return { error, warn };
+  }, [logs]);
+  const options: { value: ConsoleLevel; label: string; count?: number }[] = [
+    { value: "all", label: tr("All") },
+    { value: "error", label: tr("Errors"), count: counts.error },
+    { value: "warn", label: tr("Warnings"), count: counts.warn },
+    { value: "info", label: tr("Info") },
+  ];
+  return (
+    <div className="wb-chips" role="tablist" aria-label={tr("Log level")}>
+      {options.map((one) => (
+        <button
+          key={one.value}
+          type="button"
+          role="tab"
+          aria-selected={value === one.value}
+          className={`wb-chip ${value === one.value ? "on" : ""} ${one.value === "error" && one.count ? "danger" : ""}`}
+          onClick={() => onChange(one.value)}
+        >
+          {one.label}
+          {one.count ? <b>{one.count}</b> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function LogLines({
   logs,
   filter,

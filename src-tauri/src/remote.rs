@@ -1555,7 +1555,7 @@ pub async fn read_text(
     folder: &str,
     relative: &str,
 ) -> Result<String, String> {
-    const LIMIT: u64 = 4 * 1024 * 1024;
+    const LIMIT: u64 = 8 * 1024 * 1024;
     let at = inside(folder, relative)?;
     let conn = connect(app, host_id).await?;
     let sftp = conn.shared_sftp().await?;
@@ -1567,7 +1567,7 @@ pub async fn read_text(
         )
         .await?;
     if meta.size.unwrap_or(0) > LIMIT {
-        return Err("This file is too large to open in the app (over 4 MB).".into());
+        return Err("This file is too large to open in the app (over 8 MB).".into());
     }
     let bytes = conn
         .healed(
@@ -3000,6 +3000,10 @@ mod tests {
         assert_eq!(
             version_in_log("[INFO] Starting Pumpkin 0.1.0-dev+26.2-26.45").as_deref(),
             Some("0.1.0-dev+26.2-26.45")
+        );
+        assert_eq!(
+            version_in_log("23:39:57  INFO Starting Pumpkin 0.2.1+26.3-26.51 Java Minecraft (Protocol 777) | 1.26.51 Bedrock (Protocol 2193)").as_deref(),
+            Some("0.2.1+26.3-26.51")
         );
         assert_eq!(version_in_log("just some line"), None);
     }

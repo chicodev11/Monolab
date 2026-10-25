@@ -113,6 +113,15 @@ function GameLogo({ game }: { game: GameInfo }) {
   return <img className="core-logo game-logo" src={game.logo} alt="" draggable={false} onError={() => setBroken(true)} />;
 }
 
+const MINECRAFT_LOGO =
+  "https://www.minecraft.net/etc.clientlibs/minecraftnet/clientlibs/clientlib-site/resources/favicon-96x96.png";
+
+export function MinecraftLogo() {
+  const [broken, setBroken] = useState(false);
+  if (broken) return <Icon name="pickaxe" />;
+  return <img className="core-logo game-logo" src={MINECRAFT_LOGO} alt="" draggable={false} onError={() => setBroken(true)} />;
+}
+
 export function CoreIcon({ core }: { core: string }) {
   if (core === customProgram.id) return <Icon name={customProgram.icon} />;
   const game = findGame(core);

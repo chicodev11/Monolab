@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const ADDON_VERSION: u32 = 28;
+pub const ADDON_VERSION: u32 = 29;
 
 #[cfg(test)]
 const GRADLE_PROPERTIES: &str = include_str!("../../gradle.properties");
@@ -965,8 +965,8 @@ mod tests {
         assert!(addon_folder(Path::new("s"), AddonKind::NeoForge).ends_with("mods"));
         assert!(addon_folder(Path::new("s"), AddonKind::Fabric).ends_with("mods"));
         assert_eq!(
-            jar_name(AddonKind::Pumpkin, "0.1.0-dev+26.2-26.45", 12).as_deref(),
-            Some("Monolab-pumpkin-26.45-12.wasm")
+            jar_name(AddonKind::Pumpkin, "0.2.1+26.3-26.51", 12).as_deref(),
+            Some("Monolab-pumpkin-26.51-12.wasm")
         );
         assert_eq!(jar_name(AddonKind::Pumpkin, "nightly", 12), None);
         assert!(addon_folder(Path::new("s"), AddonKind::Pumpkin).ends_with("plugins"));

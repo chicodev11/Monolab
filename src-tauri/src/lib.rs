@@ -1,4 +1,5 @@
 mod addons;
+mod liveinv;
 mod markdown;
 mod backups;
 mod catalog;
@@ -468,6 +469,7 @@ struct TpsSnapshot {
 pub(crate) struct PingSnapshot {
     pub online: u32,
     pub max: u32,
+    pub names: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, specta::Type)]
@@ -565,6 +567,7 @@ struct AppState {
     remote_tailing: Arc<Mutex<HashSet<String>>>,
     remote_checked: Arc<Mutex<HashSet<String>>>,
     remote_unreachable: Arc<Mutex<HashSet<String>>>,
+    remote_failures: Arc<Mutex<HashMap<String, u32>>>,
     remote_running: Arc<Mutex<HashMap<String, remote::Live>>>,
     remote_starting: Arc<Mutex<HashMap<String, std::time::Instant>>>,
     remote_kick: Arc<tokio::sync::Notify>,
@@ -1893,8 +1896,8 @@ fn check_core_build(app: AppHandle, id: String) -> Result<CoreBuildNews, String>
 
 #[tauri::command(async)]
 #[specta::specta]
-fn list_core_versions(core: String) -> Result<Vec<String>, String> {
-    off_runtime(|| cores::list_core_versions(&core))
+fn list_core_versions(core: String, snapshots: Option<bool>) -> Result<Vec<String>, String> {
+    off_runtime(|| cores::list_core_versions(&core, snapshots.unwrap_or(false)))
 }
 
 pub(crate) type WebEvents = Arc<Mutex<Vec<(u64, String, serde_json::Value)>>>;
@@ -1990,7 +1993,7 @@ pub(crate) fn web_invoke(
             arg(body, "fileName")?,
         ))?),
         "list_player_activity" => ok(tauri::async_runtime::block_on(list_player_activity(app.clone(), arg(body, "id")?))?),
-        "list_core_versions" => ok(list_core_versions(arg(body, "core")?)?),
+        "list_core_versions" => ok(list_core_versions(arg(body, "core")?, arg(body, "snapshots")?)?),
         "precheck_instance" => ok(tauri::async_runtime::block_on(precheck_instance(app.clone(), app.state(), arg(body, "id")?))?),
         "list_remote_javas" => ok(tauri::async_runtime::block_on(list_remote_javas(app.clone(), arg(body, "id")?))?),
         "start_instance" => ok(tauri::async_runtime::block_on(start_instance_as(app.clone(), app.state::<AppState>().inner(), arg(body, "id")?, false))?),
@@ -2071,6 +2074,7 @@ pub(crate) fn web_invoke(
         "list_pending_addons" => ok(list_pending_addons(app.clone(), arg(body, "id")?)?),
         "item_icons" => ok(item_icons(app.clone(), arg(body, "version")?, arg(body, "ids")?)?),
         "item_names" => ok(lang::item_names(app.clone(), arg(body, "version")?, arg(body, "ids")?)?),
+        "enchantment_names" => ok(lang::enchantment_names(app.clone(), arg(body, "version")?, arg(body, "ids")?)?),
         "cancel_pending_addon" => ok(cancel_pending_addon(app.clone(), arg(body, "id")?, arg(body, "entryId")?)?),
         "kill_java_process" => ok(kill_java_process(app.clone(), arg(body, "pid")?)?),
         "export_mrpack_download" => ok(tauri::async_runtime::block_on(export_mrpack_download(app.clone(), arg(body, "id")?))?),
@@ -7565,9 +7569,9 @@ fn safe_editable_path(instance: &ServerInstance, relative: &str) -> Result<PathB
     if fs::metadata(&path)
         .map_err(|error| error.to_string())?
         .len()
-        > 1_000_000
+        > 8 * 1024 * 1024
     {
-        return Err("Files larger than 1 MB cannot be opened in the editor.".into());
+        return Err("Files larger than 8 MB cannot be opened in the editor.".into());
     }
     Ok(path)
 }
@@ -9319,6 +9323,9 @@ async fn relook_remote(
 ) {
     let now = unix_now();
     for one in instances.iter().filter(|one| !one.remote_host.is_empty()) {
+        if ssh_paused(app, &one.remote_host) {
+            continue;
+        }
         if one.core != sniff::UNKNOWN && looks_like_version(&one.version) {
             continue;
         }
@@ -9356,6 +9363,26 @@ async fn relook_remote(
     }
 }
 
+const SSH_GIVE_UP_AFTER: u32 = 3;
+
+fn ssh_paused(app: &AppHandle, host: &str) -> bool {
+    app.state::<AppState>()
+        .remote_failures
+        .lock()
+        .expect("remote state poisoned")
+        .get(host)
+        .is_some_and(|failed| *failed >= SSH_GIVE_UP_AFTER)
+}
+
+/// Lets the watcher dial an SSH host again after it gave up.
+#[tauri::command(async)]
+#[specta::specta]
+fn retry_ssh_host(app: AppHandle, id: String) {
+    let state = app.state::<AppState>();
+    state.remote_failures.lock().expect("remote state poisoned").remove(&id);
+    state.remote_kick.notify_one();
+}
+
 fn start_remote_watcher(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut looked: HashMap<String, u64> = HashMap::new();
@@ -9383,8 +9410,16 @@ fn start_remote_watcher(app: AppHandle) {
             }
             for (host, servers) in by_host {
                 const KEEP_BLIND: Duration = Duration::from_secs(30);
+                if ssh_paused(&app, &host) {
+                    continue;
+                }
                 match remote::live_state_checked(&app, &host, &servers).await {
                     Ok(found) => {
+                        app.state::<AppState>()
+                            .remote_failures
+                            .lock()
+                            .expect("remote state poisoned")
+                            .remove(&host);
                         alive.extend(found);
                         answered.insert(host.clone(), std::time::Instant::now());
                         app.state::<AppState>()
@@ -9394,6 +9429,12 @@ fn start_remote_watcher(app: AppHandle) {
                             .remove(&host);
                     }
                     Err(_) => {
+                        *app.state::<AppState>()
+                            .remote_failures
+                            .lock()
+                            .expect("remote state poisoned")
+                            .entry(host.clone())
+                            .or_insert(0) += 1;
                         app.state::<AppState>()
                             .remote_unreachable
                             .lock()
@@ -10058,8 +10099,8 @@ async fn save_editable_file(
     path: String,
     content: String,
 ) -> Result<(), String> {
-    if content.len() > 1_000_000 {
-        return Err("Content larger than 1 MB cannot be saved.".into());
+    if content.len() > 8 * 1024 * 1024 {
+        return Err("Content larger than 8 MB cannot be saved.".into());
     }
     let instance = instance_by_id(&app, &id)?;
     if !instance.panel_host.is_empty() {
@@ -13766,6 +13807,47 @@ async fn read_player_nbt(
     if uuid.len() != 36 || !uuid.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
         return Err("The UUID is malformed.".into());
     }
+    let saved = read_saved_player(&app, &instance, uuid).await;
+    let Some(live) = read_live_inventory(&app, &instance, uuid).await else {
+        return saved;
+    };
+    let mut snapshot = saved.unwrap_or_else(|_| nbt::PlayerSnapshot::blank(uuid));
+    snapshot.inventory = liveinv::merge(live.items, &snapshot.inventory);
+    snapshot.ender_items = liveinv::merge(live.ender, &snapshot.ender_items);
+    if let Ok(Some(state)) = read_live_inner(&app, &id).await {
+        if let Some(person) = state.players.iter().find(|one| one.name == live.name) {
+            snapshot.position = [person.x, person.y, person.z];
+            snapshot.health = person.health as f32;
+            snapshot.food = person.food as i32;
+            if let Some(world) = &person.world {
+                snapshot.dimension = world.clone();
+            }
+        }
+    }
+    snapshot.live = true;
+    snapshot.modified_at = unix_now();
+    Ok(snapshot)
+}
+
+async fn read_live_inventory(app: &AppHandle, instance: &ServerInstance, uuid: &str) -> Option<liveinv::LiveInventory> {
+    if instance_view(instance.clone(), &app.state::<AppState>()).status != "running" {
+        return None;
+    }
+    let text = if is_far(instance) {
+        far_read(app, instance, &format!("{}/inventories.json", remote_addon_data_dir(instance))).await.ok()?
+    } else {
+        fs::read_to_string(events::event_folder(Path::new(&instance.path)).join("inventories.json")).ok()?
+    };
+    liveinv::find(&text, uuid, unix_now() as f64 * 1000.0)
+}
+
+async fn read_saved_player(
+    app: &AppHandle,
+    instance: &ServerInstance,
+    uuid: &str,
+) -> Result<nbt::PlayerSnapshot, String> {
+    let app = app.clone();
+    let instance = instance.clone();
     if is_far(&instance) {
         let level = far_read(&app, &instance, "server.properties")
             .await
@@ -13815,7 +13897,7 @@ async fn list_player_spots(app: AppHandle, id: String) -> Result<Vec<PlayerSpot>
         let people = list_players(app.clone(), id.clone()).await?;
         let mut found = Vec::new();
         for player in people.into_iter().filter(|one| one.uuid.len() == 36).take(60) {
-            let Ok(snapshot) = read_player_nbt(app.clone(), id.clone(), player.uuid.clone()).await else {
+            let Ok(snapshot) = read_saved_player(&app, &instance, &player.uuid).await else {
                 continue;
             };
             found.push(PlayerSpot {
@@ -14038,6 +14120,16 @@ async fn trim_chunks(
     let instance = instance_by_id(&app, &id)?;
     if !instance.panel_host.is_empty() {
         return Err("Chunk cleanup isn't available for panel servers yet.".into());
+    }
+    if pumpkin::is_pumpkin(&instance.core) {
+        let config = if is_far(&instance) {
+            far_read(&app, &instance, pumpkin::CONFIG).await.ok()
+        } else {
+            std::fs::read_to_string(Path::new(&instance.path).join(pumpkin::CONFIG)).ok()
+        };
+        if let Some(kind) = config.as_deref().and_then(pumpkin::chunk_format).filter(|kind| kind != "anvil") {
+            return Err(format!("Chunk cleanup only works with Anvil (.mca) worlds. This server stores chunks as {}.", kind));
+        }
     }
     let level = if is_far(&instance) {
         far_read(&app, &instance, "server.properties")
@@ -15949,6 +16041,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             add_addon_upload,
             stash_upload,
             lang::item_names,
+            lang::enchantment_names,
             server_commands,
             precheck_instance,
             list_remote_javas,
@@ -16154,6 +16247,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             ensure_ssh_root,
             delete_ssh_host,
             test_ssh_host,
+            retry_ssh_host,
             playit_state,
             lan_ip,
             playit_claim,
@@ -16250,6 +16344,7 @@ pub fn run() {
             remote_running: Arc::new(Mutex::new(HashMap::new())),
             remote_checked: Arc::new(Mutex::new(HashSet::new())),
             remote_unreachable: Arc::new(Mutex::new(HashSet::new())),
+            remote_failures: Arc::new(Mutex::new(HashMap::new())),
             remote_tailing: Arc::new(Mutex::new(HashSet::new())),
             remote_starting: Arc::new(Mutex::new(HashMap::new())),
             remote_kick: Arc::new(tokio::sync::Notify::new()),

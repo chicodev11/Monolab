@@ -1,6 +1,28 @@
 [
   {
     "kind": "app",
+    "version": "1.4.0",
+    "date": "2026-10-25",
+    "added": [
+      "A new look: a menu across the top, tabs for the servers you have open, an icon rail inside each server and a status panel on the right of the console.",
+      "Right-click menus with the actions for the place you clicked: servers, text fields, links and the page itself.",
+      "Snapshot versions can be shown when creating a server or changing its version.",
+      "Player details show the ender chest and, on hover, each item's name, enchantments and durability.",
+      "With add-on 29, a running server shows what online players are carrying right now, refreshed every 5 seconds.",
+      "Importing a folder with a Terraria, Valheim or other game server recognises the game and sets it up."
+    ],
+    "changed": [
+      "Every tab has been redesigned, and creating a server goes step by step: game, core, version, then a summary.",
+      "After three failed tries in a row the app stops reconnecting to an SSH host until you press Reconnect.",
+      "The Pumpkin add-on supports Pumpkin 0.2.1."
+    ],
+    "fixed": [
+      "The server list and settings could be lost if the app closed while saving. Data files are now written safely and restored from a backup copy if damaged.",
+      "A server whose folder was deleted showed a confusing Windows error and could not be removed from the list. It now shows \"Folder missing\" and can be removed."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.3.2",
     "date": "2026-10-23",
     "fixed": [

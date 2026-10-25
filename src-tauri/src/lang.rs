@@ -8,11 +8,14 @@ fn cache_path(app: &AppHandle, version: &str) -> Option<PathBuf> {
     fs::create_dir_all(&dir).ok()?;
     let _ = fs::remove_file(dir.join(format!("advancements-ko-{version}.json")));
     let _ = fs::remove_file(dir.join(format!("lang-ko-{version}.json")));
-    Some(dir.join(format!("lang-ko-v2-{version}.json")))
+    let _ = fs::remove_file(dir.join(format!("lang-ko-v2-{version}.json")));
+    Some(dir.join(format!("lang-ko-v3-{version}.json")))
 }
 
 fn worth_keeping(key: &str) -> bool {
-    key.starts_with("item.minecraft.") || key.starts_with("block.minecraft.")
+    key.starts_with("item.minecraft.")
+        || key.starts_with("block.minecraft.")
+        || key.starts_with("enchantment.minecraft.")
 }
 
 fn item_keys(id: &str) -> [String; 2] {
@@ -119,6 +122,24 @@ pub fn item_names(
         .collect())
 }
 
+#[tauri::command(async)]
+#[specta::specta]
+pub fn enchantment_names(
+    app: AppHandle,
+    version: String,
+    ids: Vec<String>,
+) -> Result<HashMap<String, String>, String> {
+    let table = off_runtime(|| table(&app, &version));
+    Ok(ids
+        .into_iter()
+        .filter_map(|id| {
+            let bare = id.strip_prefix("minecraft:")?;
+            let korean = table.get(&format!("enchantment.minecraft.{bare}"))?.clone();
+            Some((id, korean))
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,6 +161,7 @@ mod tests {
     fn keeps_only_what_we_show() {
         assert!(worth_keeping("item.minecraft.netherite_sword"));
         assert!(worth_keeping("block.minecraft.diamond_block"));
+        assert!(worth_keeping("enchantment.minecraft.sharpness"));
         assert!(!worth_keeping("gui.done"));
         assert!(!worth_keeping("advancements.story.mine_stone.title"));
         assert!(!worth_keeping("entity.minecraft.creeper"));

@@ -802,8 +802,8 @@ impl Api {
         let text = self
             .raw(reqwest::Method::GET, &target.at("/files/contents"), &[("file", &file)], Payload::None)
             .await?;
-        if text.len() > 4 * 1024 * 1024 {
-            return Err("This file is too large to open in the app (over 4 MB).".into());
+        if text.len() > 8 * 1024 * 1024 {
+            return Err("This file is too large to open in the app (over 8 MB).".into());
         }
         Ok(text)
     }

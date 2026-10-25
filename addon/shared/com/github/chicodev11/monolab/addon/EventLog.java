@@ -20,6 +20,7 @@ final class EventLog {
     private final Queue<String> pending = new ConcurrentLinkedQueue<>();
     private final AtomicReference<String> pendingLive = new AtomicReference<>();
     private final AtomicReference<String> pendingLoaded = new AtomicReference<>();
+    private final AtomicReference<String> pendingInventories = new AtomicReference<>();
 
     private LocalDate sweptOn;
 
@@ -42,9 +43,14 @@ final class EventLog {
         pendingLoaded.set(json);
     }
 
+    void setInventories(String json) {
+        pendingInventories.set(json);
+    }
+
     void flush() {
         writeLive();
         writeNow(pendingLoaded, "loaded.json");
+        writeNow(pendingInventories, "inventories.json");
         LocalDate today = LocalDate.now();
         append("events-" + today + ".jsonl");
         sweep(today);

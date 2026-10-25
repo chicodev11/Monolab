@@ -19,6 +19,7 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
     private final EventSink sink = new EventSink();
     private MapRender map;
     private final ChunkWatch chunks = new ChunkWatch();
+    private boolean inventoriesBroken;
 
     @Override
     public void onInitializeServer() {
@@ -105,6 +106,14 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
     private void snapshot(MinecraftServer server) {
         if (chunks.due()) {
             sink.loaded(chunks.json(name -> null));
+            if (!inventoriesBroken) {
+                try {
+                    sink.inventories(inventories(server));
+                } catch (Throwable trouble) {
+                    inventoriesBroken = true;
+                    LOGGER.warn("Couldn't read player inventories; skipping them.", trouble);
+                }
+            }
         }
         EntityTally tally = tallyEntities(server);
         List<EventSink.Spot> people = new ArrayList<>();
@@ -120,6 +129,33 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
                     player.networkHandler.getLatency()));
         }
         sink.live(server.getAverageTickTime(), loadedChunks(server), tally, people);
+    }
+
+private static String itemId(net.minecraft.item.ItemStack stack) {
+        Object key = net.minecraft.registry.Registries.ITEM.getId(stack.getItem());
+        return key == null ? null : key.toString();
+    }
+
+    private static String inventories(MinecraftServer server) {
+        Inventories all = new Inventories();
+        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            all.player(Bridge.nameOf(player), player.getUuid().toString());
+            var bag = player.getInventory();
+            for (int at = 0; at < bag.size(); at++) {
+                var stack = bag.getStack(at);
+                if (!stack.isEmpty()) {
+                    all.bag(at, itemId(stack), stack.getCount(), stack.getDamage());
+                }
+            }
+            var ender = player.getEnderChestInventory();
+            for (int at = 0; at < ender.size(); at++) {
+                var stack = ender.getStack(at);
+                if (!stack.isEmpty()) {
+                    all.ender(at, itemId(stack), stack.getCount(), stack.getDamage());
+                }
+            }
+        }
+        return all.json();
     }
 
     private static long loadedChunks(MinecraftServer server) {

@@ -97,6 +97,13 @@ pub fn rcon(folder: &Path) -> Option<(u16, String)> {
     Some((port, password))
 }
 
+pub fn chunk_format(text: &str) -> Option<String> {
+    let document: DocumentMut = text.parse().ok()?;
+    lookup(&document, "world.chunk.type")
+        .and_then(Item::as_str)
+        .map(|kind| kind.to_ascii_lowercase())
+}
+
 pub fn set_favicon(folder: &Path, file_name: Option<&str>) -> Result<(), String> {
     if !folder.join(CONFIG).is_file() {
         return Ok(());
@@ -450,6 +457,18 @@ allowed_permissions = []
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join(CONFIG), SAMPLE).unwrap();
         dir
+    }
+
+    #[test]
+    fn knows_the_chunk_format() {
+        assert_eq!(chunk_format("[world.chunk]
+type = \"pump\"
+").as_deref(), Some("pump"));
+        assert_eq!(chunk_format("[world.chunk]
+type = \"anvil\"
+").as_deref(), Some("anvil"));
+        assert_eq!(chunk_format("java_edition = true
+"), None);
     }
 
     #[test]

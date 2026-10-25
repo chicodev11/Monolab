@@ -361,3 +361,11 @@ export async function wordsFor(lang: Language): Promise<Record<string, string>> 
     return {};
   }
 }
+
+export function wordEntries(): [string, string][] {
+  return Object.entries(words ?? {});
+}
+
+export function setWord(key: string, value: string) {
+  if (words) words[key] = value;
+}

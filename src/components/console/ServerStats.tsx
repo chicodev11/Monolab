@@ -141,7 +141,7 @@ function PlayerRow({ player, onOpen }: { player: LivePlayer; onOpen: (name: stri
   );
 }
 
-export function ServerStats({ server, onOpenPlayer }: { server: Server; onOpenPlayer: (name: string) => void }) {
+export function ServerStats({ server, onOpenPlayer, bare }: { server: Server; onOpenPlayer: (name: string) => void; bare?: boolean }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [cpuTrace, setCpuTrace] = useState<number[]>([]);
   const [copied, setCopied] = useState(false);
@@ -253,7 +253,8 @@ export function ServerStats({ server, onOpenPlayer }: { server: Server; onOpenPl
     : [];
 
   return (
-    <aside className="server-stats" aria-label={tr("Usage")}>
+    <aside className={`server-stats${bare ? " bare" : ""}`} aria-label={tr("Usage")}>
+      {bare ? null : (
       <div className={`stat-status ${server.status}`}>
         <span className="stat-dot" />
         <div>
@@ -265,6 +266,7 @@ export function ServerStats({ server, onOpenPlayer }: { server: Server; onOpenPl
           <Icon name={copied ? "check" : "copy"} />
         </button>
       </div>
+      )}
       {running && stats ? (
         <>
           <div className="stat-grid">

@@ -28,7 +28,7 @@ export const commands = {
 	getServerIcon: (id: string) => __TAURI_INVOKE<string | null>("get_server_icon", { id }),
 	setServerIcon: (id: string, source: string) => __TAURI_INVOKE<string>("set_server_icon", { id, source }),
 	clearServerIcon: (id: string) => __TAURI_INVOKE<null>("clear_server_icon", { id }),
-	listCoreVersions: (core: string) => __TAURI_INVOKE<string[]>("list_core_versions", { core }),
+	listCoreVersions: (core: string, snapshots: boolean | null) => __TAURI_INVOKE<string[]>("list_core_versions", { core, snapshots }),
 	listCoreBuilds: (core: string, version: string) => __TAURI_INVOKE<CoreBuild[]>("list_core_builds", { core, version }),
 	checkCoreBuild: (id: string) => __TAURI_INVOKE<CoreBuildNews>("check_core_build", { id }),
 	webPanelState: () => __TAURI_INVOKE<WebPanelView>("web_panel_state"),
@@ -42,6 +42,7 @@ export const commands = {
 	addAddonUpload: (id: string, files: UploadFile[]) => __TAURI_INVOKE<AddonAddResult>("add_addon_upload", { id, files }),
 	stashUpload: (name: string, data: string) => __TAURI_INVOKE<string>("stash_upload", { name, data }),
 	itemNames: (version: string, ids: string[]) => __TAURI_INVOKE<{ [key in string]: string }>("item_names", { version, ids }),
+	enchantmentNames: (version: string, ids: string[]) => __TAURI_INVOKE<{ [key in string]: string }>("enchantment_names", { version, ids }),
 	serverCommands: (id: string) => __TAURI_INVOKE<CommandBook>("server_commands", { id }),
 	precheckInstance: (id: string) => __TAURI_INVOKE<Finding[]>("precheck_instance", { id }),
 	listRemoteJavas: (id: string) => __TAURI_INVOKE<JavaRuntime[]>("list_remote_javas", { id }),
@@ -291,6 +292,8 @@ export const commands = {
 	ensureSshRoot: (hostId: string) => __TAURI_INVOKE<string>("ensure_ssh_root", { hostId }),
 	deleteSshHost: (id: string) => __TAURI_INVOKE<number>("delete_ssh_host", { id }),
 	testSshHost: (id: string) => __TAURI_INVOKE<BoxInfo>("test_ssh_host", { id }),
+	/**  Lets the watcher dial an SSH host again after it gave up. */
+	retrySshHost: (id: string) => __TAURI_INVOKE<void>("retry_ssh_host", { id }),
 	playitState: () => __TAURI_INVOKE<Status>("playit_state"),
 	/**  This PC's address on the home network, for the Network tab. */
 	lanIp: () => __TAURI_INVOKE<string>("lan_ip"),
@@ -686,6 +689,11 @@ export type DiskReport = {
 	cleanable: Cleanable[],
 };
 
+export type Enchantment = {
+	id: string,
+	level: number,
+};
+
 export type EntityKind = {
 	type: string,
 	count: number,
@@ -839,6 +847,10 @@ export type InventoryItem = {
 	id: string,
 	count: number,
 	slot: number,
+	name: string,
+	damage: number,
+	maxDamage: number,
+	enchantments: Enchantment[],
 };
 
 export type JavaProcess = {
@@ -1175,6 +1187,7 @@ export type ParsedLogEntry = {
 export type PingSnapshot = {
 	online: number,
 	max: number,
+	names: string[],
 };
 
 export type PlayerAccessInput = {
@@ -1213,7 +1226,9 @@ export type PlayerSnapshot = {
 	experienceLevel: number,
 	gameMode: string,
 	inventory: InventoryItem[],
+	enderItems: InventoryItem[],
 	modifiedAt: number,
+	live: boolean,
 };
 
 export type PlayerSpot = {

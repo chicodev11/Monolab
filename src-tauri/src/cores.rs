@@ -5,23 +5,23 @@ use crate::{
 use std::{fs, path::{Path, PathBuf}, time::Duration};
 use tauri::{AppHandle, Emitter};
 
-pub fn list_core_versions(core: &str) -> Result<Vec<String>, String> {
+pub fn list_core_versions(core: &str, snapshots: bool) -> Result<Vec<String>, String> {
     let client = crate::net::builder()
         .user_agent("Monolab/0.1.0 (local Windows desktop app)")
         .timeout(Duration::from_secs(20))
         .build()
         .map_err(|error| error.to_string())?;
     match core {
-        "Vanilla" => mojang_releases(&client),
-        "Paper" => papermc_versions(&client, "paper"),
-        "Folia" => papermc_versions(&client, "folia"),
+        "Vanilla" => mojang_releases(&client, snapshots),
+        "Paper" => papermc_versions(&client, "paper", snapshots),
+        "Folia" => papermc_versions(&client, "folia", snapshots),
         "Purpur" => purpur_versions(&client),
-        "Fabric" => fabric_versions(&client),
+        "Fabric" => fabric_versions(&client, snapshots),
         "Forge" => forge_versions(&client),
         "NeoForge" => neoforge_versions(&client),
         "Pumpkin" => pumpkin_versions(&client),
         "Velocity" | "BungeeCord" => Ok(Vec::new()),
-        _ => mojang_releases(&client),
+        _ => mojang_releases(&client, snapshots),
     }
 }
 
@@ -356,7 +356,7 @@ fn newest_first(mut list: Vec<String>) -> Vec<String> {
     list
 }
 
-fn mojang_releases(client: &reqwest::blocking::Client) -> Result<Vec<String>, String> {
+fn mojang_releases(client: &reqwest::blocking::Client, snapshots: bool) -> Result<Vec<String>, String> {
     let data: serde_json::Value = client
         .get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
         .send()
@@ -370,7 +370,10 @@ fn mojang_releases(client: &reqwest::blocking::Client) -> Result<Vec<String>, St
         .and_then(|value| value.as_array())
         .into_iter()
         .flatten()
-        .filter(|item| item.get("type").and_then(|v| v.as_str()) == Some("release"))
+        .filter(|item| {
+            let kind = item.get("type").and_then(|v| v.as_str());
+            kind == Some("release") || (snapshots && kind == Some("snapshot"))
+        })
         .filter_map(|item| Some(item.get("id")?.as_str()?.to_string()))
         .collect())
 }
@@ -378,6 +381,7 @@ fn mojang_releases(client: &reqwest::blocking::Client) -> Result<Vec<String>, St
 fn papermc_versions(
     client: &reqwest::blocking::Client,
     project: &str,
+    snapshots: bool,
 ) -> Result<Vec<String>, String> {
     let data: serde_json::Value = client
         .get(format!("https://fill.papermc.io/v3/projects/{project}"))
@@ -396,7 +400,7 @@ fn papermc_versions(
         .filter_map(|value| value.as_array())
         .flatten()
         .filter_map(|item| item.as_str())
-        .filter(|item| !item.contains('-'))
+        .filter(|item| snapshots || !item.contains('-'))
         .map(str::to_owned)
         .collect();
     list.sort_by(|a, b| compare_versions(b, a));
@@ -423,7 +427,7 @@ fn purpur_versions(client: &reqwest::blocking::Client) -> Result<Vec<String>, St
     ))
 }
 
-fn fabric_versions(client: &reqwest::blocking::Client) -> Result<Vec<String>, String> {
+fn fabric_versions(client: &reqwest::blocking::Client, snapshots: bool) -> Result<Vec<String>, String> {
     let data: serde_json::Value = client
         .get("https://meta.fabricmc.net/v2/versions/game")
         .send()
@@ -436,7 +440,7 @@ fn fabric_versions(client: &reqwest::blocking::Client) -> Result<Vec<String>, St
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|item| item.get("stable").and_then(|v| v.as_bool()) == Some(true))
+        .filter(|item| snapshots || item.get("stable").and_then(|v| v.as_bool()) == Some(true))
         .filter_map(|item| Some(item.get("version")?.as_str()?.to_string()))
         .collect())
 }
@@ -1070,7 +1074,8 @@ mod tests {
         println!("download URL: {}", source.url);
         assert!(source.url.ends_with(super::PUMPKIN_WINDOWS_ASSET));
         assert_ne!(versions[0], "nightly", "nightly came first even though a stable release exists");
-        assert_eq!(versions.last().map(String::as_str), Some("nightly"));
+        let first_pre = versions.iter().position(|one| one == "nightly" || one == "canary").expect("prereleases are listed");
+        assert!(versions[first_pre..].iter().all(|one| one == "nightly" || one == "canary"), "prereleases come after every stable release");
         println!("sha256: {:?}", source.sha256);
         assert!(source.sha256.is_some(), "stable releases ship checksums.sha256");
     }

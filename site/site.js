@@ -1,5 +1,6 @@
 const REPO = "chicodev11/Monolab";
 const LANGUAGES = ["en", "ko"];
+const ANALYTICS_TOKEN = "";
 const tables = {};
 let words = {};
 
@@ -8,6 +9,11 @@ function pickLanguage() {
     const saved = localStorage.getItem("monolab-site-lang");
     if (LANGUAGES.includes(saved)) return saved;
   } catch {}
+  const wanted = navigator.languages?.length ? navigator.languages : [navigator.language];
+  for (const one of wanted) {
+    const code = String(one ?? "").toLowerCase().split("-")[0];
+    if (LANGUAGES.includes(code)) return code;
+  }
   return "en";
 }
 
@@ -57,3 +63,11 @@ async function wireDownload() {
   } catch {}
 }
 wireDownload();
+
+if (ANALYTICS_TOKEN && location.hostname.endsWith("mnlab.cc")) {
+  const beacon = document.createElement("script");
+  beacon.defer = true;
+  beacon.src = "https://static.cloudflareinsights.com/beacon.min.js";
+  beacon.dataset.cfBeacon = JSON.stringify({ token: ANALYTICS_TOKEN });
+  document.head.appendChild(beacon);
+}

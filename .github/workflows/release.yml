@@ -35,7 +35,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: Monolab v__VERSION__
-          releaseBody: "What changed: https://chicodev11.github.io/Monolab/changelog"
+          releaseBody: "What changed: https://mnlab.cc/changelog"
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true

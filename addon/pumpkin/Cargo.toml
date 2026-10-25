@@ -13,7 +13,7 @@ crate-type = ["cdylib"]
 # **Must match the server release.** The WIT ABI changes between releases, so on a
 # server of another release it won't load at all. Which release it targets is written
 # in `targets.json`, and the app installs by that table.
-pumpkin-plugin-api = "0.1.0-dev+26.2-26.45"
+pumpkin-plugin-api = { git = "https://github.com/Pumpkin-MC/Pumpkin", tag = "0.2.1+26.3-26.51" }
 serde_json = "1"
 tracing = "0.1"
 

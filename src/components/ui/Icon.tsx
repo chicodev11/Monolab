@@ -1,5 +1,5 @@
 import {
-  Layers,
+  Layers, ListFilter,
   PanelLeftClose, PanelLeftOpen, Paperclip, Archive, Monitor, ArrowUp, ArrowDown, ArrowRight, Ban, Check, ChevronDown, Clock, Cloud, Copy, Cpu, Download,
   Ellipsis, FileText, Folder, House, Info, List, LogOut, Map as MapIcon, MemoryStick, Pencil,
   Pause, Play, Plug, Plus, Minus, RefreshCw, Search, Server, Settings, Shield, Square, Tag, Terminal,
@@ -11,7 +11,7 @@ import {
   Sun, Moon,
   Database, Network, Users, SlidersVertical, CalendarClock, ChartLine, CloudUpload, SquareTerminal,
   Eye, EyeOff, HardDrive,
-  Pickaxe, Axe, PawPrint, Hammer, Factory, Biohazard, Bone, Car,
+  Scissors, ClipboardPaste, ExternalLink, ArrowLeft, TextSelect, Pickaxe, Axe, PawPrint, Hammer, Factory, Biohazard, Bone, Car,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -22,6 +22,11 @@ const ICONS: Record<string, LucideIcon> = {
   layers: Layers,
   monitor: Monitor,
   "arrow-up": ArrowUp,
+  "arrow-left": ArrowLeft,
+  scissors: Scissors,
+  paste: ClipboardPaste,
+  external: ExternalLink,
+  "select-all": TextSelect,
   shield: Shield,
   ban: Ban,
   exit: LogOut,
@@ -40,6 +45,7 @@ const ICONS: Record<string, LucideIcon> = {
   "panel-open": PanelLeftOpen,
   "panel-close": PanelLeftClose,
   check: Check,
+  filter: ListFilter,
   folder: Folder,
   archive: Archive,
   settings: Settings,

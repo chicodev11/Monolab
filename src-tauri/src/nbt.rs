@@ -19,7 +19,27 @@ pub struct PlayerSnapshot {
     pub experience_level: i32,
     pub game_mode: String,
     pub inventory: Vec<InventoryItem>,
+    pub ender_items: Vec<InventoryItem>,
     pub modified_at: u64,
+    pub live: bool,
+}
+
+impl PlayerSnapshot {
+    pub fn blank(uuid: &str) -> Self {
+        PlayerSnapshot {
+            uuid: uuid.to_string(),
+            dimension: String::new(),
+            position: [0.0; 3],
+            health: 0.0,
+            food: 0,
+            experience_level: 0,
+            game_mode: String::new(),
+            inventory: Vec::new(),
+            ender_items: Vec::new(),
+            modified_at: 0,
+            live: false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, specta::Type)]
@@ -28,6 +48,17 @@ pub struct InventoryItem {
     pub id: String,
     pub count: i64,
     pub slot: i64,
+    pub name: String,
+    pub damage: i64,
+    pub max_damage: i64,
+    pub enchantments: Vec<Enchantment>,
+}
+
+#[derive(Clone, Debug, Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct Enchantment {
+    pub id: String,
+    pub level: i64,
 }
 
 #[derive(Clone, Debug, Serialize, specta::Type)]
@@ -150,21 +181,19 @@ fn snapshot_of(value: fastnbt::Value, uuid: &str) -> Result<PlayerSnapshot, Stri
         Some(fastnbt::Value::Float(number)) => *number,
         other => as_f64(other) as f32,
     };
-    let inventory = match root.get("Inventory") {
-        Some(fastnbt::Value::List(items)) => items
-            .iter()
-            .filter_map(|item| {
-                let entry = compound(item)?;
-                Some(InventoryItem {
-                    id: as_string(entry.get("id")),
-                    count: as_i64(entry.get("count").or_else(|| entry.get("Count"))),
-                    slot: as_i64(entry.get("Slot")),
-                })
-            })
-            .filter(|item| !item.id.is_empty())
-            .collect(),
-        _ => Vec::new(),
-    };
+    let mut inventory = items_in(root.get("Inventory"));
+    if let Some(equipment) = root.get("equipment").and_then(compound) {
+        for (key, slot) in [("head", 103), ("chest", 102), ("legs", 101), ("feet", 100), ("offhand", -106)] {
+            let Some(entry) = equipment.get(key).and_then(compound) else { continue };
+            if inventory.iter().any(|item| item.slot == slot) {
+                continue;
+            }
+            let Some(mut item) = item_of(entry, slot) else { continue };
+            item.count = item.count.max(1);
+            inventory.push(item);
+        }
+    }
+    let ender_items = items_in(root.get("EnderItems"));
     let modified_at = 0;
     Ok(PlayerSnapshot {
         uuid: uuid.to_string(),
@@ -175,8 +204,131 @@ fn snapshot_of(value: fastnbt::Value, uuid: &str) -> Result<PlayerSnapshot, Stri
         experience_level: as_i64(root.get("XpLevel")) as i32,
         game_mode: game_mode_label(as_i64(root.get("playerGameType"))),
         inventory,
+        ender_items,
         modified_at,
+        live: false,
     })
+}
+
+type Map = std::collections::HashMap<String, fastnbt::Value>;
+
+fn items_in(list: Option<&fastnbt::Value>) -> Vec<InventoryItem> {
+    match list {
+        Some(fastnbt::Value::List(items)) => items
+            .iter()
+            .filter_map(|item| {
+                let entry = compound(item)?;
+                item_of(entry, as_i64(entry.get("Slot")))
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn item_of(entry: &Map, slot: i64) -> Option<InventoryItem> {
+    let id = as_string(entry.get("id"));
+    if id.is_empty() {
+        return None;
+    }
+    let parts = entry.get("components").and_then(compound);
+    let tag = entry.get("tag").and_then(compound);
+    let part = |key: &str| parts.and_then(|map| map.get(key));
+    let damage = part("minecraft:damage").or_else(|| tag.and_then(|map| map.get("Damage")));
+    let name = part("minecraft:custom_name").or_else(|| {
+        tag.and_then(|map| map.get("display"))
+            .and_then(compound)
+            .and_then(|display| display.get("Name"))
+    });
+    let mut enchantments = Vec::new();
+    for key in ["minecraft:enchantments", "minecraft:stored_enchantments"] {
+        enchantments.extend(enchantments_of(part(key)));
+    }
+    for key in ["Enchantments", "StoredEnchantments"] {
+        enchantments.extend(enchantments_of(tag.and_then(|map| map.get(key))));
+    }
+    Some(InventoryItem {
+        id,
+        count: as_i64(entry.get("count").or_else(|| entry.get("Count"))),
+        slot,
+        name: name.map(text_of).unwrap_or_default().trim().to_string(),
+        damage: as_i64(damage).max(0),
+        max_damage: as_i64(part("minecraft:max_damage")).max(0),
+        enchantments,
+    })
+}
+
+fn enchantments_of(value: Option<&fastnbt::Value>) -> Vec<Enchantment> {
+    let mut found: Vec<Enchantment> = match value {
+        Some(fastnbt::Value::Compound(map)) => {
+            let levels = map.get("levels").and_then(compound).unwrap_or(map);
+            levels
+                .iter()
+                .filter(|(_, level)| !matches!(level, fastnbt::Value::Compound(_) | fastnbt::Value::List(_)))
+                .map(|(id, level)| Enchantment { id: id.clone(), level: as_i64(Some(level)) })
+                .collect()
+        }
+        Some(fastnbt::Value::List(items)) => items
+            .iter()
+            .filter_map(|item| {
+                let entry = compound(item)?;
+                let Some(fastnbt::Value::String(id)) = entry.get("id") else { return None };
+                Some(Enchantment { id: id.clone(), level: as_i64(entry.get("lvl")) })
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    found.retain(|one| one.level > 0 && one.id != "show_in_tooltip");
+    found.sort_by(|a, b| a.id.cmp(&b.id));
+    found
+}
+
+fn text_of(value: &fastnbt::Value) -> String {
+    match value {
+        fastnbt::Value::String(text) => {
+            let trimmed = text.trim_start();
+            if trimmed.starts_with('{') || trimmed.starts_with('[') || trimmed.starts_with('"') {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                    return json_text(&json);
+                }
+            }
+            text.clone()
+        }
+        fastnbt::Value::Compound(map) => {
+            let mut out = match map.get("text") {
+                Some(fastnbt::Value::String(text)) => text.clone(),
+                _ => match map.get("translate") {
+                    Some(fastnbt::Value::String(key)) => key.clone(),
+                    _ => String::new(),
+                },
+            };
+            if let Some(fastnbt::Value::List(extra)) = map.get("extra") {
+                out.extend(extra.iter().map(text_of));
+            }
+            out
+        }
+        fastnbt::Value::List(parts) => parts.iter().map(text_of).collect(),
+        _ => String::new(),
+    }
+}
+
+fn json_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(text) => text.clone(),
+        serde_json::Value::Array(parts) => parts.iter().map(json_text).collect(),
+        serde_json::Value::Object(map) => {
+            let mut out = map
+                .get("text")
+                .and_then(|text| text.as_str())
+                .or_else(|| map.get("translate").and_then(|key| key.as_str()))
+                .unwrap_or_default()
+                .to_string();
+            if let Some(serde_json::Value::Array(extra)) = map.get("extra") {
+                out.extend(extra.iter().map(json_text));
+            }
+            out
+        }
+        _ => String::new(),
+    }
 }
 
 fn overworld_data_dir(level_dat: &Path) -> Option<std::path::PathBuf> {
@@ -432,6 +584,111 @@ fn compound_mut(value: &mut fastnbt::Value) -> Option<&mut std::collections::Has
 #[cfg(test)]
 mod tests {
     use super::game_mode_label;
+
+    #[test]
+    fn reads_armor_and_offhand_from_the_equipment_compound() {
+        use fastnbt::Value;
+        use std::collections::HashMap;
+        let item = |id: &str, count: Option<i32>| {
+            let mut map = HashMap::new();
+            map.insert("id".to_string(), Value::String(id.to_string()));
+            if let Some(count) = count {
+                map.insert("count".to_string(), Value::Int(count));
+            }
+            Value::Compound(map)
+        };
+        let mut slot0 = match item("minecraft:stone", Some(5)) { Value::Compound(map) => map, _ => unreachable!() };
+        slot0.insert("Slot".to_string(), Value::Byte(0));
+        let mut equipment = HashMap::new();
+        equipment.insert("head".to_string(), item("minecraft:diamond_helmet", None));
+        equipment.insert("feet".to_string(), item("minecraft:iron_boots", Some(1)));
+        equipment.insert("offhand".to_string(), item("minecraft:shield", Some(1)));
+        let mut root = HashMap::new();
+        root.insert("Inventory".to_string(), Value::List(vec![Value::Compound(slot0)]));
+        root.insert("equipment".to_string(), Value::Compound(equipment));
+        let snapshot = super::snapshot_of(Value::Compound(root), "u").unwrap();
+        let at = |slot: i64| snapshot.inventory.iter().find(|one| one.slot == slot).map(|one| (one.id.as_str(), one.count));
+        assert_eq!(at(0), Some(("minecraft:stone", 5)));
+        assert_eq!(at(103), Some(("minecraft:diamond_helmet", 1)));
+        assert_eq!(at(100), Some(("minecraft:iron_boots", 1)));
+        assert_eq!(at(-106), Some(("minecraft:shield", 1)));
+        assert_eq!(at(102), None);
+    }
+
+    #[test]
+    fn reads_item_details_in_old_and_new_shapes() {
+        use fastnbt::Value;
+        use std::collections::HashMap;
+        let map = |pairs: Vec<(&str, Value)>| -> Value {
+            Value::Compound(pairs.into_iter().map(|(key, value)| (key.to_string(), value)).collect::<HashMap<_, _>>())
+        };
+        let new_sword = map(vec![
+            ("id", Value::String("minecraft:diamond_sword".into())),
+            ("count", Value::Int(1)),
+            ("Slot", Value::Byte(0)),
+            ("components", map(vec![
+                ("minecraft:damage", Value::Int(61)),
+                ("minecraft:enchantments", map(vec![
+                    ("minecraft:sharpness", Value::Int(5)),
+                    ("minecraft:unbreaking", Value::Int(3)),
+                ])),
+                ("minecraft:custom_name", map(vec![
+                    ("text", Value::String("Ex".into())),
+                    ("extra", Value::List(vec![Value::String("calibur".into())])),
+                ])),
+            ])),
+        ]);
+        let mid_book = map(vec![
+            ("id", Value::String("minecraft:enchanted_book".into())),
+            ("count", Value::Int(1)),
+            ("Slot", Value::Byte(1)),
+            ("components", map(vec![
+                ("minecraft:stored_enchantments", map(vec![
+                    ("levels", map(vec![("minecraft:mending", Value::Int(1))])),
+                    ("show_in_tooltip", Value::Byte(1)),
+                ])),
+                ("minecraft:custom_name", Value::String(r#"{"text":"Book"}"#.into())),
+            ])),
+        ]);
+        let old_pick = map(vec![
+            ("id", Value::String("minecraft:iron_pickaxe".into())),
+            ("Count", Value::Byte(1)),
+            ("Slot", Value::Byte(2)),
+            ("tag", map(vec![
+                ("Damage", Value::Int(9)),
+                ("Enchantments", Value::List(vec![map(vec![
+                    ("id", Value::String("minecraft:efficiency".into())),
+                    ("lvl", Value::Short(4)),
+                ])])),
+                ("display", map(vec![("Name", Value::String(r#"{"text":"Digger"}"#.into()))])),
+            ])),
+        ]);
+        let pearl = map(vec![
+            ("id", Value::String("minecraft:ender_pearl".into())),
+            ("count", Value::Int(16)),
+            ("Slot", Value::Byte(26)),
+        ]);
+        let root = map(vec![
+            ("Inventory", Value::List(vec![new_sword, mid_book, old_pick])),
+            ("EnderItems", Value::List(vec![pearl])),
+        ]);
+        let snapshot = super::snapshot_of(root, "u").unwrap();
+        let at = |slot: i64| snapshot.inventory.iter().find(|one| one.slot == slot).unwrap();
+        let sword = at(0);
+        assert_eq!(sword.name, "Excalibur");
+        assert_eq!(sword.damage, 61);
+        let levels: Vec<_> = sword.enchantments.iter().map(|one| (one.id.as_str(), one.level)).collect();
+        assert_eq!(levels, vec![("minecraft:sharpness", 5), ("minecraft:unbreaking", 3)]);
+        let book = at(1);
+        assert_eq!(book.name, "Book");
+        assert_eq!(book.enchantments.len(), 1);
+        assert_eq!(book.enchantments[0].id, "minecraft:mending");
+        let pick = at(2);
+        assert_eq!((pick.name.as_str(), pick.damage, pick.count), ("Digger", 9, 1));
+        assert_eq!(pick.enchantments[0].level, 4);
+        assert_eq!(snapshot.ender_items.len(), 1);
+        assert_eq!((snapshot.ender_items[0].slot, snapshot.ender_items[0].count), (26, 16));
+    }
 
     #[test]
     fn reads_and_writes_a_26x_world() {

@@ -67,7 +67,6 @@ describe("format handles the ICU plural subset", () => {
     const chunk = "{0, plural, one {# entity} other {# entities}} in one chunk";
     expect(tr(chunk, [1])).toBe("1 entity in one chunk");
     expect(tr(chunk, ["1,900"])).toBe("1,900 entities in one chunk");
-    expect(t("top.subtitle", { total: 1, running: 0 })).toBe("1 server · 0 running");
   });
 });
 

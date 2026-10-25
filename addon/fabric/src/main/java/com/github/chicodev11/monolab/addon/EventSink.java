@@ -111,6 +111,12 @@ final class EventSink {
         }
     }
 
+    void inventories(String json) {
+        if (log != null) {
+            log.setInventories(json);
+        }
+    }
+
     void perf(double mspt, int players, long chunks, long entities) {
         add(new Json()
                 .put("at", System.currentTimeMillis())

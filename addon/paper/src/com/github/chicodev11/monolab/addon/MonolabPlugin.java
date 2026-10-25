@@ -28,6 +28,7 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
     private MapRender map;
     private int liveCount;
     private boolean chunkListBroken;
+    private boolean inventoriesBroken;
 
     @Override
     public void onEnable() {
@@ -204,6 +205,14 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
         }
         people.append(']');
         EntityTally tally = tallyEntities();
+        if (!inventoriesBroken && liveCount % LoadedChunks.EVERY_SECONDS == 0) {
+            try {
+                log.setInventories(inventories());
+            } catch (RuntimeException | LinkageError trouble) {
+                inventoriesBroken = true;
+                getLogger().log(Level.INFO, "Player inventories aren't available on this server; skipping them.", trouble);
+            }
+        }
         if (!chunkListBroken && liveCount++ % LoadedChunks.EVERY_SECONDS == 0) {
             try {
                 log.setLoaded(loadedChunkList());
@@ -225,6 +234,35 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
                 .raw("worlds", tally.worldsJson())
                 .raw("players", people.toString())
                 .end());
+    }
+
+private String inventories() {
+        Inventories all = new Inventories();
+        for (Player player : getServer().getOnlinePlayers()) {
+            all.player(player.getName(), player.getUniqueId().toString());
+            org.bukkit.inventory.PlayerInventory bag = player.getInventory();
+            for (int at = 0; at < bag.getSize(); at++) {
+                org.bukkit.inventory.ItemStack stack = bag.getItem(at);
+                if (stack != null && !stack.getType().isAir()) {
+                    all.bag(at, stack.getType().getKey().toString(), stack.getAmount(), damageOf(stack));
+                }
+            }
+            org.bukkit.inventory.Inventory ender = player.getEnderChest();
+            for (int at = 0; at < ender.getSize(); at++) {
+                org.bukkit.inventory.ItemStack stack = ender.getItem(at);
+                if (stack != null && !stack.getType().isAir()) {
+                    all.ender(at, stack.getType().getKey().toString(), stack.getAmount(), damageOf(stack));
+                }
+            }
+        }
+        return all.json();
+    }
+
+    private static int damageOf(org.bukkit.inventory.ItemStack stack) {
+        if (stack.hasItemMeta() && stack.getItemMeta() instanceof org.bukkit.inventory.meta.Damageable meta) {
+            return meta.getDamage();
+        }
+        return 0;
     }
 
     private EntityTally tallyEntities() {
