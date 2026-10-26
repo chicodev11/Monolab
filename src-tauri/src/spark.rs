@@ -24,7 +24,7 @@ pub struct SparkReport {
 }
 
 fn bundled_in(core: &str, version: &str) -> bool {
-    if !matches!(core, "Paper" | "Purpur" | "Folia") {
+    if !matches!(core, "Paper" | "Purpur" | "Folia" | "Leaf") {
         return false;
     }
     let mut parts = version.split('.').map(|part| part.parse::<u32>().unwrap_or(0));
@@ -34,7 +34,7 @@ fn bundled_in(core: &str, version: &str) -> bool {
 }
 
 pub fn info(core: &str, version: &str, server: &Path) -> SparkInfo {
-    let has_jar = matches!(core, "Paper" | "Purpur" | "Folia" | "NeoForge" | "Fabric" | "Forge")
+    let has_jar = matches!(core, "Paper" | "Purpur" | "Folia" | "Leaf" | "NeoForge" | "Fabric" | "Forge")
         && addons::scan(server)
             .iter()
             .any(|one| one.enabled && one.mod_id.eq_ignore_ascii_case(MOD_ID));

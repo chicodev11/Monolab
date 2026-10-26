@@ -1,6 +1,17 @@
 [
   {
     "kind": "app",
+    "version": "1.4.2",
+    "date": "2026-10-26",
+    "added": [
+      "Leaf server core: pick it when creating a server, with plugins, the Monolab add-on and spark like Paper."
+    ],
+    "fixed": [
+      "SSH servers in the same parent folder shared one backup list, so restoring or cleaning old backups could touch another server. Each server now keeps its own backups."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.4.1",
     "date": "2026-10-25",
     "changed": [

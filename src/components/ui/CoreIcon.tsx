@@ -24,6 +24,10 @@ export const coreInfo: Record<string, CoreInfo> = {
     icon: "purpur",
     kind: tr("Plugins"),
   },
+  Leaf: {
+    icon: "leaf",
+    kind: tr("Plugins"),
+  },
   Folia: {
     icon: "folia",
     kind: tr("Plugins"),
@@ -83,6 +87,13 @@ function CoreGlyph({ core }: { core: string }) {
         <path d="M9 15.5c1.6-3.2 3.9-5.5 7-7" />
       </svg>
     );
+  if (core === "Leaf")
+    return (
+      <svg {...p}>
+        <path d="M12 3.5c4.6 3 6.4 7.2 5 11.2-.9 2.6-2.8 4.4-5 5-2.2-.6-4.1-2.4-5-5-1.4-4 .4-8.2 5-11.2z" />
+        <path d="M12 8v13M12 12.5l2.6-2M12 16l-2.6-2" />
+      </svg>
+    );
   if (core === "Pumpkin")
     return (
       <svg {...p}>
@@ -113,6 +124,16 @@ function GameLogo({ game }: { game: GameInfo }) {
   return <img className="core-logo game-logo" src={game.logo} alt="" draggable={false} onError={() => setBroken(true)} />;
 }
 
+const REMOTE_CORE_LOGOS: Record<string, string> = {
+  Leaf: "https://www.leafmc.one/favicon.ico",
+};
+
+function RemoteCoreLogo({ core, src }: { core: string; src: string }) {
+  const [broken, setBroken] = useState(false);
+  if (broken) return <CoreGlyph core={core} />;
+  return <img className="core-logo" src={src} alt="" draggable={false} onError={() => setBroken(true)} />;
+}
+
 const MINECRAFT_LOGO =
   "https://www.minecraft.net/etc.clientlibs/minecraftnet/clientlibs/clientlib-site/resources/favicon-96x96.png";
 
@@ -126,6 +147,8 @@ export function CoreIcon({ core }: { core: string }) {
   if (core === customProgram.id) return <Icon name={customProgram.icon} />;
   const game = findGame(core);
   if (game) return <GameLogo game={game} />;
+  const remote = REMOTE_CORE_LOGOS[core];
+  if (remote) return <RemoteCoreLogo core={core} src={remote} />;
   const logo = coreLogos[core];
   if (!logo) return <CoreGlyph core={core} />;
   if (logo.darkSrc)

@@ -308,7 +308,7 @@ const CATALOG_CATEGORIES: { id: string; ko: string; icon: string }[] = [
   { id: "cursed", ko: "Cursed", icon: "ghost" },
 ];
 const LOADER_CORE: Record<string, string> = {
-  paper: "Paper", folia: "Folia", purpur: "Purpur", fabric: "Fabric", forge: "Forge", neoforge: "NeoForge",
+  paper: "Paper", folia: "Folia", purpur: "Purpur", leaf: "Leaf", fabric: "Fabric", forge: "Forge", neoforge: "NeoForge",
   velocity: "Velocity", bungeecord: "BungeeCord", vanilla: "Vanilla",
 };
 function loaderChip(loader: string) {
@@ -6316,7 +6316,7 @@ function App() {
               })}
             </ul>
           )}
-          {lagReport.spark && (lagReport.spark.available || lagReport.spark.installable || selected.core === "Paper" || selected.core === "Purpur" || selected.core === "Folia") && (
+          {lagReport.spark && (lagReport.spark.available || lagReport.spark.installable || selected.core === "Paper" || selected.core === "Purpur" || selected.core === "Folia" || selected.core === "Leaf") && (
             <div className="spark-row">
               <div className="lag-body">
                 <strong>{tr("spark profiler")}</strong>
@@ -11371,7 +11371,7 @@ function App() {
                         NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.
                       </small>
                       <small className="about-notice">
-                        {tr("Server files (Vanilla, Paper, Purpur, Folia, Fabric, Forge, NeoForge, Pumpkin) are not bundled; they are downloaded from each project's official source and are subject to that project's terms.")}
+                        {tr("Server files (Vanilla, Paper, Purpur, Leaf, Folia, Fabric, Forge, NeoForge, Pumpkin) are not bundled; they are downloaded from each project's official source and are subject to that project's terms.")}
                       </small>
                       <small className="about-notice">
                         {tr("The Paper and Velocity logos are PaperMC brand assets. The Purpur, Fabric, Forge and NeoForge logos belong to their respective projects. All logos use their original colors and proportions.")}

@@ -4,6 +4,7 @@
     { "id": "Vanilla", "sizeBytes": 60000000, "create": true, "java": true, "versions": true, "addons": null, "proxy": false, "pregen": false },
     { "id": "Paper", "sizeBytes": 120000000, "create": true, "java": true, "versions": true, "addons": "plugin", "proxy": false, "pregen": true },
     { "id": "Purpur", "sizeBytes": 130000000, "create": true, "java": true, "versions": true, "addons": "plugin", "proxy": false, "pregen": true },
+    { "id": "Leaf", "sizeBytes": 140000000, "create": true, "java": true, "versions": true, "addons": "plugin", "proxy": false, "pregen": true },
     { "id": "Folia", "sizeBytes": 120000000, "create": true, "java": true, "versions": true, "addons": "plugin", "proxy": false, "pregen": true },
     { "id": "Fabric", "sizeBytes": 80000000, "create": true, "java": true, "versions": true, "addons": "mod", "proxy": false, "pregen": true },
     { "id": "Forge", "sizeBytes": 250000000, "create": true, "java": true, "versions": true, "addons": "mod", "proxy": false, "pregen": true },

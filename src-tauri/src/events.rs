@@ -19,7 +19,7 @@ pub enum AddonKind {
 
 pub fn addon_kind(core: &str) -> Option<AddonKind> {
     match core {
-        "Paper" | "Purpur" | "Folia" => Some(AddonKind::Paper),
+        "Paper" | "Purpur" | "Folia" | "Leaf" => Some(AddonKind::Paper),
         "NeoForge" => Some(AddonKind::NeoForge),
         "Fabric" => Some(AddonKind::Fabric),
         "Pumpkin" => Some(AddonKind::Pumpkin),

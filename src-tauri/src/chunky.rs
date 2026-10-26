@@ -63,7 +63,7 @@ pub fn read_line(line: &str, now: u64) -> Option<ChunkyProgress> {
 
 /// The world name Chunky expects for a dimension.
 pub fn world_name(core: &str, level: &str, realm: &str) -> String {
-    let bukkit = matches!(core, "Paper" | "Purpur" | "Folia" | "Spigot" | "Bukkit");
+    let bukkit = matches!(core, "Paper" | "Purpur" | "Folia" | "Leaf" | "Spigot" | "Bukkit");
     match (bukkit, realm) {
         (true, "nether") => format!("{level}_nether"),
         (true, "end") => format!("{level}_the_end"),

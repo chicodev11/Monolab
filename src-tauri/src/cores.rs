@@ -16,6 +16,7 @@ pub fn list_core_versions(core: &str, snapshots: bool) -> Result<Vec<String>, St
         "Paper" => papermc_versions(&client, "paper", snapshots),
         "Folia" => papermc_versions(&client, "folia", snapshots),
         "Purpur" => purpur_versions(&client),
+        "Leaf" => leaf_versions(&client, snapshots),
         "Fabric" => fabric_versions(&client, snapshots),
         "Forge" => forge_versions(&client),
         "NeoForge" => neoforge_versions(&client),
@@ -56,6 +57,7 @@ pub fn list_core_builds(core: &str, version: &str) -> Result<Vec<CoreBuild>, Str
         "Paper" => fill_builds(&client, "paper", version),
         "Folia" => fill_builds(&client, "folia", version),
         "Purpur" => purpur_builds(&client, version),
+        "Leaf" => leaf_builds(&client, version),
         "Fabric" => fabric_builds(&client),
         "NeoForge" => neoforge_builds(&client, version),
         "Forge" => forge_builds(&client, version),
@@ -406,6 +408,119 @@ fn papermc_versions(
     list.sort_by(|a, b| compare_versions(b, a));
     list.dedup();
     Ok(list)
+}
+
+const LEAF_API: &str = "https://api.leafmc.one/v2/projects/leaf";
+
+fn leaf_versions(client: &reqwest::blocking::Client, snapshots: bool) -> Result<Vec<String>, String> {
+    let data: serde_json::Value = client
+        .get(LEAF_API)
+        .send()
+        .map_err(|error| format!("Could not fetch the Leaf version list: {error}"))?
+        .error_for_status()
+        .map_err(|error| error.to_string())?
+        .json()
+        .map_err(|error| error.to_string())?;
+    let mut list: Vec<String> = data
+        .get("versions")
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|item| item.as_str())
+        .filter(|item| snapshots || !item.contains('-'))
+        .map(str::to_owned)
+        .collect();
+    list.sort_by(|a, b| compare_versions(b, a));
+    list.dedup();
+    Ok(list)
+}
+
+fn leaf_build_items(
+    client: &reqwest::blocking::Client,
+    version: &str,
+) -> Result<Vec<serde_json::Value>, String> {
+    let data: serde_json::Value = client
+        .get(format!("{LEAF_API}/versions/{version}/builds"))
+        .send()
+        .map_err(|error| format!("Could not fetch the Leaf build list: {error}"))?
+        .error_for_status()
+        .map_err(|_| format!("Leaf has no build for Minecraft {version}."))?
+        .json()
+        .map_err(|error| error.to_string())?;
+    let mut items: Vec<serde_json::Value> = data
+        .get("builds")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+    items.reverse();
+    Ok(items)
+}
+
+fn leaf_stable(item: &serde_json::Value) -> bool {
+    item.get("channel").and_then(|value| value.as_str()) == Some("default")
+}
+
+fn leaf_builds(client: &reqwest::blocking::Client, version: &str) -> Result<Vec<CoreBuild>, String> {
+    Ok(leaf_build_items(client, version)?
+        .iter()
+        .filter_map(|item| {
+            let id = item.get("build")?.as_i64()?.to_string();
+            Some(CoreBuild {
+                label: id.clone(),
+                id,
+                stable: leaf_stable(item),
+                channel: item
+                    .get("channel")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                when: item
+                    .get("time")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+            })
+        })
+        .collect())
+}
+
+fn leaf_download_source(
+    client: &reqwest::blocking::Client,
+    version: &str,
+    build: Option<&str>,
+) -> Result<DownloadSource, String> {
+    let items = leaf_build_items(client, version)?;
+    let id_of = |item: &serde_json::Value| item.get("build").and_then(|id| id.as_i64()).map(|id| id.to_string());
+    let picked = match build {
+        Some(wanted) => items
+            .iter()
+            .find(|item| id_of(item).as_deref() == Some(wanted))
+            .ok_or_else(|| format!("Leaf build {wanted} was not found."))?,
+        // A version with only experimental builds still gets its newest one.
+        None => items
+            .iter()
+            .find(|item| leaf_stable(item))
+            .or_else(|| items.first())
+            .ok_or_else(|| format!("Leaf has no build for Minecraft {version}."))?,
+    };
+    let chosen = id_of(picked).ok_or("The Leaf build info is malformed.")?;
+    let file = picked
+        .pointer("/downloads/primary")
+        .ok_or("The Leaf build has no download info.")?;
+    let name = file
+        .get("name")
+        .and_then(|value| value.as_str())
+        .filter(|name| !name.is_empty() && !name.contains(['/', '\\']))
+        .ok_or("The Leaf download info is malformed.")?;
+    Ok(DownloadSource {
+        url: format!("{LEAF_API}/versions/{version}/builds/{chosen}/downloads/{name}"),
+        sha1: None,
+        sha256: file
+            .get("sha256")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned),
+        md5: None,
+    })
 }
 
 fn purpur_versions(client: &reqwest::blocking::Client) -> Result<Vec<String>, String> {
@@ -944,6 +1059,7 @@ pub(crate) fn download_server_jar(
             "Paper" => fill_download_source(&client, "paper", version, build)?,
             "Folia" => fill_download_source(&client, "folia", version, build)?,
             "Purpur" => purpur_download_source(&client, version, build)?,
+            "Leaf" => leaf_download_source(&client, version, build)?,
             "Fabric" => fabric_download_source(&client, version, build)?,
             "Forge" => { install_forge(app, version, build, folder, &client, operation_id)?; return Ok(None); }
             "NeoForge" => { install_neoforge(app, version, build, folder, &client, operation_id)?; return Ok(None); }
@@ -983,10 +1099,25 @@ mod tests {
 
     #[test]
     #[ignore]
+    fn finds_a_real_leaf_build() {
+        let client = crate::net::builder().build().unwrap();
+        let versions = super::leaf_versions(&client, false).expect("leaf versions");
+        println!("Leaf versions: {versions:?}");
+        for version in ["1.21.8", versions[0].as_str()] {
+            let source = super::leaf_download_source(&client, version, None).expect("leaf download");
+            println!("{version}: {}", source.url);
+            assert!(source.sha256.is_some());
+            crate::net::check_download_url(&source.url).expect("allowed host");
+        }
+    }
+
+    #[test]
+    #[ignore]
     fn lists_real_core_builds() {
         for (core, version) in [
             ("Paper", "1.21.4"),
             ("Purpur", "1.21.4"),
+            ("Leaf", "1.21.8"),
             ("Fabric", "1.21.4"),
             ("NeoForge", "1.21.4"),
             ("Forge", "1.21.4"),

@@ -1648,7 +1648,7 @@ async fn delete_backup(app: AppHandle, id: String, file_name: String) -> Result<
         }
         if !instance.remote_host.is_empty() {
             let name = plain_name(&file_name)?;
-            let vault = format!("{}/../.monolab-backups", instance.path.trim_end_matches('/'));
+            let vault = remote::backup_vault(&instance.path);
             let conn = remote::connect(&app, &instance.remote_host).await?;
             conn.run(&format!(
                 "rm -f {}",
@@ -3763,6 +3763,7 @@ fn guess_java(command: &str) -> (String, Option<String>) {
     let core = [
         ("folia", "Folia"),
         ("purpur", "Purpur"),
+        ("leaf", "Leaf"),
         ("pufferfish", "Pufferfish"),
         ("paper", "Paper"),
         ("spigot", "Spigot"),
@@ -3924,6 +3925,7 @@ fn loader_label(loader: &str) -> String {
     match loader {
         "paper" => "Paper".into(),
         "purpur" => "Purpur".into(),
+        "leaf" => "Leaf".into(),
         "folia" => "Folia".into(),
         "fabric" => "Fabric".into(),
         "neoforge" => "NeoForge".into(),
@@ -8723,7 +8725,7 @@ async fn chunky_folder_and_jar(app: &AppHandle, instance: &ServerInstance) -> (S
             return (folder.to_string(), "chunky".into());
         }
     }
-    let folder = if matches!(instance.core.as_str(), "Paper" | "Purpur" | "Folia") { "plugins" } else { "mods" };
+    let folder = if matches!(instance.core.as_str(), "Paper" | "Purpur" | "Folia" | "Leaf") { "plugins" } else { "mods" };
     (folder.to_string(), String::new())
 }
 
@@ -14539,7 +14541,7 @@ fn search_modrinth_page(
         .build()
         .map_err(|error| error.to_string())?;
     let mut facets: Vec<Vec<String>> = Vec::new();
-    let kind = if matches!(instance.core.as_str(), "Paper" | "Purpur" | "Folia" | "Spigot" | "Bukkit") {
+    let kind = if matches!(instance.core.as_str(), "Paper" | "Purpur" | "Folia" | "Leaf" | "Spigot" | "Bukkit") {
         "plugin"
     } else {
         "mod"
@@ -14650,7 +14652,7 @@ fn instance_loader(instance: &ServerInstance) -> Result<(&'static str, &'static 
         "Fabric" => Ok(("mods", "fabric")),
         "Forge" => Ok(("mods", "forge")),
         "NeoForge" => Ok(("mods", "neoforge")),
-        "Paper" | "Purpur" | "Folia" => Ok(("plugins", "paper")),
+        "Paper" | "Purpur" | "Folia" | "Leaf" => Ok(("plugins", "paper")),
         "Velocity" => Ok(("plugins", "velocity")),
         "BungeeCord" => Ok(("plugins", "bungeecord")),
         _ => Err("This core does not support automatic mod/plugin management.".into()),

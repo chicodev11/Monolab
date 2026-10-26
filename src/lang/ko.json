@@ -2184,7 +2184,7 @@
     "Transfer your server list and settings to another computer using a file.": "다른 컴퓨터로 옮겨요.",
     "About": "앱 정보",
     "This app is a personal project and is not affiliated with Mojang or Microsoft.": "이 앱은 개인이 만든 것으로 Mojang·Microsoft와 아무 관계가 없어요.",
-    "Server files (Vanilla, Paper, Purpur, Folia, Fabric, Forge, NeoForge, Pumpkin) are not bundled; they are downloaded from each project's official source and are subject to that project's terms.": "서버 파일(Vanilla·Paper·Purpur·Folia·Fabric·Forge·NeoForge·Pumpkin)은 앱에 들어 있지 않고 각 공식 배포처에서 받아요. 사용 조건도 각 배포처를 따라요.",
+    "Server files (Vanilla, Paper, Purpur, Leaf, Folia, Fabric, Forge, NeoForge, Pumpkin) are not bundled; they are downloaded from each project's official source and are subject to that project's terms.": "서버 파일(Vanilla·Paper·Purpur·Leaf·Folia·Fabric·Forge·NeoForge·Pumpkin)은 앱에 들어 있지 않고 각 공식 배포처에서 받아요. 사용 조건도 각 배포처를 따라요.",
     "The Paper and Velocity logos are PaperMC brand assets. The Purpur, Fabric, Forge and NeoForge logos belong to their respective projects. All logos use their original colors and proportions.": "Paper·Velocity 로고는 PaperMC의 브랜드 자산이고, Purpur·Fabric·Forge·NeoForge 로고는 각 프로젝트의 것이에요. 모두 원래 색과 비율 그대로 써요.",
     "See the open-source notices for the full licenses of Inter, JetBrains Mono, Noto Sans KR (SIL OFL 1.1) and all open-source components used.": "글꼴 Inter·JetBrains Mono·Noto Sans KR(SIL OFL 1.1)과 사용한 오픈소스 전체의 라이선스는 오픈소스 고지에서 볼 수 있어요.",
     "Provided as is. This is a personal project, and the developer isn't liable for issues. Keep your own backups of the server folder, especially worlds.": "개인이 만든 앱이라 있는 그대로 제공돼요. 문제가 생겨도 책임지지 못해요. 서버 폴더, 특히 월드는 따로 백업해 두세요.",

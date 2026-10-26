@@ -5,6 +5,7 @@ const HOSTS: &[&str] = &[
     "modrinth.com",
     "papermc.io",
     "purpurmc.org",
+    "leafmc.one",
     "fabricmc.net",
     "neoforged.net",
     "minecraftforge.net",

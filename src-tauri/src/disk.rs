@@ -136,7 +136,7 @@ pub fn remote_script() -> String {
         "find crash-reports -maxdepth 1 -type f -mtime +30 -printf 'old-crash-reports %s\\n' 2>/dev/null",
         "find . logs -maxdepth 1 -type f -name '*.hprof' -printf 'heap-dumps %s\\n' 2>/dev/null",
         "echo @backups",
-        "du -sk ../.monolab-backups 2>/dev/null",
+        "du -sk \"../.monolab-backups/${PWD##*/}\" 2>/dev/null",
         "echo @trash",
         "du -sk .monolab-trash 2>/dev/null",
         "echo @free",

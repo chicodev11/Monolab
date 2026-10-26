@@ -138,5 +138,7 @@
   "A server whose folder was deleted showed a confusing Windows error and could not be removed from the list. It now shows \"Folder missing\" and can be removed.": "폴더가 사라진 서버가 알 수 없는 Windows 오류를 내고 목록에서 지워지지도 않던 문제를 고쳤어요. 이제 '폴더 없음'으로 보이고 목록에서 뺄 수 있어요.",
   "The Trash is in the top menu, next to Settings.": "휴지통이 위쪽 메뉴의 설정 옆으로 옮겨졌어요.",
   "Text fields showed two outlines when focused. Now the field border lights up once.": "입력칸을 누르면 테두리가 두 겹으로 생기던 문제를 고쳤어요. 이제 칸 테두리만 한 번 밝아져요.",
-  "Creating a server from a modpack ignored the SSH server chosen under Create on and made it on this PC.": "모드팩으로 서버를 만들면 만들 위치에서 고른 SSH 서버를 무시하고 로컬에 만들던 문제를 고쳤어요."
+  "Creating a server from a modpack ignored the SSH server chosen under Create on and made it on this PC.": "모드팩으로 서버를 만들면 만들 위치에서 고른 SSH 서버를 무시하고 로컬에 만들던 문제를 고쳤어요.",
+  "Leaf server core: pick it when creating a server, with plugins, the Monolab add-on and spark like Paper.": "Leaf 코어를 지원해요. 서버를 만들 때 고를 수 있고, Paper처럼 플러그인·Monolab 애드온·spark를 쓸 수 있어요.",
+  "SSH servers in the same parent folder shared one backup list, so restoring or cleaning old backups could touch another server. Each server now keeps its own backups.": "같은 폴더 아래 SSH 서버들이 백업 목록을 함께 써서 복원이나 오래된 백업 정리가 다른 서버에 닿을 수 있던 문제를 고쳤어요. 이제 서버마다 백업을 따로 둬요."
 }

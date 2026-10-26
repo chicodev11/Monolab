@@ -814,7 +814,7 @@ fn looks_like_minecraft(command: &str) -> bool {
     let lower = command.to_lowercase();
     lower.contains("-jar")
         || [
-            "paper", "purpur", "folia", "fabric", "forge", "neoforge", "spigot", "minecraft",
+            "paper", "purpur", "leaf", "folia", "fabric", "forge", "neoforge", "spigot", "minecraft",
         ]
         .iter()
         .any(|name| lower.contains(name))
@@ -1953,6 +1953,12 @@ pub async fn resource(app: &AppHandle, host_id: &str, pid: u32) -> Option<(f64, 
     Some((cpu, bits[4] / 1024))
 }
 
+pub fn backup_vault(folder: &str) -> String {
+    let folder = folder.trim_end_matches('/');
+    let own = folder.rsplit('/').next().unwrap_or(folder);
+    format!("{folder}/../.monolab-backups/{own}")
+}
+
 pub async fn make_backup(
     app: &AppHandle,
     host_id: &str,
@@ -1960,7 +1966,7 @@ pub async fn make_backup(
     label: &str,
 ) -> Result<String, String> {
     let folder = folder.trim_end_matches('/');
-    let vault = format!("{folder}/../.monolab-backups");
+    let vault = backup_vault(folder);
     let name = format!("{}-{label}.tar.gz", unix_secs());
     let conn = connect(app, host_id).await?;
     conn.run_long(&format!(
@@ -1977,7 +1983,7 @@ pub async fn make_backup(
 }
 
 pub async fn sweep_backups(app: &AppHandle, host_id: &str, folder: &str, days: u32) -> Result<(), String> {
-    let vault = format!("{}/../.monolab-backups", folder.trim_end_matches('/'));
+    let vault = backup_vault(folder);
     let old = if days == 0 {
         String::new()
     } else {
@@ -2004,7 +2010,7 @@ pub async fn restore_backup(
         return Err("The backup name is malformed.".into());
     }
     let folder = folder.trim_end_matches('/');
-    let archive = format!("{folder}/../.monolab-backups/{name}");
+    let archive = format!("{}/{name}", backup_vault(folder));
     let conn = connect(app, host_id).await?;
     conn.run(&format!("test -f {}", quote(&archive)))
         .await?
@@ -2226,7 +2232,7 @@ pub async fn swap_core(
         return Err("The server jar to replace was not found.".into());
     }
     let folder = folder.trim_end_matches('/');
-    let vault = format!("{folder}/../.monolab-backups");
+    let vault = backup_vault(folder);
     let current = format!("{folder}/{jar}");
     let previous = format!("{vault}/previous-{stamp}-{jar}");
     let conn = connect(app, host_id).await?;
@@ -2263,9 +2269,10 @@ pub async fn restore_core(
         return Err("The server jar file name is invalid.".into());
     }
     let folder = folder.trim_end_matches('/');
-    let vault = format!("{folder}/../.monolab-backups");
+    let vault = backup_vault(folder);
     let tail = previous
         .strip_prefix(&format!("{vault}/"))
+        .or_else(|| previous.strip_prefix(&format!("{folder}/../.monolab-backups/")))
         .filter(|rest| !rest.is_empty() && !rest.contains('/'))
         .ok_or("The previous jar path is malformed.")?;
     let current = format!("{folder}/{jar}");
@@ -2288,7 +2295,7 @@ pub async fn restore_core(
 }
 
 pub async fn backups(app: &AppHandle, host_id: &str, folder: &str) -> Vec<FileRow> {
-    let vault = format!("{}/../.monolab-backups", folder.trim_end_matches('/'));
+    let vault = backup_vault(folder);
     let Ok(conn) = connect(app, host_id).await else {
         return Vec::new();
     };
@@ -2620,6 +2627,12 @@ pub fn quote(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_server_keeps_its_own_backups() {
+        assert_eq!(backup_vault("/srv/mc/aero/"), "/srv/mc/aero/../.monolab-backups/aero");
+        assert_ne!(backup_vault("/srv/mc/aero"), backup_vault("/srv/mc/lobby"));
+    }
 
     #[test]
     #[ignore]

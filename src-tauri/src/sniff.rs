@@ -47,6 +47,7 @@ fn core_in_lowercase(name: &str) -> Option<String> {
     for (needle, core) in [
         ("pumpkin", "Pumpkin"),
         ("purpur", "Purpur"),
+        ("leaf", "Leaf"),
         ("folia", "Folia"),
         ("paper", "Paper"),
         ("fabric", "Fabric"),
@@ -85,6 +86,8 @@ fn by_contents(jar: &Path) -> Option<Sniffed> {
             .to_lowercase();
         let core = if list.contains("purpur") {
             "Purpur"
+        } else if list.contains("/leaf-") {
+            "Leaf"
         } else if list.contains("folia") {
             "Folia"
         } else {

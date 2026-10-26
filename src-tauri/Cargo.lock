@@ -3277,7 +3277,7 @@ dependencies = [
 
 [[package]]
 name = "monolab"
-version = "1.4.1"
+version = "1.4.2"
 dependencies = [
  "ammonia",
  "argon2",
