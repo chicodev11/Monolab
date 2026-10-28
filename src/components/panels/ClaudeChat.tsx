@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ClipboardEvent, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useRef, useState, type ClipboardEvent, type ReactNode } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { commands } from "../../lib/ipc";
 import { tr } from "../../lib/i18n";
@@ -134,7 +134,7 @@ function inline(source: string, base: string): ReactNode[] {
   return out;
 }
 
-function Markdown({ text }: { text: string }) {
+function MarkdownBody({ text }: { text: string }) {
   const blocks: ReactNode[] = [];
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   let at = 0;
@@ -203,7 +203,10 @@ function Markdown({ text }: { text: string }) {
   return <div className="md">{blocks}</div>;
 }
 
-function ToolRow({ item }: { item: Extract<ChatItem, { kind: "tool" }> }) {
+// Streaming changes one message at a time; the others keep their props and skip re-parsing.
+const Markdown = memo(MarkdownBody);
+
+function ToolRowBody({ item }: { item: Extract<ChatItem, { kind: "tool" }> }) {
   const summary = toolSummary(item.name, item.input);
   const state = item.result === undefined ? "run" : item.failed ? "bad" : "ok";
   return (
@@ -223,6 +226,8 @@ function ToolRow({ item }: { item: Extract<ChatItem, { kind: "tool" }> }) {
 }
 
 type Question = { question: string; header?: string; multiSelect?: boolean; options: { label: string; description?: string }[] };
+
+const ToolRow = memo(ToolRowBody);
 
 function PermissionCard({
   item,

@@ -314,8 +314,10 @@ pub fn history(app: &AppHandle, server: &str) -> Result<Vec<String>, String> {
 }
 
 fn conversation_lines(text: &str) -> Vec<String> {
-    let lines: Vec<String> = text
+    // From the end, so a long conversation only parses the part that is shown.
+    let mut lines: Vec<String> = text
         .lines()
+        .rev()
         .filter(|line| {
             let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else { return false };
             let kind = value.get("type").and_then(|one| one.as_str()).unwrap_or("");
@@ -323,10 +325,11 @@ fn conversation_lines(text: &str) -> Vec<String> {
             let side = value.get("isSidechain").and_then(|one| one.as_bool()).unwrap_or(false);
             (kind == "user" || kind == "assistant") && !meta && !side
         })
+        .take(HISTORY_LINES)
         .map(str::to_string)
         .collect();
-    let start = lines.len().saturating_sub(HISTORY_LINES);
-    lines[start..].to_vec()
+    lines.reverse();
+    lines
 }
 
 pub fn close(id: &str) {

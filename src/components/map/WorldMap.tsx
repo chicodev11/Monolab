@@ -490,6 +490,7 @@ export function WorldMap({
               (url) =>
                 new Promise<void>((done) => {
                   const picture = new Image();
+                  picture.crossOrigin = "anonymous";
                   picture.onload = () => {
                     pen.drawImage(picture, (tx * span - left) / scale, (ty * span - top) / scale, TILE, TILE);
                     done();

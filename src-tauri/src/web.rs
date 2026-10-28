@@ -249,7 +249,7 @@ fn param(query: &str, name: &str) -> String {
         .unwrap_or_default()
 }
 
-fn unescape(value: &str) -> String {
+pub(crate) fn unescape(value: &str) -> String {
     let raw = value.as_bytes();
     let mut out = Vec::with_capacity(raw.len());
     let mut at = 0;

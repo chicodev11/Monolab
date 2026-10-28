@@ -353,6 +353,29 @@ fn clip(text: &str) -> String {
     format!("{}\n… (truncated: {} characters total)", &text[..cut], text.len())
 }
 
+/// Lines start..start+count (from 1) under a header, so a big file can be read in parts.
+fn line_window(content: &str, start: usize, count: Option<usize>) -> String {
+    let all: Vec<&str> = content.lines().collect();
+    let from = start.clamp(1, all.len().max(1)) - 1;
+    let to = count.map_or(all.len(), |count| (from + count.max(1)).min(all.len()));
+    format!("(lines {}-{} of {})\n{}", from + 1, to, all.len(), all[from..to].join("\n"))
+}
+
+/// Agents send \n even when the file uses CRLF, so their text is matched in the file's own line breaks.
+fn replace_once(content: &str, old: &str, new: &str) -> Result<String, String> {
+    let crlf = content.contains("\r\n") && old.contains('\n') && !old.contains("\r\n");
+    let (old, new) = if crlf {
+        (old.replace('\n', "\r\n"), new.replace("\r\n", "\n").replace('\n', "\r\n"))
+    } else {
+        (old.to_string(), new.to_string())
+    };
+    match content.matches(old.as_str()).count() {
+        1 => Ok(content.replacen(old.as_str(), &new, 1)),
+        0 => Err("oldText was not found. Read the file again and copy the text exactly.".into()),
+        many => Err(format!("oldText appears {many} times. Include more surrounding lines so it appears once.")),
+    }
+}
+
 fn slim(value: Value) -> Value {
     match value {
         Value::String(text) if text.starts_with("data:") => Value::String("[image]".into()),
@@ -375,15 +398,16 @@ const SERVER: (&str, &str, &str, bool) = ("server", "string", "Server id or name
 const TOOLS: &[Tool] = &[
     Tool { name: "list_servers", description: "List all servers registered in Monolab with id, core, version, status, port and where they run.", args: &[], read_only: true, destructive: false },
     Tool { name: "server_status", description: "Status of one server: running state, CPU, memory, TPS and online players when available.", args: &[SERVER], read_only: true, destructive: false },
-    Tool { name: "read_console", description: "New live console lines since your last read_console call (or since start_server/restart_server summarized startup). Harmless noise is hidden, repeats are folded and long lines shortened. Do not poll this in a loop - start_server and restart_server already wait for the server and summarize.", args: &[SERVER, ("lines", "integer", "Most lines to return (default 60, max 500).", false), ("all", "boolean", "true = the last lines regardless of what you already read.", false)], read_only: true, destructive: false },
+    Tool { name: "read_console", description: "New live console lines since your last read_console call (or since start_server/restart_server summarized startup). Harmless noise is hidden, repeats are folded and long lines shortened. Do not poll this in a loop - start_server and restart_server already wait for the server and summarize.", args: &[SERVER, ("lines", "integer", "Most lines to return (default 40, max 500).", false), ("all", "boolean", "true = the last lines regardless of what you already read.", false)], read_only: true, destructive: false },
     Tool { name: "list_log_files", description: "List log files (latest.log and older .log.gz) of a server.", args: &[SERVER], read_only: true, destructive: false },
-    Tool { name: "search_logs", description: "Read or search a log file. Empty query returns recent entries.", args: &[SERVER, ("query", "string", "Text to search for (optional).", false), ("file", "string", "Log file name, default latest.log.", false), ("level", "string", "Filter: All (default), Error, Warning.", false), ("limit", "integer", "Most matching lines to return, newest last (default 80, max 300).", false)], read_only: true, destructive: false },
+    Tool { name: "search_logs", description: "Read or search a log file. Empty query returns recent entries.", args: &[SERVER, ("query", "string", "Text to search for (optional).", false), ("file", "string", "Log file name, default latest.log.", false), ("level", "string", "Filter: All (default), Error, Warning.", false), ("limit", "integer", "Most matching lines to return, newest last (default 50, max 300).", false)], read_only: true, destructive: false },
     Tool { name: "list_crash_reports", description: "Crash reports with description, exception and suspected mods/plugins.", args: &[SERVER], read_only: true, destructive: false },
     Tool { name: "diagnose_lag", description: "Lag diagnosis: TPS, entity hotspots, memory, view distance hints (best with the Monolab addon installed).", args: &[SERVER], read_only: true, destructive: false },
     Tool { name: "precheck", description: "Check common start problems before starting: server jar, EULA, port in use, Java version, memory.", args: &[SERVER], read_only: true, destructive: false },
     Tool { name: "list_files", description: "List a folder inside the server folder, one line per entry (folders end with /).", args: &[SERVER, ("path", "string", "Folder path relative to the server folder, empty for the top.", false)], read_only: true, destructive: false },
-    Tool { name: "read_file", description: "Read a text file (config, yml, json, properties, toml, txt…) inside the server folder.", args: &[SERVER, ("path", "string", "File path relative to the server folder.", true)], read_only: true, destructive: false },
-    Tool { name: "write_file", description: "Write a text file inside the server folder (creates it if missing, replaces the whole content). Read it first and keep what you do not intend to change.", args: &[SERVER, ("path", "string", "File path relative to the server folder.", true), ("content", "string", "Full new file content.", true)], read_only: false, destructive: true },
+    Tool { name: "read_file", description: "Read a text file (config, yml, json, properties, toml, txt…) inside the server folder. For a big file, read only the part you need with start and lines.", args: &[SERVER, ("path", "string", "File path relative to the server folder.", true), ("start", "integer", "First line to return, from 1 (optional).", false), ("lines", "integer", "How many lines to return from start (optional).", false)], read_only: true, destructive: false },
+    Tool { name: "edit_file", description: "Change part of a text file inside the server folder: oldText (copied exactly, with enough surrounding lines to appear only once) becomes newText. Use this instead of write_file for small changes.", args: &[SERVER, ("path", "string", "File path relative to the server folder.", true), ("oldText", "string", "Exact text to replace.", true), ("newText", "string", "Text to put in its place (empty removes it).", true)], read_only: false, destructive: true },
+    Tool { name: "write_file", description: "Write a text file inside the server folder (creates it if missing, replaces the whole content). Read it first and keep what you do not intend to change. For small changes to an existing file use edit_file.", args: &[SERVER, ("path", "string", "File path relative to the server folder.", true), ("content", "string", "Full new file content.", true)], read_only: false, destructive: true },
     Tool { name: "delete_file", description: "Delete a file or folder inside the server folder. It is NOT erased: it goes to the server trash, where the user can restore it from the Files tab. Always use this instead of shell commands (rm, del, Remove-Item) for anything in the server folder.", args: &[SERVER, ("path", "string", "File or folder path relative to the server folder.", true)], read_only: false, destructive: true },
     Tool { name: "make_folder", description: "Create a folder inside the server folder, including any missing parent folders (e.g. world/datapacks/mypack/data/mypack/function). Fine if it already exists.", args: &[SERVER, ("path", "string", "Folder path relative to the server folder.", true)], read_only: false, destructive: false },
     Tool { name: "add_addon_file", description: "Put a mod/plugin file that exists on THIS computer (e.g. a jar you just built with Gradle) into the server's mods or plugins folder. Works for local, SSH and panel servers. If a local server is running it is queued for the next start; SSH/panel servers must be stopped first. Restart the server afterwards so it loads.", args: &[SERVER, ("localPath", "string", "Absolute path of the .jar (or .wasm for Pumpkin) on this computer.", true)], read_only: false, destructive: false },
@@ -569,7 +593,7 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
             }))
         }
         "read_console" => {
-            let most = args.get("lines").and_then(Value::as_u64).unwrap_or(60).clamp(1, 500) as usize;
+            let most = args.get("lines").and_then(Value::as_u64).unwrap_or(40).clamp(1, 500) as usize;
             let everything = args.get("all").and_then(Value::as_bool).unwrap_or(false);
             let all = console_lines(app, &id)?;
             if all.is_empty() {
@@ -616,7 +640,7 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
             if lines.is_empty() {
                 return Ok(Value::String("(no matching lines)".into()));
             }
-            let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(80).clamp(1, 300) as usize;
+            let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(50).clamp(1, 300) as usize;
             let from = lines.len().saturating_sub(limit);
             let mut out = String::new();
             if from > 0 {
@@ -649,7 +673,26 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
             }
             Ok(Value::String(if lines.is_empty() { "(empty folder)".into() } else { lines.join("\n") }))
         }
-        "read_file" => invoke(app, "read_editable_file", with(json!({ "path": need(args, "path")? }))),
+        "read_file" => {
+            let content = invoke(app, "read_editable_file", with(json!({ "path": need(args, "path")? })))?;
+            let start = args.get("start").and_then(Value::as_u64).map(|one| one as usize);
+            let lines = args.get("lines").and_then(Value::as_u64).map(|one| one as usize);
+            match content {
+                Value::String(content) if start.is_some() || lines.is_some() => Ok(Value::String(line_window(&content, start.unwrap_or(1), lines))),
+                other => Ok(other),
+            }
+        }
+        "edit_file" => {
+            let path = need(args, "path")?.trim_start_matches('/').to_string();
+            let old = args.get("oldText").and_then(Value::as_str).filter(|one| !one.is_empty()).ok_or("`oldText` is required.")?;
+            let new = args.get("newText").and_then(Value::as_str).ok_or("`newText` is required.")?;
+            let Value::String(content) = invoke(app, "read_editable_file", with(json!({ "path": path })))? else {
+                return Err(format!("Could not read {path} as text."));
+            };
+            let changed = replace_once(&content, old, new)?;
+            invoke(app, "save_editable_file", with(json!({ "path": path, "content": changed })))?;
+            Ok(Value::String(format!("Edited {path}.")))
+        }
         "write_file" => {
             let path = need(args, "path")?.trim_start_matches('/').to_string();
             let content = args.get("content").and_then(Value::as_str).ok_or("`content` is required.")?;
@@ -855,6 +898,17 @@ mod tests {
         for tool in &list {
             assert_eq!(tool["inputSchema"]["type"], "object");
         }
+    }
+
+    #[test]
+    fn edits_one_place_in_the_file_line_breaks() {
+        let file = "a: 1\r\nb: 2\r\nc: 3\r\n";
+        assert_eq!(super::replace_once(file, "a: 1\nb: 2", "a: 1\nb: 5").unwrap(), "a: 1\r\nb: 5\r\nc: 3\r\n");
+        assert!(super::replace_once(file, "z", "y").is_err());
+        assert!(super::replace_once("x x", "x", "y").is_err());
+        assert_eq!(super::line_window("1\n2\n3\n4", 2, Some(2)), "(lines 2-3 of 4)\n2\n3");
+        assert_eq!(super::line_window("1\n2", 9, None), "(lines 2-2 of 2)\n2");
+        assert_eq!(super::line_window("", 1, Some(5)), "(lines 1-0 of 0)\n");
     }
 
     #[test]

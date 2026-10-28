@@ -555,6 +555,49 @@ struct ChunkFolder {
     entities: HashMap<String, (u64, u64)>,
 }
 type TileKey = (String, String, i32, i32, i32);
+/// Server, layer, region, shrink and the region file's stamp, so a redrawn region never hits an old entry.
+type CoarseKey = (String, String, i32, i32, usize, Option<(u64, u64)>);
+
+/// Drops the least recently used entries once past `cap`, so browsing a big map can't grow memory without end.
+struct Lru<K, V> {
+    map: HashMap<K, (V, u64)>,
+    clock: u64,
+    cap: usize,
+}
+
+impl<K: std::hash::Hash + Eq, V> Lru<K, V> {
+    fn new(cap: usize) -> Self {
+        Lru { map: HashMap::new(), clock: 0, cap }
+    }
+
+    fn get(&mut self, key: &K) -> Option<&V> {
+        self.clock += 1;
+        let clock = self.clock;
+        self.map.get_mut(key).map(|(value, used)| {
+            *used = clock;
+            &*value
+        })
+    }
+
+    fn insert(&mut self, key: K, value: V) {
+        self.clock += 1;
+        self.map.insert(key, (value, self.clock));
+        if self.map.len() > self.cap {
+            let mut ages: Vec<u64> = self.map.values().map(|(_, used)| *used).collect();
+            let gone = self.map.len() - self.cap * 3 / 4;
+            let cut = *ages.select_nth_unstable(gone - 1).1;
+            self.map.retain(|_, (_, used)| *used > cut);
+        }
+    }
+
+    fn retain(&mut self, mut keep: impl FnMut(&K, &mut V) -> bool) {
+        self.map.retain(|key, (value, _)| keep(key, value));
+    }
+
+    fn clear(&mut self) {
+        self.map.clear();
+    }
+}
 type RegionStamps = HashMap<(i32, i32), (u64, u64)>;
 type MapIndex = HashMap<(String, String), Arc<RegionStamps>>;
 
@@ -578,8 +621,9 @@ struct AppState {
     panel_backlog: Arc<Mutex<HashSet<String>>>,
     panel_kick: Arc<tokio::sync::Notify>,
     system: Arc<Mutex<System>>,
-    map_cells: Arc<Mutex<HashMap<RegionKey, Arc<worldmap::Tile>>>>,
-    map_tiles: Arc<Mutex<HashMap<TileKey, String>>>,
+    map_cells: Arc<Mutex<Lru<RegionKey, Arc<worldmap::Tile>>>>,
+    map_coarse: Arc<Mutex<Lru<CoarseKey, Arc<worldmap::Tile>>>>,
+    map_tiles: Arc<Mutex<Lru<TileKey, Arc<Vec<u8>>>>>,
     map_palettes: Arc<Mutex<HashMap<String, Arc<worldmap::Palette>>>>,
     map_index: Arc<Mutex<MapIndex>>,
     resource_history: Arc<Mutex<HashMap<String, VecDeque<ResourceSample>>>>,
@@ -2096,7 +2140,7 @@ pub(crate) fn web_invoke(
         "plan_addon_install" => ok(plan_addon_install(app.clone(), arg(body, "id")?, arg(body, "projectId")?, arg(body, "installed")?)?),
         "read_player_nbt" => ok(tauri::async_runtime::block_on(read_player_nbt(app.clone(), arg(body, "id")?, arg(body, "uuid")?))?),
         "edit_player_item" => ok(tauri::async_runtime::block_on(edit_player_item(app.clone(), app.state(), arg(body, "id")?, arg(body, "uuid")?, arg(body, "ender")?, arg(body, "slot")?, arg(body, "count")?))?),
-        "render_map_tile" => ok(tauri::async_runtime::block_on(render_map_tile(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?, arg(body, "z")?, arg(body, "tx")?, arg(body, "ty")?, arg(body, "night")?))?),
+        "render_map_tile" => ok(tauri::async_runtime::block_on(render_map_tile(app.clone(), arg(body, "id")?, arg(body, "realm")?, arg(body, "z")?, arg(body, "tx")?, arg(body, "ty")?, arg(body, "night")?))?),
         "world_map_bounds" => ok(tauri::async_runtime::block_on(world_map_bounds(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?))?),
         "map_changes" => ok(tauri::async_runtime::block_on(map_changes(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?))?),
         "map_request_layer" => ok(tauri::async_runtime::block_on(map_request_layer(app.clone(), arg(body, "id")?, arg(body, "layer")?, arg(body, "x")?, arg(body, "z")?))?),
@@ -8334,39 +8378,61 @@ const TILE: u32 = 128;
 
 #[tauri::command(async)]
 #[specta::specta]
-#[allow(clippy::too_many_arguments)]
-async fn render_map_tile(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    realm: Option<String>,
-    z: i32,
-    tx: i32,
-    ty: i32,
-    night: Option<bool>,
-) -> Result<String, String> {
+async fn render_map_tile(app: AppHandle, id: String, realm: Option<String>, z: i32, tx: i32, ty: i32, night: Option<bool>) -> Result<String, String> {
+    let (png, partial) = map_tile_png(app, id, realm, z, tx, ty, night.unwrap_or(false)).await?;
+    use base64::Engine;
+    let url = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png.as_slice()));
+    Ok(if partial { format!("partial:{url}") } else { url })
+}
+
+/// The desktop map loads tiles as plain images from `http://maptile.localhost/<id>/<layer>/<z>/<tx>/<ty>/<d|n>`, skipping
+/// base64 and JSON on the way. `?probe` draws the tile and answers without the image, telling whether it is partial.
+fn map_tile_protocol(app: AppHandle, request: tauri::http::Request<Vec<u8>>, responder: tauri::UriSchemeResponder) {
+    tauri::async_runtime::spawn(async move {
+        let uri = request.uri();
+        let probe = uri.query().is_some_and(|query| query.split('&').any(|one| one == "probe"));
+        let parts: Vec<String> = uri.path().trim_start_matches('/').split('/').map(web::unescape).collect();
+        let answer = match parts.as_slice() {
+            [id, layer, z, tx, ty, mode] => match (z.parse(), tx.parse(), ty.parse()) {
+                (Ok(z), Ok(tx), Ok(ty)) => map_tile_png(app, id.clone(), Some(layer.clone()), z, tx, ty, mode == "n").await,
+                _ => Err("Bad map tile address.".to_string()),
+            },
+            _ => Err("Bad map tile address.".to_string()),
+        };
+        let builder = tauri::http::Response::builder()
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Expose-Headers", "X-Partial");
+        let response = match answer {
+            Ok((png, partial)) => builder
+                .status(if probe { 204 } else { 200 })
+                .header("Content-Type", "image/png")
+                .header("X-Partial", if partial { "1" } else { "0" })
+                .body(if probe { Vec::new() } else { png.to_vec() }),
+            Err(error) => builder.status(500).header("Content-Type", "text/plain; charset=utf-8").body(error.into_bytes()),
+        };
+        responder.respond(response.unwrap_or_else(|_| tauri::http::Response::new(Vec::new())));
+    });
+}
+
+/// One map tile as PNG bytes, from memory, the saved copy or a fresh drawing; `true` when part of it couldn't be read yet.
+async fn map_tile_png(app: AppHandle, id: String, realm: Option<String>, z: i32, tx: i32, ty: i32, night: bool) -> Result<(Arc<Vec<u8>>, bool), String> {
     let z = z.clamp(-4, 5);
-    let night = night.unwrap_or(false);
     let realm_name = worldmap::realm_key(realm.as_deref().unwrap_or("overworld"));
     let key = (id.clone(), if night { format!("{realm_name}#night") } else { realm_name.clone() }, z, tx, ty);
-    if let Some(found) = state
-        .map_tiles
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .get(&key)
-    {
-        return Ok(found.clone());
-    }
+    let (cells, coarse, tiles, palettes, index) = {
+        let state = app.state::<AppState>();
+        if let Some(found) = state.map_tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&key) {
+            return Ok((found.clone(), false));
+        }
+        let index = state
+            .map_index
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&(id.clone(), realm_name.clone()))
+            .cloned();
+        (state.map_cells.clone(), state.map_coarse.clone(), state.map_tiles.clone(), state.map_palettes.clone(), index)
+    };
     let instance = instance_by_id(&app, &id)?;
-    let cells = state.map_cells.clone();
-    let tiles = state.map_tiles.clone();
-    let palettes = state.map_palettes.clone();
-    let index = state
-        .map_index
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .get(&(id.clone(), realm_name.clone()))
-        .cloned();
 
     tauri::async_runtime::spawn_blocking(move || off_runtime(move || {
         let bpp = 2f32.powi(z);
@@ -8389,10 +8455,9 @@ async fn render_map_tile(
         if let Some((png, sig, hash)) = &saved {
             if fs::read_to_string(sig).ok().as_deref() == Some(hash.as_str()) {
                 if let Ok(bytes) = fs::read(png) {
-                    use base64::Engine;
-                    let url = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(&bytes));
-                    tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, url.clone());
-                    return Ok(url);
+                    let bytes = Arc::new(bytes);
+                    tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, bytes.clone());
+                    return Ok((bytes, false));
                 }
             }
         }
@@ -8434,7 +8499,8 @@ async fn render_map_tile(
         };
         drop(_loading);
         let missed = std::cell::Cell::new(false);
-        let mut fetch = |rx: i32, rz: i32| -> Arc<worldmap::Tile> {
+        let scale = worldmap::shrink_for(z);
+        let full = |rx: i32, rz: i32| -> Arc<worldmap::Tile> {
             let key = (id.clone(), realm_name.clone(), rx, rz);
             if let Some(found) = cells
                 .lock()
@@ -8446,52 +8512,57 @@ async fn render_map_tile(
             let stamp = match index.as_ref() {
                 Some(known) => match known.get(&(rx, rz)) {
                     Some(stamp) => Some(*stamp),
-                    None => {
-                        let empty = Arc::new(worldmap::Tile::empty());
-                        cells.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, empty.clone());
-                        return empty;
-                    }
+                    None => return worldmap::Tile::blank(),
                 },
                 None => None,
             };
             let read = map_region_bytes(&app, &instance, &realm_name, rx, rz, stamp);
             let Ok(found) = read else {
                 missed.set(true);
-                return Arc::new(worldmap::Tile::empty());
+                return worldmap::Tile::blank();
             };
-            let one = Arc::new(found.and_then(|bytes| worldmap::parse_tile(&bytes)).unwrap_or_else(worldmap::Tile::empty));
-            cells
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .insert(key, one.clone());
+            let one = found.and_then(|bytes| worldmap::parse_tile(&bytes)).map(Arc::new).unwrap_or_else(worldmap::Tile::blank);
+            // Far-out views keep only the shrunken copy, leaving room for the regions close-up views need.
+            if scale == 1 && one.present {
+                cells.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, one.clone());
+            }
             one
         };
-        let map = worldmap::render_view(&mut fetch, &palette, tx * span, ty * span, TILE, TILE, bpp, night, worldmap::void_color(&realm_name), worldmap::split_layer(&realm_name).1.is_some())?;
-        use base64::Engine;
-        let url = format!(
-            "data:image/png;base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(&map)
-        );
-        let mut held = tiles
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if held.len() > 1200 {
-            held.clear();
-        }
+        let mut fetch = |rx: i32, rz: i32| -> Arc<worldmap::Tile> {
+            if scale == 1 {
+                return full(rx, rz);
+            }
+            let stamp = index.as_ref().and_then(|known| known.get(&(rx, rz)).copied());
+            let key = (id.clone(), realm_name.clone(), rx, rz, scale, stamp);
+            if stamp.is_some() {
+                if let Some(found) = coarse.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&key) {
+                    return found.clone();
+                }
+            }
+            let whole = full(rx, rz);
+            if !whole.present {
+                return whole;
+            }
+            let small = Arc::new(whole.shrink(scale));
+            if stamp.is_some() {
+                coarse.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, small.clone());
+            }
+            small
+        };
+        let map = Arc::new(worldmap::render_view(&mut fetch, &palette, tx * span, ty * span, TILE, TILE, bpp, night, worldmap::void_color(&realm_name), worldmap::split_layer(&realm_name).1.is_some())?);
         if missed.get() || palette_failed {
-            return Ok(format!("partial:{url}"));
+            return Ok((map, true));
         }
-        held.insert(key, url.clone());
-        drop(held);
+        tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, map.clone());
         if let Some((png, sig, hash)) = saved {
             if let Some(dir) = png.parent() {
                 let _ = fs::create_dir_all(dir);
             }
-            if fs::write(&png, &map).is_ok() {
+            if fs::write(&png, map.as_slice()).is_ok() {
                 let _ = fs::write(&sig, hash);
             }
         }
-        Ok(url)
+        Ok((map, false))
     }))
     .await
     .map_err(|error| format!("Could not draw the map tile: {error}"))?
@@ -14491,6 +14562,7 @@ async fn trim_chunks(
         let cache = app.state::<AppState>();
         forget_chunk_stats(cache.inner(), &id);
         cache.map_cells.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clear();
+        cache.map_coarse.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clear();
         cache.map_tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clear();
     }
     Ok(report)
@@ -16582,6 +16654,9 @@ pub fn run() {
     export_bindings(std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../src/lib/bindings.ts")))
         .expect("Could not export the TypeScript bindings");
     tauri::Builder::default()
+        .register_asynchronous_uri_scheme_protocol("maptile", |context, request, responder| {
+            map_tile_protocol(context.app_handle().clone(), request, responder)
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -16607,8 +16682,10 @@ pub fn run() {
             panel_backlog: Arc::new(Mutex::new(HashSet::new())),
             panel_kick: Arc::new(tokio::sync::Notify::new()),
             system: Arc::new(Mutex::new(System::new())),
-            map_cells: Arc::new(Mutex::new(HashMap::new())),
-            map_tiles: Arc::new(Mutex::new(HashMap::new())),
+            // A region is about 3 MB in memory and a tile about 30 KB.
+            map_cells: Arc::new(Mutex::new(Lru::new(64))),
+            map_coarse: Arc::new(Mutex::new(Lru::new(256))),
+            map_tiles: Arc::new(Mutex::new(Lru::new(1200))),
             map_palettes: Arc::new(Mutex::new(HashMap::new())),
             map_index: Arc::new(Mutex::new(HashMap::new())),
             resource_history: Arc::new(Mutex::new(HashMap::new())),
@@ -16682,6 +16759,18 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn map_cache_drops_the_least_recently_used() {
+        let mut cache = super::Lru::new(4);
+        for at in 0..4 {
+            cache.insert(at, at);
+        }
+        assert_eq!(cache.get(&0), Some(&0));
+        cache.insert(4, 4);
+        assert_eq!(cache.map.len(), 3);
+        assert!(cache.get(&0).is_some() && cache.get(&4).is_some() && cache.get(&1).is_none());
+    }
+
     #[test]
     fn zips_a_folder_and_a_file_without_itself() {
         use std::io::Write;

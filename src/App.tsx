@@ -160,6 +160,8 @@ import "./App.css";
 import "./polish.css";
 
 /** Build heights of each dimension, and the height a map starts at when leaving Auto. */
+let mapTileSerial = 0;
+
 function mapHeightRange(realm: string): { min: number; max: number; start: number } {
   if (realm === "nether") return { min: 0, max: 255, start: 64 };
   if (realm === "end") return { min: 0, max: 255, start: 64 };
@@ -4965,7 +4967,13 @@ function App() {
   }
   async function fetchMapTile(z: number, tx: number, ty: number, night: boolean) {
     if (!selected) throw new Error(tr("No servers found."));
-    return await commands.renderMapTile(selected.id, mapLayer, z, tx, ty, night);
+    if (onWeb) return await commands.renderMapTile(selected.id, mapLayer, z, tx, ty, night);
+    const path = [selected.id, mapLayer, z, tx, ty, night ? "n" : "d"].map((one) => encodeURIComponent(String(one))).join("/");
+    mapTileSerial += 1;
+    const url = `http://maptile.localhost/${path}?v=${mapTileSerial}`;
+    const probe = await fetch(`${url}&probe`);
+    if (!probe.ok) throw new Error(await probe.text());
+    return probe.headers.get("X-Partial") === "1" ? `partial:${url}` : url;
   }
   async function fetchMapChanges(): Promise<[number, number][]> {
     if (!selected) return [];

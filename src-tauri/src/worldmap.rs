@@ -113,11 +113,19 @@ pub struct Tile {
     pub present: bool,
     pub void: Vec<bool>,
     pub marks_void: bool,
+    /// Blocks per stored column; far-out views draw from shrunken regions.
+    pub scale: usize,
 }
 
 impl Tile {
     pub fn is_void(&self, at: usize) -> bool {
         self.present && (!self.marks_void || self.void[at])
+    }
+
+    /// One shared empty region, so unexplored areas cost no memory.
+    pub fn blank() -> std::sync::Arc<Tile> {
+        static BLANK: std::sync::OnceLock<std::sync::Arc<Tile>> = std::sync::OnceLock::new();
+        BLANK.get_or_init(|| std::sync::Arc::new(Tile::empty())).clone()
     }
 
     pub fn empty() -> Tile {
@@ -133,8 +141,45 @@ impl Tile {
             present: false,
             void: vec![false; SPAN * SPAN],
             marks_void: false,
+            scale: 1,
         }
     }
+
+    /// Where world column (x, z) sits in this region's arrays.
+    pub fn index(&self, x: i32, z: i32) -> usize {
+        let side = SPAN / self.scale;
+        z.rem_euclid(SPAN as i32) as usize / self.scale * side + x.rem_euclid(SPAN as i32) as usize / self.scale
+    }
+
+    /// Every `scale`-th column both ways: a far-out view only samples those, at a fraction of the memory.
+    pub fn shrink(&self, scale: usize) -> Tile {
+        fn every<T: Copy>(from: &[T], scale: usize) -> Vec<T> {
+            let side = SPAN / scale;
+            (0..side * side).map(|at| from[at / side * scale * SPAN + at % side * scale]).collect()
+        }
+        Tile {
+            blocks: self.blocks.clone(),
+            biomes: self.biomes.clone(),
+            block: every(&self.block, scale),
+            floor: every(&self.floor, scale),
+            biome: every(&self.biome, scale),
+            height: every(&self.height, scale),
+            depth: every(&self.depth, scale),
+            light: every(&self.light, scale),
+            present: self.present,
+            void: every(&self.void, scale),
+            marks_void: self.marks_void,
+            scale,
+        }
+    }
+}
+
+/// How much a region can be shrunk for a zoom level: the step between the columns that level samples.
+pub fn shrink_for(z: i32) -> usize {
+    if z >= 3 { 1 << (z - 2).min(3) } else { 1 }
+}
+
+impl Tile {
 }
 
 fn read_utf(raw: &[u8], at: &mut usize) -> Option<String> {
@@ -581,19 +626,11 @@ pub fn render_view(
     let bpp = blocks_per_pixel.clamp(0.05, 64.0);
     let stride = bpp.floor().max(1.0) as i32;
     let mut pixels = vec![0u8; (width * height * 4) as usize];
-    let mut held: Vec<((i32, i32), std::sync::Arc<Tile>)> = Vec::new();
+    let mut held: std::collections::HashMap<(i32, i32), std::sync::Arc<Tile>> = std::collections::HashMap::new();
     let mut tile_at = |x: i32, z: i32| -> (std::sync::Arc<Tile>, usize) {
-        let rx = x.div_euclid(SPAN as i32);
-        let rz = z.div_euclid(SPAN as i32);
-        let tile = match held.iter().find(|(at, _)| *at == (rx, rz)) {
-            Some((_, tile)) => tile.clone(),
-            None => {
-                let tile = fetch(rx, rz);
-                held.push(((rx, rz), tile.clone()));
-                tile
-            }
-        };
-        let at = z.rem_euclid(SPAN as i32) as usize * SPAN + x.rem_euclid(SPAN as i32) as usize;
+        let spot = (x.div_euclid(SPAN as i32), z.div_euclid(SPAN as i32));
+        let tile = held.entry(spot).or_insert_with(|| fetch(spot.0, spot.1)).clone();
+        let at = tile.index(x, z);
         (tile, at)
     };
     let (span_x, span_z) = ((width as f32 * bpp).ceil() as i32, (height as f32 * bpp).ceil() as i32);
@@ -779,6 +816,55 @@ mod tests {
         let shallow = channels(shade(&palette, &tile, 2, None, None, 1, false, None, false));
         let deep = channels(shade(&palette, &tile, 20, None, None, 1, false, None, false));
         assert!(shallow[0] > deep[0] + 8.0, "{shallow:?} {deep:?}");
+    }
+
+    #[test]
+    fn shrunken_regions_keep_the_columns_far_views_sample() {
+        let tile = parse_tile(&tile_bytes(&["minecraft:stone", "minecraft:dirt"], |x, z| (((x + z) % 2) as u16, u16::MAX, (x * 3 + z) as i16 % 300, 0))).unwrap();
+        for scale in [2, 4, 8] {
+            let small = tile.shrink(scale);
+            assert_eq!(small.block.len(), (SPAN / scale) * (SPAN / scale));
+            for (x, z) in [(0, 0), (8, 16), (504, 496), (-8, -24)] {
+                assert_eq!(small.height[small.index(x, z)], tile.height[tile.index(x, z)], "scale {scale} at {x},{z}");
+                assert_eq!(small.block[small.index(x, z)], tile.block[tile.index(x, z)]);
+            }
+        }
+        assert_eq!((shrink_for(2), shrink_for(3), shrink_for(4), shrink_for(5)), (1, 2, 4, 8));
+    }
+
+    /// SE_MAP_DIR=<map/overworld folder>: times a far-out tile drawn from whole regions and from shrunken ones.
+    #[test]
+    #[ignore]
+    fn times_far_tiles_from_real_regions() {
+        let dir = std::path::PathBuf::from(std::env::var("SE_MAP_DIR").unwrap());
+        let palette = Palette::parse(&std::fs::read(dir.join("../palette.json")).unwrap_or_default(), None, None);
+        let parsing = std::time::Instant::now();
+        let regions: std::collections::HashMap<(i32, i32), Arc<Tile>> = std::fs::read_dir(&dir).unwrap().flatten()
+            .filter_map(|one| Some((tile_coords(&one.file_name().to_string_lossy())?, Arc::new(parse_tile(&std::fs::read(one.path()).ok()?)?))))
+            .collect();
+        eprintln!("read {} regions: {:?}", regions.len(), parsing.elapsed());
+        let started = std::time::Instant::now();
+        let mut tiles = 0;
+        let mut fetch = |rx: i32, rz: i32| regions.get(&(rx, rz)).cloned().unwrap_or_else(Tile::blank);
+        for &(rx, rz) in regions.keys() {
+            for ty in rz * 4..rz * 4 + 4 {
+                for tx in rx * 4..rx * 4 + 4 {
+                    render_view(&mut fetch, &palette, tx * 128, ty * 128, 128, 128, 1.0, false, None, false).unwrap();
+                    tiles += 1;
+                }
+            }
+        }
+        eprintln!("z0: {tiles} tiles in {:?}", started.elapsed());
+        for z in [3, 4, 5] {
+            let span = 128 * (1 << z);
+            let small: std::collections::HashMap<(i32, i32), Arc<Tile>> = regions.iter().map(|(at, one)| (*at, Arc::new(one.shrink(shrink_for(z))))).collect();
+            for (name, set) in [("whole", &regions), ("shrunk", &small)] {
+                let started = std::time::Instant::now();
+                let mut fetch = |rx: i32, rz: i32| set.get(&(rx, rz)).cloned().unwrap_or_else(Tile::blank);
+                let png = render_view(&mut fetch, &palette, -span, -span, 128, 128, (1 << z) as f32, false, None, false).unwrap();
+                eprintln!("z{z} {name}: {:?}, {} bytes", started.elapsed(), png.len());
+            }
+        }
     }
 
     #[test]
