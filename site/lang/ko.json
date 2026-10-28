@@ -155,5 +155,14 @@
   "The Quick run button is gone from the top bar. Ctrl+K still opens it.": "맨 위 줄의 빠른 실행 버튼을 없앴어요. Ctrl+K로는 그대로 열 수 있어요.",
   "After stopping a server, add-on install and update still asked to stop the server until the tab was reopened.": "서버를 끈 뒤에도 탭을 다시 열기 전까지 애드온 설치·업데이트가 서버를 끄라고 하던 문제를 고쳤어요.",
   "Dragging a server card also selected text.": "서버 카드를 끌면 글자까지 선택되던 문제를 고쳤어요.",
-  "Layout fixes: console status cards on narrow windows, Monitor cards and numbers, file table headers, the server creation summary and wider console margins.": "좁은 창의 콘솔 상태 칸, 리소스 칸과 숫자, 파일 표 머리, 서버 생성 요약, 콘솔 여백 같은 화면 배치를 다듬었어요."
+  "Layout fixes: console status cards on narrow windows, Monitor cards and numbers, file table headers, the server creation summary and wider console margins.": "좁은 창의 콘솔 상태 칸, 리소스 칸과 숫자, 파일 표 머리, 서버 생성 요약, 콘솔 여백 같은 화면 배치를 다듬었어요.",
+  "The web map can pick a map height too, like the app (add-on 32).": "웹 지도에서도 앱처럼 지도 높이를 고를 수 있어요(애드온 32).",
+  "Pumpkin servers show how far a map height layer has been drawn.": "Pumpkin 서버도 지도 높이 층이 얼마나 그려졌는지 보여줘요.",
+  "The world map uses much less memory, especially when zoomed far out, and map tiles reach the screen faster.": "월드 지도가 메모리를 훨씬 덜 써요. 멀리 축소할 때 특히 차이가 크고, 지도 타일도 더 빨리 화면에 떠요.",
+  "The Claude agent can change part of a file instead of rewriting it, and reads big files in parts, using less of your plan.": "Claude 에이전트가 파일 전체를 다시 쓰지 않고 바꿀 부분만 고치고, 큰 파일은 나눠 읽어서 사용량을 덜 써요.",
+  "The Claude chat stays smooth while answers stream in, and long conversations open faster.": "Claude 채팅이 답이 올라오는 동안에도 덜 버벅이고, 긴 대화도 더 빨리 열려요.",
+  "One Manage sessions button on the home screen; adding a panel looks like adding an SSH server.": "홈 화면의 세션 버튼을 세션 관리 하나로 합쳤어요. 패널 추가도 SSH 추가와 같은 모양이에요.",
+  "The installer is about 2.6 MB smaller.": "설치 파일이 약 2.6MB 작아졌어요.",
+  "The console no longer jumps while you read older lines as new ones arrive.": "새 줄이 올라올 때 위쪽 줄을 읽고 있으면 콘솔이 튀던 문제를 고쳤어요.",
+  "Escape closes open popups.": "Esc 키로 열린 창이 닫혀요."
 }

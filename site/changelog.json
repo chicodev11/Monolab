@@ -1,6 +1,26 @@
 [
   {
     "kind": "app",
+    "version": "1.6.1",
+    "date": "2026-10-29",
+    "added": [
+      "The web map can pick a map height too, like the app (add-on 32).",
+      "Pumpkin servers show how far a map height layer has been drawn."
+    ],
+    "changed": [
+      "The world map uses much less memory, especially when zoomed far out, and map tiles reach the screen faster.",
+      "The Claude agent can change part of a file instead of rewriting it, and reads big files in parts, using less of your plan.",
+      "The Claude chat stays smooth while answers stream in, and long conversations open faster.",
+      "One Manage sessions button on the home screen; adding a panel looks like adding an SSH server.",
+      "The installer is about 2.6 MB smaller."
+    ],
+    "fixed": [
+      "The console no longer jumps while you read older lines as new ones arrive.",
+      "Escape closes open popups."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.6.0",
     "date": "2026-10-28",
     "added": [
