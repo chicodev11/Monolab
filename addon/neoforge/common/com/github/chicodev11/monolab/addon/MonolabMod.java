@@ -39,6 +39,7 @@ public final class MonolabMod {
     private ScheduledExecutorService flusher;
     private int ticks;
     private MapRender map;
+    private MojangChunks liveChunks;
     private final ChunkWatch chunks = new ChunkWatch();
 
     @SubscribeEvent
@@ -87,6 +88,7 @@ public final class MonolabMod {
         dumpCommands(event.getServer(), folder);
         try {
             map = startMap(folder);
+            liveChunks = new MojangChunks(event.getServer(), Bridge::dimensionId);
         } catch (Throwable trouble) {
             LOGGER.warn("Couldn't start the map", trouble);
         }
@@ -132,6 +134,7 @@ public final class MonolabMod {
         if (map != null) {
             map.stop();
             map = null;
+            liveChunks = null;
         }
         if (log == null) {
             return;
@@ -154,6 +157,9 @@ public final class MonolabMod {
             return;
         }
         ticks++;
+        if (map != null && liveChunks != null) {
+            map.live().tick(liveChunks);
+        }
         if (ticks % LIVE_TICKS == 0) {
             snapshot(event.getServer());
         }

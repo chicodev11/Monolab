@@ -167,7 +167,7 @@ canvas.drag { cursor: grabbing; }
     inflight++;
     var img = new Image();
     img.decoding = "async";
-    var url = "tile/" + encodeURIComponent(job.realm) + "/" + (job.night ? "n" : "d") + "/" + job.z + "/" + job.tx + "/" + job.ty + ".png";
+    var url = "tile/" + encodeURIComponent(job.realm) + "/" + (job.night ? "n" : "d") + "/" + job.z + "/" + job.tx + "/" + job.ty + ".png" + (job.t.rev ? "?v=" + job.t.rev : "");
     img.onload = function () {
       inflight--; job.t.busy = false; job.t.img = img; job.t.empty = false; job.t.at = Date.now(); job.t.shown = job.t.shown || performance.now();
       dirty = true; pump();
@@ -468,6 +468,35 @@ canvas.drag { cursor: grabbing; }
     return null;
   }
 
+  var stamps = {}, asking = false;
+  function pollChanges() {
+    var realm = state.realm;
+    if (!realm || asking || document.visibilityState !== "visible") return;
+    asking = true;
+    get("changes?realm=" + encodeURIComponent(realm)).then(function (list) {
+      asking = false;
+      var before = stamps[realm], now = {}, changed = [], grew = false;
+      for (var i = 0; i < list.length; i++) {
+        var k = list[i][0] + "," + list[i][1];
+        now[k] = list[i][2];
+        if (before && before[k] !== list[i][2]) { changed.push(list[i]); if (before[k] === undefined) grew = true; }
+      }
+      stamps[realm] = now;
+      if (!changed.length) return;
+      for (var key in tiles) {
+        var bits = key.split("|");
+        if (bits[0] !== realm) continue;
+        var span = TILE * Math.pow(2, +bits[2]), left = +bits[3] * span, top = +bits[4] * span;
+        for (var j = 0; j < changed.length; j++) {
+          var rl = changed[j][0] * 512 - 1, rt = changed[j][1] * 512 - 1;
+          if (left < rl + 514 && rl < left + span && top < rt + 514 && rt < top + span) { tiles[key].at = 0; tiles[key].empty = false; tiles[key].rev = (tiles[key].rev || 0) + 1; break; }
+        }
+      }
+      if (grew) get("bounds?realm=" + encodeURIComponent(realm)).then(function (b) { if (state.realm === realm) state.bounds = b; }, function () {});
+      dirty = true;
+    }, function () { asking = false; });
+  }
+
   function init() {
     resize();
     get("info").then(function (info) {
@@ -488,6 +517,7 @@ canvas.drag { cursor: grabbing; }
         dirty = true;
       }, function () { switchRealm(first, true); });
       pollPeople(); setInterval(pollPeople, 3000);
+      setInterval(pollChanges, 4000);
     }, function () { el("emptyText").textContent = text("missing"); el("empty").classList.add("on"); });
     requestAnimationFrame(frame);
   }

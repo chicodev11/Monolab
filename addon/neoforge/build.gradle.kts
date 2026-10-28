@@ -99,6 +99,7 @@ sourceSets {
             listOf(
                 rootProject.file("addon/shared"),
                 rootProject.file("addon/brigadier"),
+                rootProject.file("addon/mojang"),
                 file("common"),
                 bridgeDir,
             ),

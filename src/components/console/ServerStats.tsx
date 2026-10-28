@@ -180,7 +180,7 @@ export function ServerStats({ server, onOpenPlayer, bare }: { server: Server; on
           next = {
             ...blank,
             cpu: snap?.cpuPercent ?? null,
-            memory: (snap?.memoryMib ?? now?.memoryMib ?? 0) * 1048576,
+            memory: (now?.memoryMib ?? snap?.memoryMib ?? 0) * 1048576,
             disk: snap ? (snap.diskTotalMib - snap.diskFreeMib) * 1048576 : null,
             diskLimit: snap ? snap.diskTotalMib * 1048576 : null,
             tps: now?.tps ?? speed?.tps ?? null,

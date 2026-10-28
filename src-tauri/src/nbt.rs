@@ -574,6 +574,58 @@ pub fn write_level_data(
     Ok(original_hash)
 }
 
+/// Change one stack's count in a player file (0 removes it). Returns the new gzip bytes; the caller saves them.
+pub fn edit_player_item(raw: Vec<u8>, ender: bool, slot: i64, count: i64) -> Result<Vec<u8>, String> {
+    let mut value = decode_nbt(raw)?;
+    let root = compound_mut(&mut value).ok_or("The player data is malformed.")?;
+    let count = count.clamp(0, 99);
+    let set_count = |entry: &mut Map| {
+        if let Some(old) = entry.get_mut("Count") {
+            *old = fastnbt::Value::Byte(count as i8);
+        } else {
+            entry.insert("count".into(), fastnbt::Value::Int(count as i32));
+        }
+    };
+    let mut done = false;
+    if let Some(fastnbt::Value::List(items)) = root.get_mut(if ender { "EnderItems" } else { "Inventory" }) {
+        if let Some(at) = items.iter().position(|item| compound(item).is_some_and(|entry| as_i64(entry.get("Slot")) == slot)) {
+            if count == 0 {
+                items.remove(at);
+            } else if let Some(entry) = compound_mut(&mut items[at]) {
+                set_count(entry);
+            }
+            done = true;
+        }
+    }
+    if !done && !ender {
+        let key = match slot {
+            103 => "head",
+            102 => "chest",
+            101 => "legs",
+            100 => "feet",
+            -106 => "offhand",
+            _ => "",
+        };
+        if let Some(equipment) = root.get_mut("equipment").and_then(compound_mut) {
+            if equipment.contains_key(key) {
+                if count == 0 {
+                    equipment.remove(key);
+                } else if let Some(entry) = equipment.get_mut(key).and_then(compound_mut) {
+                    set_count(entry);
+                }
+                done = true;
+            }
+        }
+    }
+    if !done {
+        return Err("That slot is already empty.".into());
+    }
+    let bytes = fastnbt::to_bytes(&value).map_err(|error| format!("Could not write NBT: {error}"))?;
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(&bytes).map_err(|error| error.to_string())?;
+    encoder.finish().map_err(|error| error.to_string())
+}
+
 fn compound_mut(value: &mut fastnbt::Value) -> Option<&mut std::collections::HashMap<String, fastnbt::Value>> {
     match value {
         fastnbt::Value::Compound(map) => Some(map),
@@ -613,6 +665,39 @@ mod tests {
         assert_eq!(at(100), Some(("minecraft:iron_boots", 1)));
         assert_eq!(at(-106), Some(("minecraft:shield", 1)));
         assert_eq!(at(102), None);
+    }
+
+    #[test]
+    fn edits_and_removes_stacks_in_a_player_file() {
+        use fastnbt::Value;
+        use std::collections::HashMap;
+        let stack = |slot: i8, id: &str, count: Value, key: &str| {
+            let mut map = HashMap::new();
+            map.insert("Slot".to_string(), Value::Byte(slot));
+            map.insert("id".to_string(), Value::String(id.into()));
+            map.insert(key.to_string(), count);
+            Value::Compound(map)
+        };
+        let mut helmet = HashMap::new();
+        helmet.insert("id".to_string(), Value::String("minecraft:iron_helmet".into()));
+        let mut equipment = HashMap::new();
+        equipment.insert("head".to_string(), Value::Compound(helmet));
+        let mut root = HashMap::new();
+        root.insert("Inventory".to_string(), Value::List(vec![stack(0, "minecraft:stone", Value::Int(5), "count"), stack(1, "minecraft:dirt", Value::Byte(9), "Count")]));
+        root.insert("EnderItems".to_string(), Value::List(vec![stack(3, "minecraft:diamond", Value::Int(2), "count")]));
+        root.insert("equipment".to_string(), Value::Compound(equipment));
+        let raw = fastnbt::to_bytes(&Value::Compound(root)).unwrap();
+        let raw = super::edit_player_item(raw, false, 0, 64).unwrap();
+        let raw = super::edit_player_item(raw, false, 1, 0).unwrap();
+        let raw = super::edit_player_item(raw, true, 3, 1).unwrap();
+        let raw = super::edit_player_item(raw, false, 103, 0).unwrap();
+        assert!(super::edit_player_item(raw.clone(), false, 7, 1).is_err());
+        let snapshot = super::read_player_bytes(raw, "u").unwrap();
+        let at = |slot: i64| snapshot.inventory.iter().find(|one| one.slot == slot).map(|one| one.count);
+        assert_eq!(at(0), Some(64));
+        assert_eq!(at(1), None);
+        assert_eq!(at(103), None);
+        assert_eq!(snapshot.ender_items[0].count, 1);
     }
 
     #[test]

@@ -18,6 +18,7 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
 
     private final EventSink sink = new EventSink();
     private MapRender map;
+    private MojangChunks liveChunks;
     private final ChunkWatch chunks = new ChunkWatch();
     private boolean inventoriesBroken;
 
@@ -29,6 +30,7 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
             if (map != null) {
                 map.stop();
                 map = null;
+                liveChunks = null;
             }
         });
         ServerTickEvents.END_SERVER_TICK.register(this::onTick);
@@ -45,6 +47,7 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
         dumpCommands(server, folder);
         try {
             map = startMap(folder);
+            liveChunks = new MojangChunks(server, level -> level.dimension().identifier().toString());
         } catch (Throwable trouble) {
             LOGGER.warn("Couldn't start the map", trouble);
         }
@@ -86,6 +89,9 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
     }
 
     private void onTick(MinecraftServer server) {
+        if (map != null && liveChunks != null) {
+            map.live().tick(liveChunks);
+        }
         if (sink.off()) {
             return;
         }

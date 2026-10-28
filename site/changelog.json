@@ -1,6 +1,21 @@
 [
   {
     "kind": "app",
+    "version": "1.5.0",
+    "date": "2026-10-28",
+    "added": [
+      "The world map updates live: with add-on 30, blocks players change show up in the app and web map within a few seconds, without waiting for the server to save.",
+      "Saved player items can be changed or deleted while the server is stopped: click a slot in the player details. The old file is kept as a backup."
+    ],
+    "fixed": [
+      "The Save and Roll back buttons in the file editor looked like plain text and a square box.",
+      "Files with Windows line breaks showed as modified as soon as they were opened, and saving changed their line breaks.",
+      "Binary files such as .class opened in the editor as garbled text. They are now refused.",
+      "The memory shown in the console status panel differed from the Monitor tab. Both now show Java heap memory."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.4.2",
     "date": "2026-10-26",
     "added": [

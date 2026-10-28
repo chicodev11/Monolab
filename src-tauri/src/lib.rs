@@ -2095,8 +2095,10 @@ pub(crate) fn web_invoke(
         "lookup_mojang_profile" => ok(lookup_mojang_profile(app.clone(), arg(body, "name")?)?),
         "plan_addon_install" => ok(plan_addon_install(app.clone(), arg(body, "id")?, arg(body, "projectId")?, arg(body, "installed")?)?),
         "read_player_nbt" => ok(tauri::async_runtime::block_on(read_player_nbt(app.clone(), arg(body, "id")?, arg(body, "uuid")?))?),
+        "edit_player_item" => ok(tauri::async_runtime::block_on(edit_player_item(app.clone(), app.state(), arg(body, "id")?, arg(body, "uuid")?, arg(body, "ender")?, arg(body, "slot")?, arg(body, "count")?))?),
         "render_map_tile" => ok(tauri::async_runtime::block_on(render_map_tile(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?, arg(body, "z")?, arg(body, "tx")?, arg(body, "ty")?, arg(body, "night")?))?),
         "world_map_bounds" => ok(tauri::async_runtime::block_on(world_map_bounds(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?))?),
+        "map_changes" => ok(tauri::async_runtime::block_on(map_changes(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?))?),
         "search_addon_catalog" => ok(search_addon_catalog(app.clone(), arg(body, "id")?, arg(body, "query")?, arg(body, "page")?, arg(body, "categories")?, arg(body, "environment")?, arg(body, "versions")?, arg(body, "loader")?)?),
         "check_addon_updates" => ok(tauri::async_runtime::block_on(check_addon_updates(app.clone(), arg(body, "id")?))?),
         "enrich_addons" => ok(tauri::async_runtime::block_on(enrich_addons(app.clone(), arg(body, "id")?))?),
@@ -7555,7 +7557,29 @@ fn editable_file(path: &Path) -> bool {
             | "db"
             | "mv"
             | "lock"
+            | "class"
+            | "so"
+            | "dylib"
+            | "bin"
+            | "hprof"
+            | "jfr"
+            | "pyc"
+            | "tar"
+            | "xz"
+            | "bz2"
+            | "zst"
+            | "mp4"
+            | "webm"
+            | "pump"
+            | "mcr"
     )
+}
+
+/// Bytes that aren't text (NUL early on, or mostly undecodable) — opening them in the editor and saving would wreck them.
+fn looks_binary(text: &str) -> bool {
+    let head: Vec<char> = text.chars().take(8192).collect();
+    let broken = head.iter().filter(|one| **one == '\u{FFFD}').count();
+    head.contains(&'\0') || broken * 20 > head.len().max(1)
 }
 
 fn safe_editable_path(instance: &ServerInstance, relative: &str) -> Result<PathBuf, String> {
@@ -8569,21 +8593,10 @@ fn map_region_bytes(
     Ok(found)
 }
 
-#[tauri::command(async)]
-#[specta::specta]
-async fn world_map_bounds(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    realm: Option<String>,
-) -> Result<(i32, i32, i32, i32), String> {
-    let instance = instance_by_id(&app, &id)?;
-    let realm = worldmap::realm_key(realm.as_deref().unwrap_or("overworld"));
-    let realm = realm.as_str();
-    forget_chunk_stats(state.inner(), &id);
-    let folder = map_tile_folder(&instance, realm);
-    let rows: Option<Vec<(String, u64, u64)>> = if is_far(&instance) {
-        far_list(&app, &instance, &folder)
+async fn map_stamps(app: &AppHandle, instance: &ServerInstance, realm: &str) -> Option<RegionStamps> {
+    let folder = map_tile_folder(instance, realm);
+    let rows: Option<Vec<(String, u64, u64)>> = if is_far(instance) {
+        far_list(app, instance, &folder)
             .await
             .ok()
             .map(|rows| rows.into_iter().map(|row| (row.name, row.modified_at, row.size_bytes)).collect())
@@ -8604,9 +8617,82 @@ async fn world_map_bounds(
                 .collect()
         })
     };
-    let fresh: Option<HashMap<(i32, i32), (u64, u64)>> = rows.as_ref().map(|rows| {
+    rows.map(|rows| {
         rows.iter().filter_map(|(name, at, size)| worldmap::tile_coords(name).map(|spot| (spot, (*at, *size)))).collect()
+    })
+}
+
+/// Regions whose tile was added, removed or redrawn between two listings.
+fn changed_regions(old: &RegionStamps, fresh: &RegionStamps) -> Vec<(i32, i32)> {
+    let mut out: Vec<(i32, i32)> = fresh
+        .iter()
+        .filter(|(spot, stamp)| old.get(spot) != Some(stamp))
+        .map(|(spot, _)| *spot)
+        .chain(old.keys().filter(|spot| !fresh.contains_key(spot)).copied())
+        .collect();
+    out.sort_unstable();
+    out
+}
+
+/// Whether a rendered tile could show anything from this region, counting the one-block edge its shading reads.
+fn tile_touches_region(z: i32, tx: i32, ty: i32, rx: i32, rz: i32) -> bool {
+    let span = (TILE as f64 * 2f64.powi(z)) as i64;
+    let (left, top) = (tx as i64 * span, ty as i64 * span);
+    let (rleft, rtop) = (rx as i64 * 512 - 1, rz as i64 * 512 - 1);
+    left < rleft + 514 && rleft < left + span && top < rtop + 514 && rtop < top + span
+}
+
+/// What changed in the map since the last look: drops just those regions from the caches, so an open map can
+/// refetch the tiles that show them while the add-on keeps drawing.
+#[tauri::command(async)]
+#[specta::specta]
+async fn map_changes(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    realm: Option<String>,
+) -> Result<Vec<(i32, i32)>, String> {
+    let instance = instance_by_id(&app, &id)?;
+    let realm = worldmap::realm_key(realm.as_deref().unwrap_or("overworld"));
+    let Some(fresh) = map_stamps(&app, &instance, &realm).await else {
+        return Ok(Vec::new());
+    };
+    let index_key = (id.clone(), realm.clone());
+    let old = state.map_index.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&index_key).cloned();
+    let Some(old) = old else {
+        state.map_index.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(index_key, Arc::new(fresh));
+        return Ok(Vec::new());
+    };
+    let changed = changed_regions(&old, &fresh);
+    if changed.is_empty() {
+        return Ok(changed);
+    }
+    let night = format!("{realm}#night");
+    state.map_cells.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).retain(|key, _| {
+        key.0 != id || key.1 != realm || !changed.contains(&(key.2, key.3))
     });
+    state.map_tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).retain(|key, _| {
+        key.0 != id
+            || (key.1 != realm && key.1 != night)
+            || !changed.iter().any(|(rx, rz)| tile_touches_region(key.2, key.3, key.4, *rx, *rz))
+    });
+    state.map_index.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(index_key, Arc::new(fresh));
+    Ok(changed)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn world_map_bounds(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    realm: Option<String>,
+) -> Result<(i32, i32, i32, i32), String> {
+    let instance = instance_by_id(&app, &id)?;
+    let realm = worldmap::realm_key(realm.as_deref().unwrap_or("overworld"));
+    let realm = realm.as_str();
+    forget_chunk_stats(state.inner(), &id);
+    let fresh = map_stamps(&app, &instance, realm).await;
     let index_key = (id.clone(), realm.to_string());
     let old = state.map_index.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&index_key).cloned();
     {
@@ -9949,15 +10035,20 @@ mod browse_tests {
 #[specta::specta]
 async fn read_editable_file(app: AppHandle, id: String, path: String) -> Result<String, String> {
     let instance = instance_by_id(&app, &id)?;
-    if !instance.panel_host.is_empty() {
+    let text = if !instance.panel_host.is_empty() {
         let (api, target) = panel_of(&app, &instance)?;
-        return api.read_text(&target, &path).await;
+        api.read_text(&target, &path).await?
+    } else if !instance.remote_host.is_empty() {
+        far_read(&app, &instance, &path).await?
+    } else {
+        let path = safe_editable_path(&instance, &path)?;
+        let bytes = fs::read(path).map_err(|error| format!("Could not read the text file: {error}"))?;
+        String::from_utf8(bytes).map_err(|_| "This file isn't text, so it can't be opened in the editor.".to_string())?
+    };
+    if looks_binary(&text) {
+        return Err("This file isn't text, so it can't be opened in the editor.".into());
     }
-    if !instance.remote_host.is_empty() {
-        return far_read(&app, &instance, &path).await;
-    }
-    let path = safe_editable_path(&instance, &path)?;
-    fs::read_to_string(path).map_err(|error| format!("Could not read the text file: {error}"))
+    Ok(text)
 }
 
 fn image_kind(name: &str) -> Option<&'static str> {
@@ -13831,6 +13922,65 @@ async fn read_player_nbt(
     Ok(snapshot)
 }
 
+/// Change or remove one stack in a saved player file. The server has to be stopped (it would overwrite the file),
+/// and the old file is kept under the app's restore folder first.
+#[tauri::command(async)]
+#[specta::specta]
+async fn edit_player_item(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    uuid: String,
+    ender: bool,
+    slot: i32,
+    count: i32,
+) -> Result<(), String> {
+    let instance = instance_by_id(&app, &id)?;
+    let uuid = uuid.trim().to_string();
+    if uuid.len() != 36 || !uuid.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+        return Err("The UUID is malformed.".into());
+    }
+    if !instance.panel_host.is_empty() {
+        return Err("Editing items isn't available for panel servers yet.".into());
+    }
+    let keep = restore_dir(&app, &id)?.join("players");
+    fs::create_dir_all(&keep).map_err(|error| error.to_string())?;
+    let kept = keep.join(format!("{}-{uuid}.dat", unix_now()));
+    if is_far(&instance) {
+        ensure_remote_stopped(&app, &state, &instance).await?;
+        let level = far_read(&app, &instance, "server.properties")
+            .await
+            .ok()
+            .and_then(|text| text.lines().find_map(|line| line.trim().strip_prefix("level-name=")).map(|value| value.trim().to_string()))
+            .filter(|value| !value.is_empty() && !value.contains(['/', '\\', ':']))
+            .unwrap_or_else(|| "world".into());
+        let mut found = None;
+        for folder in ["players/data", "playerdata"] {
+            let relative = format!("{level}/{folder}/{uuid}.dat");
+            if let Ok(raw) = far_read_bytes(&app, &instance, &relative, 8 * 1024 * 1024).await {
+                found = Some((relative, raw));
+                break;
+            }
+        }
+        let (relative, raw) = found.ok_or("No saved data. The server creates the file after a player joins and leaves once.")?;
+        fs::write(&kept, &raw).map_err(|error| error.to_string())?;
+        let changed = nbt::edit_player_item(raw, ender, slot as i64, count as i64)?;
+        far_upload(&app, &instance, &relative, &changed, &format!("{uuid}.dat")).await?;
+    } else {
+        ensure_stopped(&state, &id)?;
+        let path = player_file(Path::new(&instance.path), &level_name_of(&instance), "data", &format!("{uuid}.dat"))
+            .ok_or("No saved data. The server creates the file after a player joins and leaves once.")?;
+        let raw = fs::read(&path).map_err(|error| format!("Could not read the file: {error}"))?;
+        fs::write(&kept, &raw).map_err(|error| error.to_string())?;
+        let changed = nbt::edit_player_item(raw, ender, slot as i64, count as i64)?;
+        let temp = path.with_extension("dat.monolab");
+        fs::write(&temp, &changed).map_err(|error| format!("Could not save the file: {error}"))?;
+        fs::rename(&temp, &path).map_err(|error| format!("Could not save the file: {error}"))?;
+    }
+    record_audit(&app, &id, "Player", "Edit saved item", &format!("{uuid} slot {slot} count {count}"));
+    Ok(())
+}
+
 async fn read_live_inventory(app: &AppHandle, instance: &ServerInstance, uuid: &str) -> Option<liveinv::LiveInventory> {
     if instance_view(instance.clone(), &app.state::<AppState>()).status != "running" {
         return None;
@@ -16120,6 +16270,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             remove_addon,
             render_map_tile,
             world_map_bounds,
+            map_changes,
             list_event_days,
             perf_history,
             read_live,
@@ -16165,6 +16316,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             send_rcon_command,
             get_rcon_status,
             read_player_nbt,
+            edit_player_item,
             list_player_spots,
             read_world_settings,
             save_world_settings,
@@ -16951,5 +17103,28 @@ mod start_script_tests {
         for bad in ["", "../start.bat", "sub/start.bat", "a&b.bat", "x%y.bat", "C:start.bat", ".hidden.bat", "a;b.sh", "a$b.sh"] {
             assert!(check_script_name(bad, bad.ends_with(".sh")).is_err(), "{bad}");
         }
+    }
+}
+
+#[cfg(test)]
+mod map_change_tests {
+    use super::{changed_regions, tile_touches_region, RegionStamps};
+
+    #[test]
+    fn finds_redrawn_added_and_removed_regions() {
+        let old: RegionStamps = [((0, 0), (10, 5)), ((1, 0), (10, 5)), ((2, 0), (10, 5))].into();
+        let fresh: RegionStamps = [((0, 0), (10, 5)), ((1, 0), (11, 6)), ((3, 0), (12, 7))].into();
+        assert_eq!(changed_regions(&old, &fresh), vec![(1, 0), (2, 0), (3, 0)]);
+        assert!(changed_regions(&fresh, &fresh).is_empty());
+    }
+
+    #[test]
+    fn knows_which_tiles_show_a_region() {
+        assert!(tile_touches_region(0, 0, 0, 0, 0));
+        assert!(tile_touches_region(0, 3, 3, 0, 0));
+        assert!(tile_touches_region(0, 4, 0, 0, 0), "the next tile shades against the region edge");
+        assert!(!tile_touches_region(0, 5, 0, 0, 0));
+        assert!(tile_touches_region(3, 0, 0, 1, 1));
+        assert!(!tile_touches_region(0, -2, 0, 0, 0));
     }
 }

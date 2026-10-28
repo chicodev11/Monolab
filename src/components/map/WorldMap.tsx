@@ -26,6 +26,19 @@ function snapArea(a: { x: number; z: number }, b: { x: number; z: number }): Map
 type AreaStay = { chunks: number; visited: number; total: number; max: number; tooBig: boolean };
 
 export type TileFetch = (z: number, tx: number, ty: number, night: boolean) => Promise<string>;
+export type MapChanges = () => Promise<[number, number][]>;
+
+const CHANGES_MS = 3000;
+
+/** Whether a tile shows any of a region, counting the one-block edge its shading reads. */
+export function tileTouchesRegion(level: number, tx: number, ty: number, rx: number, rz: number) {
+  const span = TILE * 2 ** level;
+  const left = tx * span;
+  const top = ty * span;
+  const rleft = rx * 512 - 1;
+  const rtop = rz * 512 - 1;
+  return left < rleft + 514 && rleft < left + span && top < rtop + 514 && rtop < top + span;
+}
 
 type Want = { key: string; level: number; tx: number; ty: number };
 
@@ -56,6 +69,7 @@ export function WorldMap({
   pins,
   onPick,
   fetchTile,
+  changes,
   start,
   cave,
   onExport,
@@ -69,6 +83,7 @@ export function WorldMap({
   pins: MapPin[];
   onPick?: (x: number, z: number) => void;
   fetchTile: TileFetch;
+  changes?: MapChanges | null;
   start: { x: number; z: number; level: number };
   cave?: { on: boolean; toggle: () => void } | null;
   onExport?: (png: string) => void;
@@ -215,6 +230,35 @@ export function WorldMap({
     const timer = window.setInterval(() => pump.current(), 1000);
     return () => window.clearInterval(timer);
   }, []);
+  const changesRef = useRef(changes);
+  changesRef.current = changes;
+  useEffect(() => {
+    let asking = false;
+    const timer = window.setInterval(() => {
+      const ask = changesRef.current;
+      if (!ask || asking || document.visibilityState !== "visible") return;
+      asking = true;
+      void ask()
+        .then((regions) => {
+          if (!regions.length) return;
+          const stale = (key: string) => {
+            const [, level, tx, ty] = key.split("/").map(Number);
+            return regions.some(([rx, rz]) => tileTouchesRegion(level, tx, ty, rx, rz));
+          };
+          for (const key of Object.keys(have.current)) if (stale(key)) delete have.current[key];
+          if (cacheKey) {
+            const kept = tileCache(cacheKey).tiles;
+            for (const key of Object.keys(kept)) if (stale(key)) delete kept[key];
+          }
+          pump.current();
+        })
+        .catch(() => {})
+        .finally(() => {
+          asking = false;
+        });
+    }, CHANGES_MS);
+    return () => window.clearInterval(timer);
+  }, [cacheKey]);
 
   useEffect(() => {
     if (!focus || size.w < 16) return;

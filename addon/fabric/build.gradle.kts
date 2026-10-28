@@ -41,6 +41,9 @@ sourceSets {
         java.srcDir(rootProject.file("addon/shared"))
         java.srcDir(rootProject.file("addon/brigadier"))
         java.srcDir(rootProject.file("addon/fabric/mapped/$mapped"))
+        if (mapped == "mojang") {
+            java.srcDir(rootProject.file("addon/mojang"))
+        }
         java.srcDir(rootProject.file("addon/fabric/bridge/$bridge"))
     }
 }

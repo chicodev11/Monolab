@@ -130,6 +130,11 @@ export const commands = {
 	removeAddon: (id: string) => __TAURI_INVOKE<AddonStatus>("remove_addon", { id }),
 	renderMapTile: (id: string, realm: string | null, z: number, tx: number, ty: number, night: boolean | null) => __TAURI_INVOKE<string>("render_map_tile", { id, realm, z, tx, ty, night }),
 	worldMapBounds: (id: string, realm: string | null) => __TAURI_INVOKE<[number, number, number, number]>("world_map_bounds", { id, realm }),
+	/**
+	 *  What changed in the map since the last look: drops just those regions from the caches, so an open map can
+	 *  refetch the tiles that show them while the add-on keeps drawing.
+	 */
+	mapChanges: (id: string, realm: string | null) => __TAURI_INVOKE<([number, number])[]>("map_changes", { id, realm }),
 	listEventDays: (id: string) => __TAURI_INVOKE<string[]>("list_event_days", { id }),
 	perfHistory: (id: string, day: string) => __TAURI_INVOKE<GameEvent_Serialize[]>("perf_history", { id, day }),
 	readLive: (id: string) => __TAURI_INVOKE<{
@@ -198,6 +203,11 @@ export const commands = {
 	sendRconCommand: (id: string, command: string) => __TAURI_INVOKE<string>("send_rcon_command", { id, command }),
 	getRconStatus: (id: string) => __TAURI_INVOKE<RconStatus>("get_rcon_status", { id }),
 	readPlayerNbt: (id: string, uuid: string) => __TAURI_INVOKE<PlayerSnapshot>("read_player_nbt", { id, uuid }),
+	/**
+	 *  Change or remove one stack in a saved player file. The server has to be stopped (it would overwrite the file),
+	 *  and the old file is kept under the app's restore folder first.
+	 */
+	editPlayerItem: (id: string, uuid: string, ender: boolean, slot: number, count: number) => __TAURI_INVOKE<null>("edit_player_item", { id, uuid, ender, slot, count }),
 	listPlayerSpots: (id: string) => __TAURI_INVOKE<PlayerSpot[]>("list_player_spots", { id }),
 	readWorldSettings: (id: string, world: string) => __TAURI_INVOKE<WorldSettings>("read_world_settings", { id, world }),
 	saveWorldSettings: (input: WorldSettingsInput) => __TAURI_INVOKE<null>("save_world_settings", { input }),

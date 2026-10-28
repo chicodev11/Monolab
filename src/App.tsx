@@ -4391,6 +4391,25 @@ function App() {
       setError(String(cause));
     }
   }
+  async function editSavedItem(item: { slot: number; count: number }, ender: boolean) {
+    if (!selected || !playerSnapshot) return;
+    const text = await askText(tr("Change item count"), tr("Count (0 deletes it)"), String(item.count), tr("Change"));
+    if (text == null) return;
+    const count = Number(text.trim());
+    if (!Number.isInteger(count) || count < 0 || count > 99) {
+      setError(tr("Enter a number from 0 to 99."));
+      return;
+    }
+    if (count === item.count) return;
+    try {
+      setError(null);
+      await commands.editPlayerItem(selected.id, playerSnapshot.uuid, ender, item.slot, count);
+      setPlayerSnapshot(await commands.readPlayerNbt(selected.id, playerSnapshot.uuid));
+      setNotice(count === 0 ? tr("Deleted the item.") : tr("Changed the item count."));
+    } catch (cause) {
+      setError(String(cause));
+    }
+  }
   async function findUuid(name: string): Promise<string> {
     try {
       const profile = await commands.lookupMojangProfile(name);
@@ -4900,6 +4919,11 @@ function App() {
     if (!selected) throw new Error(tr("No servers found."));
     const layer = mapCave && mapRealm === "overworld" ? "overworld-cave" : mapRealm;
     return await commands.renderMapTile(selected.id, layer, z, tx, ty, night);
+  }
+  async function fetchMapChanges(): Promise<[number, number][]> {
+    if (!selected) return [];
+    const layer = mapCave && mapRealm === "overworld" ? "overworld-cave" : mapRealm;
+    return (await commands.mapChanges(selected.id, layer)) as [number, number][];
   }
   const mapPins: MapPin[] = [
     ...(mapSpawn && mapRealm === "overworld"
@@ -7818,6 +7842,7 @@ function App() {
                   cacheKey={`${selected.id}/${mapRealm}`}
                   start={mapStart}
                   fetchTile={fetchMapTile}
+                  changes={fetchMapChanges}
                   pins={mapPins}
                   focus={mapFocus}
                   onPick={(x, z) => void bookmarkSpot(x, z)}
@@ -8986,6 +9011,7 @@ function App() {
               </div>
               {(playerSnapshot.inventory.length > 0 || playerSnapshot.enderItems.length > 0) && (() => {
                 const shown = invTab === "ender" ? playerSnapshot.enderItems : playerSnapshot.inventory;
+                const editable = selected.status === "stopped" && !selected.panelHost && !playerSnapshot.live;
                 const bySlot = new Map(shown.map((one) => [one.slot, one]));
                 const row = (from: number, count: number) =>
                   Array.from({ length: count }, (_, at) => from + at);
@@ -9011,6 +9037,7 @@ function App() {
                     ),
                   ];
                   const most = item.maxDamage || maxDurability(item.id);
+                  if (editable) lines.push(tr("Click to change the count"));
                   if (item.damage > 0) {
                     lines.push(
                       most
@@ -9020,8 +9047,9 @@ function App() {
                   }
                   return (
                     <div
-                      className={`inv-slot${item.enchantments.length ? " enchanted" : ""}`}
+                      className={`inv-slot${item.enchantments.length ? " enchanted" : ""}${editable ? " editable" : ""}`}
                       key={at}
+                      onClick={editable ? () => void editSavedItem(item, invTab === "ender") : undefined}
                       data-tip={lines.join("\n")}
                     >
                       {icon ? (

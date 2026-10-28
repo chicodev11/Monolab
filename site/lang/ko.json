@@ -140,5 +140,11 @@
   "Text fields showed two outlines when focused. Now the field border lights up once.": "입력칸을 누르면 테두리가 두 겹으로 생기던 문제를 고쳤어요. 이제 칸 테두리만 한 번 밝아져요.",
   "Creating a server from a modpack ignored the SSH server chosen under Create on and made it on this PC.": "모드팩으로 서버를 만들면 만들 위치에서 고른 SSH 서버를 무시하고 로컬에 만들던 문제를 고쳤어요.",
   "Leaf server core: pick it when creating a server, with plugins, the Monolab add-on and spark like Paper.": "Leaf 코어를 지원해요. 서버를 만들 때 고를 수 있고, Paper처럼 플러그인·Monolab 애드온·spark를 쓸 수 있어요.",
-  "SSH servers in the same parent folder shared one backup list, so restoring or cleaning old backups could touch another server. Each server now keeps its own backups.": "같은 폴더 아래 SSH 서버들이 백업 목록을 함께 써서 복원이나 오래된 백업 정리가 다른 서버에 닿을 수 있던 문제를 고쳤어요. 이제 서버마다 백업을 따로 둬요."
+  "SSH servers in the same parent folder shared one backup list, so restoring or cleaning old backups could touch another server. Each server now keeps its own backups.": "같은 폴더 아래 SSH 서버들이 백업 목록을 함께 써서 복원이나 오래된 백업 정리가 다른 서버에 닿을 수 있던 문제를 고쳤어요. 이제 서버마다 백업을 따로 둬요.",
+  "The world map updates live: with add-on 30, blocks players change show up in the app and web map within a few seconds, without waiting for the server to save.": "월드 지도가 실시간으로 갱신돼요. 애드온 30을 넣으면 플레이어가 바꾼 블록이 서버 저장을 기다리지 않고 몇 초 안에 앱과 웹 지도에 나타나요.",
+  "Saved player items can be changed or deleted while the server is stopped: click a slot in the player details. The old file is kept as a backup.": "서버가 꺼져 있을 때 플레이어 상세에서 소지품 칸을 눌러 아이템 개수를 바꾸거나 삭제할 수 있어요. 바꾸기 전 파일은 백업해 둬요.",
+  "The Save and Roll back buttons in the file editor looked like plain text and a square box.": "파일 편집기의 저장·이전 버전으로 되돌리기 버튼이 글자와 네모 상자처럼 보이던 문제를 고쳤어요.",
+  "Files with Windows line breaks showed as modified as soon as they were opened, and saving changed their line breaks.": "윈도우 줄바꿈 파일이 열자마자 수정됨으로 표시되고, 저장하면 줄바꿈이 바뀌던 문제를 고쳤어요.",
+  "Binary files such as .class opened in the editor as garbled text. They are now refused.": "`.class` 같은 바이너리 파일이 편집기에서 깨진 글자로 열리던 문제를 고쳤어요. 이제 열지 않아요.",
+  "The memory shown in the console status panel differed from the Monitor tab. Both now show Java heap memory.": "콘솔 상태 패널의 메모리 사용량이 리소스 탭과 다르던 문제를 고쳤어요. 이제 둘 다 Java 힙 메모리를 보여줘요."
 }

@@ -93,6 +93,11 @@ const look = EditorView.theme({
 
 export type Cursor = { line: number; column: number; selected: number; lines: number };
 
+/** Keep a file's own line breaks: CodeMirror would otherwise turn CRLF into LF, so a file looks edited the moment it opens. */
+function lineBreakOf(text: string) {
+  return text.includes("\r\n") ? EditorState.lineSeparator.of("\r\n") : [];
+}
+
 export function CodeEditor({
   path,
   value,
@@ -113,6 +118,7 @@ export function CodeEditor({
   const handlers = useRef({ onChange, onSave, onCursor });
   handlers.current = { onChange, onSave, onCursor };
   const locking = useRef(new Compartment());
+  const breaks = useRef(new Compartment());
 
   useEffect(() => {
     if (!host.current) return;
@@ -160,9 +166,10 @@ export function CodeEditor({
         ]),
         look,
         locking.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
+        breaks.current.of(lineBreakOf(value)),
         ...(language ? [language] : []),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) handlers.current.onChange(update.state.doc.toString());
+          if (update.docChanged) handlers.current.onChange(update.state.sliceDoc());
           if (update.docChanged || update.selectionSet) tell(update.state);
         }),
       ],
@@ -180,7 +187,11 @@ export function CodeEditor({
 
   useEffect(() => {
     const now = view.current;
-    if (!now || now.state.doc.toString() === value) return;
+    if (!now) return;
+    if (now.state.lineBreak !== (value.includes("\r\n") ? "\r\n" : "\n")) {
+      now.dispatch({ effects: breaks.current.reconfigure(lineBreakOf(value)) });
+    }
+    if (now.state.sliceDoc() === value) return;
     now.dispatch({ changes: { from: 0, to: now.state.doc.length, insert: value } });
   }, [value]);
 

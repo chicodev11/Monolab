@@ -351,6 +351,11 @@ final class MapWeb {
                     send(client, head, 200, "application/json; charset=utf-8", bounds.getBytes(StandardCharsets.UTF_8), "no-store");
                 }
             }
+            case "/changes" -> {
+                String realm = param(query, "realm");
+                String body = realmOk(realm) ? stamps(realm) : "[]";
+                send(client, head, 200, "application/json; charset=utf-8", body.getBytes(StandardCharsets.UTF_8), "no-store");
+            }
             case "/players" -> send(client, head, 200, "application/json; charset=utf-8", players(settings).getBytes(StandardCharsets.UTF_8), "no-store");
             case "/tile" -> tile(client, head, query, match);
             case "/head" -> {
@@ -584,6 +589,19 @@ final class MapWeb {
     }
 
     // ---- tiles --------------------------------------------------------------------------------------------
+
+    /** Every drawn region with its stamp, so an open page can tell which tiles the add-on just redrew. */
+    private String stamps(String realm) {
+        StringBuilder out = new StringBuilder("[");
+        for (Map.Entry<Long, Long> one : index(realm).entrySet()) {
+            if (out.length() > 1) {
+                out.append(',');
+            }
+            long at = one.getKey();
+            out.append('[').append((int) (at >> 32)).append(',').append((int) at).append(',').append(one.getValue()).append(']');
+        }
+        return out.append(']').toString();
+    }
 
     private static long key(int rx, int rz) {
         return ((long) rx << 32) | (rz & 0xFFFFFFFFL);

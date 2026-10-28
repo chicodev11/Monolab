@@ -25,6 +25,7 @@ final class MapRender {
     static final int SPAN = 512;
     private static final byte[] MAGIC = "MNM2".getBytes(StandardCharsets.US_ASCII);
     private static final long PAUSE_MS = 60_000L;
+    private static final long PATCH_MS = 1_000L;
     private static final String RULES = "4";
     private static final byte[] STATS_MAGIC = "MST1".getBytes(StandardCharsets.US_ASCII);
     private static final List<String> STATUSES = List.of(
@@ -44,6 +45,11 @@ final class MapRender {
     private volatile boolean running;
     private Thread thread;
     private MapWeb web;
+    private final MapLive live = new MapLive(this);
+    private final java.util.concurrent.ConcurrentLinkedQueue<Object[]> patches = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private final java.util.concurrent.atomic.AtomicInteger waiting = new java.util.concurrent.atomic.AtomicInteger();
+    private final Map<Path, Long> drawnAt = new HashMap<>();
+    private volatile java.util.Set<String> layers = java.util.Set.of();
 
     MapRender(Path server, Path out, BiConsumer<String, Throwable> onTrouble) {
         this.server = server;
@@ -87,6 +93,36 @@ final class MapRender {
         return text.toString();
     }
 
+    MapLive live() {
+        return live;
+    }
+
+    boolean knows(String layer) {
+        return layers.contains(layer);
+    }
+
+    boolean visible(String name) {
+        Integer mapColor = colors.get(name);
+        return mapColor == null ? !name.endsWith(":air") && !name.endsWith("_air") : mapColor != 0;
+    }
+
+    static boolean alwaysWet(String name) {
+        return ALWAYS_WET.contains(name);
+    }
+
+    void trouble(String message, Throwable error) {
+        onTrouble.accept(message, error);
+    }
+
+    /** A chunk sampled live on the server thread; the map thread patches it into its tile. */
+    void live(String layer, int cx, int cz, MapLive.Columns columns) {
+        if (waiting.incrementAndGet() > 8192) {
+            waiting.decrementAndGet();
+            return;
+        }
+        patches.add(new Object[] {layer, cx, cz, columns});
+    }
+
     void game(String version) {
         this.game = version == null ? "" : version;
     }
@@ -113,37 +149,92 @@ final class MapRender {
     }
 
     private void loop() {
-        try {
-            Thread.sleep(20_000L);
-        } catch (InterruptedException ignored) {
-            return;
-        }
-        try {
-            MapColors.build(out, server, game, colors, onTrouble, true);
-        } catch (Throwable error) {
-            onTrouble.accept("Couldn't build the map palette", error);
-        }
+        long passedAt = System.currentTimeMillis() - PAUSE_MS + 20_000L;
+        boolean first = true;
         while (running) {
-            try {
-                MapColors.build(out, server, game, colors, onTrouble, false);
-            } catch (Throwable error) {
-                onTrouble.accept("Couldn't build the map palette", error);
+            if (System.currentTimeMillis() - passedAt >= PAUSE_MS) {
+                if (first) {
+                    first = false;
+                    try {
+                        MapColors.build(out, server, game, colors, onTrouble, true);
+                    } catch (Throwable error) {
+                        onTrouble.accept("Couldn't build the map palette", error);
+                    }
+                }
+                try {
+                    MapColors.build(out, server, game, colors, onTrouble, false);
+                } catch (Throwable error) {
+                    onTrouble.accept("Couldn't build the map palette", error);
+                }
+                try {
+                    pass();
+                } catch (Throwable error) {
+                    onTrouble.accept("Couldn't draw the map", error);
+                }
+                passedAt = System.currentTimeMillis();
             }
             try {
-                pass();
+                patch();
             } catch (Throwable error) {
-                onTrouble.accept("Couldn't draw the map", error);
+                onTrouble.accept("Couldn't update the map live", error);
             }
             try {
-                Thread.sleep(PAUSE_MS);
+                Thread.sleep(PATCH_MS);
             } catch (InterruptedException ignored) {
                 return;
             }
         }
     }
 
+    private void patch() throws IOException {
+        Map<Path, List<Object[]>> byTile = new LinkedHashMap<>();
+        for (Object[] one; (one = patches.poll()) != null; ) {
+            waiting.decrementAndGet();
+            String layer = (String) one[0];
+            int cx = (Integer) one[1];
+            int cz = (Integer) one[2];
+            Path tile = out.resolve(layer).resolve("r." + Math.floorDiv(cx, 32) + "." + Math.floorDiv(cz, 32) + ".mnm");
+            byTile.computeIfAbsent(tile, ignored -> new ArrayList<>()).add(one);
+        }
+        for (Map.Entry<Path, List<Object[]>> entry : byTile.entrySet()) {
+            Path tile = entry.getKey();
+            Region region = new Region();
+            boolean existed = Files.isRegularFile(tile);
+            long before = existed ? Files.getLastModifiedTime(tile).toMillis() : 0L;
+            readTile(tile, region);
+            for (Object[] one : entry.getValue()) {
+                MapLive.Columns columns = (MapLive.Columns) one[3];
+                int baseX = Math.floorMod((Integer) one[1], 32) * 16;
+                int baseZ = Math.floorMod((Integer) one[2], 32) * 16;
+                for (int z = 0; z < 16; z++) {
+                    for (int x = 0; x < 16; x++) {
+                        int from = z * 16 + x;
+                        int at = (baseZ + z) * SPAN + baseX + x;
+                        if (columns.top[from] == null) {
+                            if (columns.empty[from]) {
+                                region.block[at] = VOID;
+                                region.floor[at] = -1;
+                            }
+                            continue;
+                        }
+                        region.block[at] = region.block(columns.top[from]);
+                        region.floor[at] = columns.floor[from] == null ? -1 : region.block(columns.floor[from]);
+                        region.biome[at] = region.biome(columns.biome[from]);
+                        region.height[at] = columns.height[from];
+                        region.depth[at] = columns.depth[from];
+                        region.light[at] = columns.light[from];
+                    }
+                }
+            }
+            Files.createDirectories(tile.getParent());
+            writeTile(tile, region);
+            drawnAt.putIfAbsent(tile, before);
+        }
+    }
+
     private void pass() throws IOException {
         Map<String, Path> realms = realms();
+        layers = java.util.Set.copyOf(realms.keySet());
         List<Path[]> todo = new ArrayList<>();
         int total = 0;
         Path rules = out.resolve("rules.txt");
@@ -168,7 +259,7 @@ final class MapRender {
                         Path stats = withStats ? dir.resolve(base + ".mst") : null;
                         Path entities = withStats ? realm.getValue().resolveSibling("entities").resolve(name) : null;
                         boolean statsFresh = stats == null || (Files.isRegularFile(stats) && !newer(entities, stats));
-                        if (!redo && statsFresh && Files.isRegularFile(tile) && !changedSince(mca, Files.getLastModifiedTime(tile).toMillis())) {
+                        if (!redo && statsFresh && Files.isRegularFile(tile) && !changedSince(mca, drawnAt.getOrDefault(tile, Files.getLastModifiedTime(tile).toMillis()))) {
                             continue;
                         }
                         todo.add(new Path[] {mca, tile});
@@ -187,11 +278,21 @@ final class MapRender {
             }
             try {
                 renderRegion(one[0], one[1], cutoffs.get(i), extras.get(i)[0], extras.get(i)[1]);
+                drawnAt.remove(one[1]);
+                String[] bits = one[1].getFileName().toString().split("\\.");
+                if (bits.length == 4) {
+                    live.forget(one[1].getParent().getFileName().toString(), Integer.parseInt(bits[1]), Integer.parseInt(bits[2]));
+                }
             } catch (IOException error) {
                 onTrouble.accept("Couldn't draw region " + one[0].getFileName(), error);
             }
             done++;
             status(done, total);
+            try {
+                patch();
+            } catch (IOException error) {
+                onTrouble.accept("Couldn't update the map live", error);
+            }
             Thread.yield();
         }
         if (redo) {
@@ -416,6 +517,13 @@ final class MapRender {
             surface(list, cutoff, (index % 32) * 16, (index / 32) * 16, region);
         }
         Files.createDirectories(tile.getParent());
+        writeTile(tile, region);
+        if (stats != null) {
+            writeStats(stats, raw, chunks, entities);
+        }
+    }
+
+    private static void writeTile(Path tile, Region region) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream(SPAN * SPAN * 2);
         try (java.io.DataOutputStream gz = new java.io.DataOutputStream(new GZIPOutputStream(bytes))) {
             gz.write(MAGIC);
@@ -449,9 +557,6 @@ final class MapRender {
             }
         }
         write(tile, bytes.toByteArray());
-        if (stats != null) {
-            writeStats(stats, raw, chunks, entities);
-        }
     }
 
     private static void readTile(Path tile, Region region) {

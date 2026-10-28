@@ -25,6 +25,7 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
 
     private ScheduledTask liveTask;
     private ScheduledTask perfTask;
+    private ScheduledTask mapTask;
     private MapRender map;
     private int liveCount;
     private boolean chunkListBroken;
@@ -62,6 +63,9 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
         }
         if (perfTask != null) {
             perfTask.cancel();
+        }
+        if (mapTask != null) {
+            mapTask.cancel();
         }
         if (map != null) {
             map.stop();
@@ -103,6 +107,101 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
         }
         map.game(getServer().getMinecraftVersion());
         map.start();
+        if (!folia()) {
+            PaperChunks source = new PaperChunks();
+            MapRender running = map;
+            mapTask = getServer().getGlobalRegionScheduler().runAtFixedRate(this, task -> running.live().tick(source), 1L, 1L);
+        }
+    }
+
+    private static boolean folia() {
+        try {
+            Class.forName("io.papermc.paper.threadedregions.RegionizedServer");
+            return true;
+        } catch (ClassNotFoundException paper) {
+            return false;
+        }
+    }
+
+    /** Live map samples; Folia has no single thread that may touch every chunk, so it only gets the saved-file map. */
+    private final class PaperChunks implements MapLive.Source {
+        private final java.util.Map<org.bukkit.Material, Object[]> materials = new java.util.EnumMap<>(org.bukkit.Material.class);
+        private final java.util.Map<org.bukkit.block.Biome, String> biomes = new java.util.IdentityHashMap<>();
+
+        @Override
+        public java.util.List<Object[]> players() {
+            java.util.List<Object[]> out = new java.util.ArrayList<>();
+            for (org.bukkit.World world : getServer().getWorlds()) {
+                String dimension = world.getKey().toString();
+                for (Player player : world.getPlayers()) {
+                    Location spot = player.getLocation();
+                    out.add(new Object[] {dimension, spot.getBlockX(), spot.getBlockZ()});
+                }
+            }
+            return out;
+        }
+
+        @Override
+        public MapLive.Reader chunk(String dimension, int cx, int cz) {
+            for (org.bukkit.World world : getServer().getWorlds()) {
+                if (!dimension.equals(world.getKey().toString())) {
+                    continue;
+                }
+                if (!world.isChunkLoaded(cx, cz)) {
+                    return null;
+                }
+                org.bukkit.ChunkSnapshot snap = world.getChunkAt(cx, cz).getChunkSnapshot(true, true, false);
+                int minY = world.getMinHeight();
+                int maxY = world.getMaxHeight();
+                return new MapLive.Reader() {
+                    @Override
+                    public int minY() {
+                        return minY;
+                    }
+
+                    @Override
+                    public int top(int x, int z) {
+                        int y = Math.min(snap.getHighestBlockYAt(x, z), maxY - 1);
+                        return y < minY ? Integer.MIN_VALUE : y;
+                    }
+
+                    private Object[] kind(int x, int y, int z) {
+                        return materials.computeIfAbsent(snap.getBlockType(x, y, z), material -> {
+                            boolean wet = false;
+                            try {
+                                wet = material.isBlock() && material.createBlockData() instanceof org.bukkit.block.data.Waterlogged;
+                            } catch (RuntimeException legacy) {
+                                // No block data for this material.
+                            }
+                            return new Object[] {material.getKey().toString(), wet};
+                        });
+                    }
+
+                    @Override
+                    public String block(int x, int y, int z) {
+                        return (String) kind(x, y, z)[0];
+                    }
+
+                    @Override
+                    public boolean water(int x, int y, int z) {
+                        return (Boolean) kind(x, y, z)[1]
+                                && snap.getBlockData(x, y, z) instanceof org.bukkit.block.data.Waterlogged logged
+                                && logged.isWaterlogged();
+                    }
+
+                    @Override
+                    public String biome(int x, int y, int z) {
+                        return biomes.computeIfAbsent(snap.getBiome(x, y, z), biome -> biome.getKey().toString());
+                    }
+
+                    @Override
+                    public int light(int x, int y, int z) {
+                        return y < minY || y >= maxY ? 0 : snap.getBlockEmittedLight(x, y, z);
+                    }
+                };
+            }
+            return null;
+        }
     }
 
     private Path eventFolder() {
