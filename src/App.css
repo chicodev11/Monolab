@@ -10533,6 +10533,11 @@ div.wb-brand:hover { background: transparent; }
 .wb-dot.ok { background: var(--ok); }
 .wb-dot.warn { background: var(--warn); }
 .wb-top-end { display: flex; flex: none; align-items: center; gap: 8px; }
+/* Outside a server the menu sits in the middle of the window, not of the space after the logo. */
+.app-shell.wb:not(.in-server) .wb-top { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.app-shell.wb:not(.in-server) .wb-top > .wb-brand { justify-self: start; }
+.app-shell.wb:not(.in-server) .wb-top > .wb-menu { margin: 0; }
+.app-shell.wb:not(.in-server) .wb-top > .wb-top-end { justify-self: end; }
 .wb-search {
   display: inline-flex;
   align-items: center;
