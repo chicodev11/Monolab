@@ -11,6 +11,7 @@ import {
   Sun, Moon,
   Database, Network, Users, SlidersVertical, CalendarClock, ChartLine, CloudUpload, SquareTerminal,
   Eye, EyeOff, HardDrive,
+  FileCog, ScrollText, DatabaseBackup, Globe, FolderSync, Coffee, OctagonX, LayoutDashboard,
   Scissors, ClipboardPaste, ExternalLink, ArrowLeft, TextSelect, Pickaxe, Axe, PawPrint, Hammer, Factory, Biohazard, Bone, Car,
 } from "lucide-react";
 
@@ -113,6 +114,14 @@ const ICONS: Record<string, LucideIcon> = {
   terminal: SquareTerminal,
   eye: Eye,
   "eye-off": EyeOff,
+  "file-cog": FileCog,
+  logs: ScrollText,
+  backup: DatabaseBackup,
+  globe: Globe,
+  sftp: FolderSync,
+  java: Coffee,
+  "force-stop": OctagonX,
+  dashboard: LayoutDashboard,
 };
 
 export function Icon({ name }: { name: string }) {

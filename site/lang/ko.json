@@ -146,5 +146,14 @@
   "The Save and Roll back buttons in the file editor looked like plain text and a square box.": "파일 편집기의 저장·이전 버전으로 되돌리기 버튼이 글자와 네모 상자처럼 보이던 문제를 고쳤어요.",
   "Files with Windows line breaks showed as modified as soon as they were opened, and saving changed their line breaks.": "윈도우 줄바꿈 파일이 열자마자 수정됨으로 표시되고, 저장하면 줄바꿈이 바뀌던 문제를 고쳤어요.",
   "Binary files such as .class opened in the editor as garbled text. They are now refused.": "`.class` 같은 바이너리 파일이 편집기에서 깨진 글자로 열리던 문제를 고쳤어요. 이제 열지 않아요.",
-  "The memory shown in the console status panel differed from the Monitor tab. Both now show Java heap memory.": "콘솔 상태 패널의 메모리 사용량이 리소스 탭과 다르던 문제를 고쳤어요. 이제 둘 다 Java 힙 메모리를 보여줘요."
+  "The memory shown in the console status panel differed from the Monitor tab. Both now show Java heap memory.": "콘솔 상태 패널의 메모리 사용량이 리소스 탭과 다르던 문제를 고쳤어요. 이제 둘 다 Java 힙 메모리를 보여줘요.",
+  "Pumpkin servers get a world map: with add-on 31, the places players walk through are drawn and colored from the game's textures.": "Pumpkin 서버에도 월드 지도가 생겼어요. 애드온 31을 넣으면 플레이어가 다닌 곳이 그려지고, 게임 텍스처 색으로 칠해져요.",
+  "Choose the map height: point at the layers button on the map and slide to a Y level to see caves and floors below it. The far right end is the normal surface map. This replaces the cave toggle and needs add-on 31.": "지도 높이를 고를 수 있어요. 지도의 층 버튼에 마우스를 올리고 Y 값을 옮기면 그 높이 아래의 동굴과 바닥이 보여요. 맨 오른쪽 끝은 보통 지상 지도예요. 동굴 버튼을 대신하고, 애드온 31이 필요해요.",
+  "Pumpkin servers show entity counts by type in the Monitor tab.": "Pumpkin 서버도 리소스 탭에 엔티티 수를 종류별로 보여줘요.",
+  "Inside a server, the server tabs move up into the top bar and the server buttons sit at the top right, leaving more room for the page.": "서버 안에서는 서버 탭이 맨 위 줄로 올라가고 서버 버튼이 오른쪽 위에 모여서 화면을 더 넓게 써요.",
+  "The server tool list is a wider list grouped into Server, Manage and Status, with clearer icons. Point at the app icon at the top left to fold it down to icons.": "서버 도구 목록이 서버·관리·상태로 묶인 넓은 목록이 되고 아이콘도 알아보기 쉽게 바뀌었어요. 왼쪽 위 앱 아이콘에 마우스를 올리면 아이콘만 남게 접을 수 있어요.",
+  "The Quick run button is gone from the top bar. Ctrl+K still opens it.": "맨 위 줄의 빠른 실행 버튼을 없앴어요. Ctrl+K로는 그대로 열 수 있어요.",
+  "After stopping a server, add-on install and update still asked to stop the server until the tab was reopened.": "서버를 끈 뒤에도 탭을 다시 열기 전까지 애드온 설치·업데이트가 서버를 끄라고 하던 문제를 고쳤어요.",
+  "Dragging a server card also selected text.": "서버 카드를 끌면 글자까지 선택되던 문제를 고쳤어요.",
+  "Layout fixes: console status cards on narrow windows, Monitor cards and numbers, file table headers, the server creation summary and wider console margins.": "좁은 창의 콘솔 상태 칸, 리소스 칸과 숫자, 파일 표 머리, 서버 생성 요약, 콘솔 여백 같은 화면 배치를 다듬었어요."
 }

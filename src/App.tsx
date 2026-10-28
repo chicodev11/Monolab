@@ -546,25 +546,39 @@ const instanceNav: {
   label: string;
   icon: string;
 }[] = [
-  { id: "overview", label: tr("Overview"), icon: "server" },
+  { id: "overview", label: tr("Overview"), icon: "dashboard" },
   { id: "claude", label: tr("Agent"), icon: "sparkles" },
-  { id: "properties", label: tr("Server settings"), icon: "settings" },
+  { id: "properties", label: tr("Server settings"), icon: "file-cog" },
   { id: "files", label: tr("Files"), icon: "folder" },
-  { id: "worlds", label: tr("Worlds"), icon: "grid" },
-  { id: "addons", label: tr("Mods & plugins"), icon: "copy" },
-  { id: "players", label: tr("Players"), icon: "list" },
-  { id: "backups", label: tr("Backups"), icon: "archive" },
-  { id: "logs", label: tr("Logs"), icon: "console" },
-  { id: "monitor", label: tr("Monitor"), icon: "cpu" },
+  { id: "worlds", label: tr("Worlds"), icon: "map" },
+  { id: "addons", label: tr("Mods & plugins"), icon: "puzzle" },
+  { id: "players", label: tr("Players"), icon: "users" },
+  { id: "backups", label: tr("Backups"), icon: "backup" },
+  { id: "logs", label: tr("Logs"), icon: "logs" },
+  { id: "monitor", label: tr("Monitor"), icon: "gauge" },
   { id: "reach", label: tr("Network"), icon: "network" },
 ];
+const RAIL_GROUP: Partial<Record<Tool, "server" | "manage" | "status">> = {
+  overview: "server",
+  console: "server",
+  claude: "server",
+  properties: "manage",
+  files: "manage",
+  worlds: "manage",
+  addons: "manage",
+  players: "manage",
+  backups: "manage",
+  logs: "status",
+  monitor: "status",
+  reach: "status",
+};
 const panelNav: { id: Tool; label: string; icon: string; section?: string }[] = [
   { id: "overview", label: tr("Console"), icon: "terminal" },
   { id: "claude", label: tr("Agent"), icon: "sparkles" },
   { id: "files", label: tr("Files"), icon: "folder" },
-  { id: "addons", label: tr("Mods & plugins"), icon: "import" },
+  { id: "addons", label: tr("Mods & plugins"), icon: "puzzle" },
   { id: "databases", label: tr("Databases"), icon: "database" },
-  { id: "backups", label: tr("Backups"), icon: "cloud-up" },
+  { id: "backups", label: tr("Backups"), icon: "backup" },
   { id: "network", label: tr("Network"), icon: "network" },
   { id: "subusers", label: tr("User"), icon: "users" },
   { id: "startup", label: tr("Startup"), icon: "sliders" },
@@ -572,11 +586,11 @@ const panelNav: { id: Tool; label: string; icon: string; section?: string }[] = 
   { id: "psettings", label: tr("Settings"), icon: "settings" },
   { id: "activity", label: tr("Activity"), icon: "activity" },
   { id: "software", label: tr("Software"), icon: "gamepad" },
-  { id: "properties", label: tr("Server settings"), icon: "cog", section: tr("Minecraft") },
-  { id: "worlds", label: tr("Worlds"), icon: "grid" },
-  { id: "players", label: tr("Players"), icon: "list" },
-  { id: "logs", label: tr("Logs"), icon: "console" },
-  { id: "monitor", label: tr("Monitor"), icon: "cpu" },
+  { id: "properties", label: tr("Server settings"), icon: "file-cog", section: tr("Minecraft") },
+  { id: "worlds", label: tr("Worlds"), icon: "map" },
+  { id: "players", label: tr("Players"), icon: "users" },
+  { id: "logs", label: tr("Logs"), icon: "logs" },
+  { id: "monitor", label: tr("Monitor"), icon: "gauge" },
 ];
 const fallbackVersions = [
   "1.21.4",
@@ -1171,6 +1185,21 @@ function App() {
   }, [addons, addonCards, addonUpdates]);
 
   const [addon, setAddon] = useState<AddonStatus | null>(null);
+  const [railFolded, setRailFolded] = useState(() => {
+    try {
+      return localStorage.getItem("monolab-rail-folded") === "1";
+    } catch {
+      return false;
+    }
+  });
+  function foldRail(next: boolean) {
+    setRailFolded(next);
+    try {
+      localStorage.setItem("monolab-rail-folded", next ? "1" : "0");
+    } catch {
+      // Only a preference.
+    }
+  }
   const [marksOpen, setMarksOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [mapFocus, setMapFocus] = useState<{ x: number; z: number; n: number } | null>(null);
@@ -1324,6 +1353,21 @@ function App() {
     () => instances.find((instance) => instance.id === selectedId) ?? null,
     [instances, selectedId],
   );
+  const selectedStatus = selected?.status;
+  const addonShown = addon !== null;
+  useEffect(() => {
+    if (!selectedId || !addonShown) return;
+    let stale = false;
+    void commands
+      .addonStatus(selectedId)
+      .then((found) => {
+        if (!stale) setAddon(found);
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, [selectedId, selectedStatus, addonShown]);
   const javaChoices = selected?.remoteHost ? (remoteJavas ?? []) : javaList;
   const [place, setPlace] = useState("local");
   const [gameFilter, setGameFilter] = useState(() => localStorage.getItem("monolab-game-filter") ?? "");
@@ -3087,6 +3131,8 @@ function App() {
     if (!grab.moved) {
       if (Math.abs(event.clientY - grab.y) < 5 && Math.abs(event.clientX - (grab.left + grab.offsetX)) < 5) return;
       grab.moved = true;
+      window.getSelection()?.removeAllRanges();
+      document.body.classList.add("dragging-card");
       setDraggedInstanceId(grab.id);
     }
     setDragY(event.clientY);
@@ -3110,6 +3156,7 @@ function App() {
     const grab = grabRef.current;
     grabRef.current = null;
     if (!grab?.moved) return;
+    document.body.classList.remove("dragging-card");
     setDraggedInstanceId(null);
     setDragY(null);
     setDragX(null);
@@ -6388,7 +6435,6 @@ function App() {
   );
 
   const sidePanel = page === "instance" && (tool === "console" || (tool === "properties" && propsChanged.length > 0));
-  const sideShown = !!selected && sidePanel && wide;
   const runControls = selected ? (
   <div className="wb-run">
     {!onWeb && !selected.remoteHost && !selected.panelHost && (
@@ -6401,7 +6447,7 @@ function App() {
     </button>
     {selected.status !== "stopped" && (
       <button type="button" className="wb-icon ghost danger" aria-label={tr("End task")} data-tip={tr("End task")} onClick={() => void forceStop(selected)}>
-        <Icon name="alert" />
+        <Icon name="force-stop" />
       </button>
     )}
     {selected.status === "stopped" && selected.unreachable && selected.remoteHost ? (
@@ -9834,176 +9880,183 @@ function App() {
       />
       <div className={`app-shell wb ${selected && page === "instance" ? "in-server" : ""}`}>
       <header className="wb-top">
-        <button
-          type="button"
-          className="wb-brand"
-          aria-label={t("nav.servers")}
-          onClick={goHome}
-        >
-          <img className="brand-img" src={appIcon} alt="" draggable={false} />
-          <span>Monolab</span>
-        </button>
-        <nav className="wb-menu" aria-label={tr("Menu")} ref={menuBox}>
-          <span className="wb-menu-mark" aria-hidden style={menuMark ?? { opacity: 0 }} />
+        {selected && page === "instance" ? (
+          <div className="wb-brand">
+            <button
+              type="button"
+              className="wb-brand-fold"
+              aria-label={railFolded ? tr("Expand the sidebar") : tr("Collapse the sidebar")}
+              data-tip={railFolded ? tr("Expand the sidebar") : tr("Collapse the sidebar")}
+              onClick={() => foldRail(!railFolded)}
+            >
+              <img className="brand-img" src={appIcon} alt="" draggable={false} />
+              <Icon name={railFolded ? "panel-open" : "panel-close"} />
+            </button>
+            <button type="button" className="wb-brand-name" aria-label={t("nav.servers")} onClick={goHome}>
+              Monolab
+            </button>
+          </div>
+        ) : (
           <button
             type="button"
-            className={modal === "none" ? "on" : ""}
+            className="wb-brand"
+            aria-label={t("nav.servers")}
             onClick={goHome}
           >
-            <Icon name="server" />
-            {t("nav.servers")}
+            <img className="brand-img" src={appIcon} alt="" draggable={false} />
+            <span>Monolab</span>
           </button>
-          {!onWeb && (
+        )}
+        {selected && page === "instance" ? (
+          <div className="wb-tabs" role="tablist" aria-label={tr("Open servers")}>
+            {serverTabs.map((id) => {
+              const one = instances.find((item) => item.id === id);
+              if (!one) return null;
+              const on = one.id === selected.id;
+              return (
+                <div key={id} className={`wb-tab ${on ? "on" : ""}`}>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={on}
+                    onClick={() => !on && openManage(one)}
+                  >
+                    <span className={`status-dot status-${shownStatus(one)}`} />
+                    {one.name}
+                  </button>
+                  <button
+                    type="button"
+                    className="wb-tab-close"
+                    aria-label={tr("Close {0}", [one.name])}
+                    onClick={() => closeServerTab(id)}
+                  >
+                    <Icon name="close" />
+                  </button>
+                </div>
+              );
+            })}
             <button
               type="button"
-              className={modal === "web" ? "on" : ""}
-              onClick={() => {
-                setModal("web");
-                setAccountDraft(null);
-                void refreshWebPanel();
-                void refreshWebAccounts();
-              }}
+              className="wb-tab-add"
+              aria-label={tr("Open another server")}
+              data-tip={tr("Open another server")}
+              onClick={goHome}
             >
-              <Icon name="cloud" />
-              {tr("Web panel")}
-              {webPanel.on && <b className="wb-dot ok" aria-label={tr("On")} />}
+              <Icon name="plus" />
             </button>
-          )}
-          {!onWeb && (sshHostViews.length > 0 || panelHostViews.length > 0) && (
+          </div>
+        ) : (
+          <nav className="wb-menu" aria-label={tr("Menu")} ref={menuBox}>
+            <span className="wb-menu-mark" aria-hidden style={menuMark ?? { opacity: 0 }} />
             <button
               type="button"
-              className={modal === "sftp" ? "on" : ""}
-              onClick={() => {
-                reloadSshHosts();
-                setModal("sftp");
-              }}
+              className={modal === "none" ? "on" : ""}
+              onClick={goHome}
             >
-              <Icon name="truck" />
-              SFTP
+              <Icon name="server" />
+              {t("nav.servers")}
             </button>
-          )}
-          {!onWeb && panelHostViews.length > 0 && (
+            {!onWeb && (
+              <button
+                type="button"
+                className={modal === "web" ? "on" : ""}
+                onClick={() => {
+                  setModal("web");
+                  setAccountDraft(null);
+                  void refreshWebPanel();
+                  void refreshWebAccounts();
+                }}
+              >
+                <Icon name="globe" />
+                {tr("Web panel")}
+                {webPanel.on && <b className="wb-dot ok" aria-label={tr("On")} />}
+              </button>
+            )}
+            {!onWeb && (sshHostViews.length > 0 || panelHostViews.length > 0) && (
+              <button
+                type="button"
+                className={modal === "sftp" ? "on" : ""}
+                onClick={() => {
+                  reloadSshHosts();
+                  setModal("sftp");
+                }}
+              >
+                <Icon name="sftp" />
+                SFTP
+              </button>
+            )}
+            {!onWeb && panelHostViews.length > 0 && (
+              <button
+                type="button"
+                className={modal === "hydro" ? "on" : ""}
+                onClick={() => {
+                  reloadPanelHosts();
+                  setModal("hydro");
+                }}
+              >
+                <Icon name="blocks" />
+                {panelsName(panelHostViews)}
+              </button>
+            )}
             <button
               type="button"
-              className={modal === "hydro" ? "on" : ""}
-              onClick={() => {
-                reloadPanelHosts();
-                setModal("hydro");
-              }}
+              className={modal === "tasks" ? "on" : ""}
+              onClick={() => setModal("tasks")}
             >
-              <Icon name="blocks" />
-              {panelsName(panelHostViews)}
+              <Icon name="schedule" />
+              {tr("Tasks")}
             </button>
-          )}
-          <button
-            type="button"
-            className={modal === "tasks" ? "on" : ""}
-            onClick={() => setModal("tasks")}
-          >
-            <Icon name="refresh" />
-            {tr("Tasks")}
-          </button>
-          <button
-            type="button"
-            className={modal === "java" ? "on" : ""}
-            onClick={() => {
-              void refreshJavaProcs();
-              setModal("java");
-            }}
-          >
-            <Icon name={javaProcs.some((proc) => proc.orphan) ? "alert" : "cpu"} />
-            {tr("Java processes")}
-            {javaProcs.some((proc) => proc.orphan) && <b className="wb-dot warn" />}
-          </button>
-          {!onWeb && (
             <button
               type="button"
-              className={modal === "settings" ? "on" : ""}
+              className={modal === "java" ? "on" : ""}
               onClick={() => {
-                setModal("settings");
-                void refreshJavaList();
+                void refreshJavaProcs();
+                setModal("java");
               }}
             >
-              <Icon name="settings" />
-              {tr("Settings")}
+              <Icon name={javaProcs.some((proc) => proc.orphan) ? "alert" : "java"} />
+              {tr("Java processes")}
+              {javaProcs.some((proc) => proc.orphan) && <b className="wb-dot warn" />}
             </button>
-          )}
-          <button
-            type="button"
-            className={modal === "trash" ? "on" : ""}
-            onClick={() => setModal("trash")}
-          >
-            <Icon name="trash" />
-            {tr("Trash")}
-            {trashEntries.length > 0 && <span className="wb-count">{trashEntries.length}</span>}
-          </button>
-        </nav>
+            {!onWeb && (
+              <button
+                type="button"
+                className={modal === "settings" ? "on" : ""}
+                onClick={() => {
+                  setModal("settings");
+                  void refreshJavaList();
+                }}
+              >
+                <Icon name="settings" />
+                {tr("Settings")}
+              </button>
+            )}
+            <button
+              type="button"
+              className={modal === "trash" ? "on" : ""}
+              onClick={() => setModal("trash")}
+            >
+              <Icon name="trash" />
+              {tr("Trash")}
+              {trashEntries.length > 0 && <span className="wb-count">{trashEntries.length}</span>}
+            </button>
+          </nav>
+        )}
         <div className="wb-top-end">
-          <button
-            type="button"
-            className="wb-search"
-            onClick={() => {
-              setPaletteQuery("");
-              setPaletteIndex(0);
-              setPaletteOpen(true);
-            }}
-          >
-            <Icon name="search" />
-            {t("nav.quickRun")}
-            <kbd>Ctrl K</kbd>
-          </button>
+          {selected && page === "instance" && !(tool === "overview" && selected.status === "stopped") && runControls}
         </div>
       </header>
-      {selected && page === "instance" && (
-        <div className="wb-tabs" role="tablist" aria-label={tr("Open servers")}>
-          {serverTabs.map((id) => {
-            const one = instances.find((item) => item.id === id);
-            if (!one) return null;
-            const on = one.id === selected.id;
-            return (
-              <div key={id} className={`wb-tab ${on ? "on" : ""}`}>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={on}
-                  onClick={() => !on && openManage(one)}
-                >
-                  <span className={`status-dot status-${shownStatus(one)}`} />
-                  {one.name}
-                </button>
-                <button
-                  type="button"
-                  className="wb-tab-close"
-                  aria-label={tr("Close {0}", [one.name])}
-                  onClick={() => closeServerTab(id)}
-                >
-                  <Icon name="close" />
-                </button>
-              </div>
-            );
-          })}
-          <button
-            type="button"
-            className="wb-tab-add"
-            aria-label={tr("Open another server")}
-            data-tip={tr("Open another server")}
-            onClick={goHome}
-          >
-            <Icon name="plus" />
-          </button>
-          <span className="wb-tabs-gap" />
-          {!sideShown && !(tool === "overview" && selected.status === "stopped") && runControls}
-        </div>
-      )}
       <div className="wb-body">
         {selected && page === "instance" && (
-          <nav className="wb-rail" ref={navRef} aria-label={tr("Server tools")}>
+          <nav className={`wb-rail ${railFolded ? "folded" : ""}`} ref={navRef} aria-label={tr("Server tools")}>
             <span
               className={`nav-mark ${navMark.ready ? "ready" : ""}`}
               style={{ top: `${navMark.top}px`, height: `${navMark.height}px` }}
               aria-hidden
             />
-            {(selected.panelHost ? panelNav : instanceNav).map((item) => {
+            {(() => {
+            let lastGroup = "";
+            return (selected.panelHost ? panelNav : instanceNav).map((item) => {
               if (!toolAllowed(selected.core, item.id)) return null;
               if (item.id === "claude" && onWeb) return null;
               if (item.id === "software" && (panelHostViews.find((one) => one.id === selected.panelHost)?.kind ?? "hydrodactyl") !== "hydrodactyl") return null;
@@ -10012,7 +10065,9 @@ function App() {
                 item.id === "overview" && live
                   ? { id: "console" as Tool, label: tr("Console"), icon: selected.panelHost ? "terminal" : "console" }
                   : item;
-              const section = "section" in item ? (item.section as string | undefined) : undefined;
+              const group = selected.panelHost ? ("section" in item ? (item.section as string | undefined) : undefined) : RAIL_GROUP[slot.id];
+              const section = group && group !== lastGroup ? (group === "server" ? tr("Server") : group === "manage" ? tr("Manage") : group === "status" ? tr("Status") : group) : undefined;
+              if (group) lastGroup = group;
               const locked = (!!selected.remoteHost || !!selected.panelHost) && !REMOTE_TOOLS.includes(slot.id);
               const label = slot.id === "addons" ? (addonKind(selected.core) === "mod" ? tr("Mods") : tr("Plugins")) : slot.label;
               return (
@@ -10029,8 +10084,11 @@ function App() {
                         ? selected.panelHost
                           ? tr("This tab isn't available for panel servers yet.")
                           : tr("Not available for SSH servers yet.")
-                        : undefined
+                        : railFolded
+                          ? label
+                          : undefined
                     }
+                    aria-label={label}
                     onClick={() => void loadTool(slot.id)}
                   >
                     <Icon name={slot.icon} />
@@ -10038,7 +10096,8 @@ function App() {
                   </button>
                 </Fragment>
               );
-            })}
+            });
+            })()}
           </nav>
         )}
       <section className="workspace" key={selected && page === "instance" ? `in-${selected.id}` : "home"}>
@@ -10536,7 +10595,6 @@ function App() {
                   </small>
                 )}
               </div>
-              {runControls}
             </div>
             {hostChip(selected)}
             {tool === "console" && wide && selected.status === "running" && (
@@ -10679,7 +10737,7 @@ function App() {
                     ))
                   ) : (
                     <EmptyState
-                      icon="cpu"
+                      icon="java"
                       title={tr("No Java processes are running.")}
                       hint={tr("Servers appear here when they start. You can also end servers the app lost track of after restarting.")}
                     />

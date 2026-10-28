@@ -761,67 +761,6 @@ export function WorldMap({
         )}
       </div>
 
-      {height && (() => {
-        const { min, max, start: first } = height.range;
-        const shown = heightDraft ?? String(height.y ?? first);
-        const commit = (value: string) => {
-          setHeightDraft(null);
-          const y = Math.round(Number(value));
-          if (value.trim() === "" || !Number.isFinite(y)) return;
-          height.onChange(Math.min(max, Math.max(min, y)));
-        };
-        const drawing = height.y !== null && progress && progress.total > 0 && progress.done < progress.total;
-        return (
-          <div
-            className={`map-float map-float-height map-float-box ${height.y === null ? "auto" : ""}`}
-            data-tip={height.ready ? undefined : tr("Update the Monolab addon to pick a map height.")}
-          >
-            <button
-              className={`map-height-auto ${height.y === null ? "on" : ""}`}
-              aria-pressed={height.y === null}
-              data-tip={tr("Draws the highest block, like the map item")}
-              disabled={!height.ready}
-              onClick={() => {
-                setHeightDraft(null);
-                height.onChange(null);
-              }}
-            >
-              {tr("Auto")}
-            </button>
-            <span className="map-height-name">Y</span>
-            <input
-              type="range"
-              className="map-height-slider"
-              min={min}
-              max={max}
-              step={1}
-              value={Number(shown) || 0}
-              disabled={!height.ready}
-              aria-label={tr("Map height")}
-              onChange={(event) => setHeightDraft(event.target.value)}
-              onPointerUp={(event) => commit(event.currentTarget.value)}
-              onKeyUp={(event) => commit(event.currentTarget.value)}
-            />
-            <input
-              type="number"
-              className="map-height-number"
-              min={min}
-              max={max}
-              value={shown}
-              disabled={!height.ready}
-              aria-label={tr("Map height")}
-              onChange={(event) => setHeightDraft(event.target.value)}
-              onBlur={(event) => commit(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") commit(event.currentTarget.value);
-                if (event.key === "Escape") setHeightDraft(null);
-              }}
-            />
-            {drawing && <small className="map-height-progress">{tr("Drawing {0}/{1}", [progress.done, progress.total])}</small>}
-          </div>
-        );
-      })()}
-
       <div className="map-float map-float-layers map-float-box">
         <button
           className={`map-tool ${night ? "on" : ""}`}
@@ -832,6 +771,49 @@ export function WorldMap({
         >
           <Icon name={night ? "moon" : "sun"} />
         </button>
+        {height && (() => {
+          const { min, max } = height.range;
+          const auto = max + 1;
+          const shown = heightDraft !== null ? Number(heightDraft) : (height.y ?? auto);
+          const commit = (value: string) => {
+            setHeightDraft(null);
+            const y = Math.round(Number(value));
+            if (!Number.isFinite(y)) return;
+            height.onChange(y > max ? null : Math.max(min, y));
+          };
+          const drawing = height.y !== null && progress && progress.total > 0 && progress.done < progress.total;
+          return (
+            <div className="map-height" data-tip={height.ready ? undefined : tr("Update the Monolab addon to pick a map height.")}>
+              <button
+                className={`map-tool ${height.y !== null ? "on" : ""}`}
+                aria-label={tr("Map height")}
+                disabled={!height.ready}
+              >
+                <Icon name="layers" />
+              </button>
+              {height.ready && (
+                <div className="map-height-pop map-float-box">
+                  <span className="map-height-name">Y</span>
+                  <input
+                    type="range"
+                    className="map-height-slider"
+                    min={min}
+                    max={auto}
+                    step={1}
+                    value={shown}
+                    aria-label={tr("Map height")}
+                    aria-valuetext={shown > max ? tr("Auto") : String(shown)}
+                    onChange={(event) => setHeightDraft(event.target.value)}
+                    onPointerUp={(event) => commit(event.currentTarget.value)}
+                    onKeyUp={(event) => commit(event.currentTarget.value)}
+                  />
+                  <span className="map-height-value">{shown > max ? tr("Auto") : shown}</span>
+                  {drawing && <small className="map-height-progress">{tr("Drawing {0}/{1}", [progress.done, progress.total])}</small>}
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {chunks && (
           <button
             className={`map-tool ${chunks.on ? "on" : ""}`}

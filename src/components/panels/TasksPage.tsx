@@ -464,7 +464,7 @@ export function TasksPage({
         </div>
       ) : (
         <EmptyState
-          icon="refresh"
+          icon="schedule"
           title={tr("No tasks yet.")}
           hint={tr("Back up, restart or run commands on a schedule. For example: back up every day at 4 AM.")}
         />

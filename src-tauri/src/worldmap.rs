@@ -157,7 +157,11 @@ pub fn parse_tile(bytes: &[u8]) -> Option<Tile> {
         return None;
     }
     let mut at = 4;
-    let blocks = read_names(&raw, &mut at)?;
+    // Pumpkin addon 31 wrote bare block names (`stone`); the palette is keyed by `minecraft:stone`.
+    let blocks: Vec<String> = read_names(&raw, &mut at)?
+        .into_iter()
+        .map(|name| if name.contains(':') { name } else { format!("minecraft:{name}") })
+        .collect();
     let biomes = read_names(&raw, &mut at)?;
     let cells = raw.get(at..at + SPAN * SPAN * 10)?;
     let mut tile = Tile::empty();
@@ -260,7 +264,8 @@ impl Palette {
                     "water" => Tint::Water,
                     other => other.strip_prefix("fixed:").and_then(hex).map(Tint::Fixed).unwrap_or(Tint::None),
                 };
-                palette.blocks.insert(name.clone(), (color, tint));
+                let name = if name.contains(':') { name.clone() } else { format!("minecraft:{name}") };
+                palette.blocks.insert(name, (color, tint));
             }
         }
         if let Some(biomes) = value.get("biomes").and_then(|one| one.as_object()) {

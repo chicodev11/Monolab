@@ -8417,7 +8417,8 @@ async fn render_map_tile(
                 let grass = read("grass.png");
                 let foliage = read("foliage.png");
                 let palette_json = read("palette.json").unwrap_or_default();
-                if palette_json.windows(17).any(|one| one == b"\"vanilla\":false") {
+                const DRAFT: &[u8] = b"\"vanilla\":false";
+                if palette_json.windows(DRAFT.len()).any(|one| one == DRAFT) {
                     supply_client_jar(&app, &instance);
                 }
                 let one = Arc::new(worldmap::Palette::parse(&palette_json, grass.as_deref(), foliage.as_deref()));
@@ -8564,6 +8565,12 @@ fn supply_map_palette(app: &AppHandle, instance: &ServerInstance, jar: &Path) ->
     let state = app.state::<AppState>();
     state.map_palettes.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).remove(&instance.id);
     state.map_tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).retain(|key, _| key.0 != instance.id);
+    // An open map only redraws regions it is told changed, so report every region once.
+    for (key, stamps) in state.map_index.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).iter_mut() {
+        if key.0 == instance.id {
+            *stamps = Arc::new(RegionStamps::default());
+        }
+    }
     if let Ok(dir) = instance_data_dir(app, &instance.id) {
         let _ = fs::remove_dir_all(dir.join("map-tiles"));
     }

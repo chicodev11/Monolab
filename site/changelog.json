@@ -1,6 +1,26 @@
 [
   {
     "kind": "app",
+    "version": "1.6.0",
+    "date": "2026-10-28",
+    "added": [
+      "Pumpkin servers get a world map: with add-on 31, the places players walk through are drawn and colored from the game's textures.",
+      "Choose the map height: point at the layers button on the map and slide to a Y level to see caves and floors below it. The far right end is the normal surface map. This replaces the cave toggle and needs add-on 31.",
+      "Pumpkin servers show entity counts by type in the Monitor tab."
+    ],
+    "changed": [
+      "Inside a server, the server tabs move up into the top bar and the server buttons sit at the top right, leaving more room for the page.",
+      "The server tool list is a wider list grouped into Server, Manage and Status, with clearer icons. Point at the app icon at the top left to fold it down to icons.",
+      "The Quick run button is gone from the top bar. Ctrl+K still opens it."
+    ],
+    "fixed": [
+      "After stopping a server, add-on install and update still asked to stop the server until the tab was reopened.",
+      "Dragging a server card also selected text.",
+      "Layout fixes: console status cards on narrow windows, Monitor cards and numbers, file table headers, the server creation summary and wider console margins."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.5.0",
     "date": "2026-10-28",
     "added": [

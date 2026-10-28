@@ -1,5 +1,5 @@
 use pumpkin_plugin_api::Server;
-use pumpkin_plugin_api::wit::pumpkin::plugin::world::{BlockPos, Chunk, World};
+use pumpkin_plugin_api::wit::pumpkin::plugin::world::{BlockPos, World};
 use serde_json::{Map as JsonMap, Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
@@ -202,21 +202,24 @@ impl Map {
             None if layer == "nether" => (layer, NETHER_CEILING),
             None => (layer, i32::MAX),
         };
-        let (world, min_y) = self.worlds.get(realm)?;
-        let min_y = *min_y;
-        let chunk = world.get_chunk(cx, cz)?;
-        Some(self.columns(&chunk, min_y, cutoff))
+        // Only the loaded check goes through the chunk resource: its other calls trap the whole plugin
+        // when the chunk unloads mid-sample, while the world calls read loaded chunks and fall back to air.
+        let (world, min_y) = self.worlds.remove(realm)?;
+        let loaded = world.get_chunk(cx, cz).is_some();
+        let out = loaded.then(|| self.columns(&world, cx, cz, min_y, cutoff));
+        self.worlds.insert(realm.to_string(), (world, min_y));
+        out
     }
 
-    fn look(&mut self, chunk: &Chunk, pos: BlockPos) -> &Look {
-        let id = chunk.get_block_state_id(pos);
+    fn look(&mut self, world: &World, pos: BlockPos) -> &Look {
+        let id = world.get_block_state_id(pos);
         if !self.looks.contains_key(&id) {
-            let state = chunk.get_block_state(pos);
+            let state = world.get_block_state(pos);
             let waterlogged = state
                 .properties
                 .iter()
                 .any(|(key, value)| key == "waterlogged" && value == "true");
-            let name = state.block_name;
+            let name = if state.block_name.contains(':') { state.block_name } else { format!("minecraft:{}", state.block_name) };
             let look = Look {
                 visible: !state.is_air && state.map_color != 0,
                 water: waterlogged || ALWAYS_WET.contains(&name.as_str()),
@@ -232,7 +235,7 @@ impl Map {
         &self.looks[&id]
     }
 
-    fn columns(&mut self, chunk: &Chunk, min_y: i32, cutoff: i32) -> Columns {
+    fn columns(&mut self, world: &World, cx: i32, cz: i32, min_y: i32, cutoff: i32) -> Columns {
         let ceiling = cutoff != i32::MAX;
         let mut out = Columns {
             top: vec![None; 256],
@@ -247,7 +250,8 @@ impl Map {
         for z in 0..16 {
             for x in 0..16 {
                 let at = (z * 16 + x) as usize;
-                let start = chunk.get_top_block_y(x, z);
+                let (bx, bz) = (cx * 16 + x, cz * 16 + z);
+                let start = world.get_top_block_y(bx, bz);
                 if start < min_y {
                     out.empty[at] = !ceiling;
                     out.hash = mix(out.hash, if ceiling { 1 } else { 2 });
@@ -267,7 +271,7 @@ impl Map {
                 let mut top_y = i32::MIN;
                 let mut water = 0u32;
                 while y >= min_y {
-                    let look = self.look(chunk, BlockPos { x, y, z });
+                    let look = self.look(world, BlockPos { x: bx, y, z: bz });
                     let (visible, fluid) = (look.visible, look.water);
                     if !open {
                         if !visible && !fluid {
@@ -299,8 +303,8 @@ impl Map {
                     out.hash = mix(out.hash, if ceiling { 3 } else { 4 });
                     continue;
                 };
-                let biome = biome_name(&format!("{:?}", chunk.get_biome(BlockPos { x, y: top_y, z })));
-                let light = chunk.get_block_light(BlockPos { x, y: top_y + 1, z });
+                let biome = biome_name(&format!("{:?}", world.get_biome(BlockPos { x: bx, y: top_y, z: bz })));
+                let light = world.get_block_light(BlockPos { x: bx, y: top_y + 1, z: bz });
                 out.hash = mix(out.hash, text_hash(&top));
                 out.hash = mix(out.hash, floor.as_deref().map_or(0, text_hash));
                 out.hash = mix(out.hash, text_hash(&biome));
@@ -508,8 +512,8 @@ fn text_hash(text: &str) -> u64 {
     text.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x100_0000_01b3))
 }
 
-/// `BambooJungle` → `minecraft:bamboo_jungle`.
-fn biome_name(debug: &str) -> String {
+/// `BambooJungle` → `minecraft:bamboo_jungle`; the same for entity types.
+pub fn biome_name(debug: &str) -> String {
     let short = debug.rsplit("::").next().unwrap_or(debug);
     let mut name = String::from("minecraft:");
     for (index, letter) in short.chars().enumerate() {

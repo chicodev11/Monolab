@@ -5,6 +5,7 @@ use pumpkin_plugin_api::permissions;
 use pumpkin_plugin_api::scheduler::SchedulerExt;
 use pumpkin_plugin_api::{Context, Player, Plugin, PluginMetadata, Server, register_plugin};
 use serde_json::{Value, json};
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -18,6 +19,8 @@ const LIVE_TICKS: u64 = 20;
 const MAP_TICKS: u64 = 1;
 const PERF_TICKS: u64 = 1200;
 const KEEP_DAYS: i64 = 90;
+const HOTSPOTS: usize = 6;
+const HOTSPOT_FLOOR: u32 = 10;
 
 struct Monolab {
     state: Arc<State>,
@@ -100,12 +103,16 @@ impl State {
                 one
             })
             .collect();
-        self.set_live(json!({
+        let mut live = json!({
             "at": now_ms(),
             "tps": tps_of(server),
             "mspt": hundredths(server.get_mspt()),
             "players": people,
-        }));
+        });
+        if let (Value::Object(map), Value::Object(tally)) = (&mut live, entity_tally(server)) {
+            map.extend(tally);
+        }
+        self.set_live(live);
     }
 
     fn draw(&self, server: &Server) {
@@ -248,6 +255,46 @@ fn put_where(line: &mut Value, player: &Player) {
     put(line, "x", json!(x));
     put(line, "y", json!(y));
     put(line, "z", json!(z));
+}
+
+/// Entity counts in the shape the Java addons write: total, kinds, crowded chunks and per-world totals.
+fn entity_tally(server: &Server) -> Value {
+    let mut kinds: HashMap<String, u64> = HashMap::new();
+    let mut chunks: HashMap<(String, i32, i32), HashMap<String, u32>> = HashMap::new();
+    let mut worlds = Vec::new();
+    let mut total = 0u64;
+    for world in server.get_all_worlds() {
+        let name = world_name(&world.get_id(), &world.get_dimension());
+        let entities = world.get_entities();
+        worlds.push(json!({ "name": name, "entities": entities.len() }));
+        for entity in entities {
+            let kind = map::biome_name(&format!("{:?}", entity.get_type()));
+            let (x, _, z) = entity.get_position();
+            total += 1;
+            *kinds.entry(kind.clone()).or_default() += 1;
+            let spot = (name.clone(), (x.floor() as i32).div_euclid(16), (z.floor() as i32).div_euclid(16));
+            *chunks.entry(spot).or_default().entry(kind).or_default() += 1;
+        }
+    }
+    let mut kinds: Vec<(String, u64)> = kinds.into_iter().collect();
+    kinds.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let mut spots: Vec<((String, i32, i32), u32, String)> = chunks
+        .into_iter()
+        .map(|(spot, counts)| {
+            let count = counts.values().sum();
+            let top = counts.into_iter().max_by_key(|(_, n)| *n).map(|(kind, _)| kind).unwrap_or_default();
+            (spot, count, top)
+        })
+        .filter(|(_, count, _)| *count >= HOTSPOT_FLOOR)
+        .collect();
+    spots.sort_by_key(|spot| std::cmp::Reverse(spot.1));
+    spots.truncate(HOTSPOTS);
+    json!({
+        "entities": total,
+        "entityKinds": kinds.iter().map(|(kind, count)| json!({ "type": kind, "count": count })).collect::<Vec<_>>(),
+        "hotspots": spots.iter().map(|((world, x, z), count, top)| json!({ "world": world, "x": x, "z": z, "count": count, "top": top })).collect::<Vec<_>>(),
+        "worlds": worlds,
+    })
 }
 
 fn world_name(level: &str, dimension: &str) -> String {

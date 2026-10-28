@@ -513,6 +513,12 @@ mod tests {
         println!("grass_block {} stone {} plains {}", value["blocks"]["minecraft:grass_block"], value["blocks"]["minecraft:stone"], value["biomes"]["minecraft:plains"]);
         assert_eq!(value["blocks"]["minecraft:grass_block"][1], "grass");
         assert!(palette.grass.is_some());
+        if let Ok(out) = std::env::var("SE_PALETTE_OUT") {
+            let out = std::path::Path::new(&out);
+            std::fs::write(out.join("palette.json"), &palette.json).unwrap();
+            std::fs::write(out.join("grass.png"), palette.grass.unwrap()).unwrap();
+            std::fs::write(out.join("foliage.png"), palette.foliage.unwrap()).unwrap();
+        }
     }
 
     #[test]
