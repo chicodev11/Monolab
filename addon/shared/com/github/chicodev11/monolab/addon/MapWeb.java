@@ -357,6 +357,8 @@ final class MapWeb {
                 send(client, head, 200, "application/json; charset=utf-8", body.getBytes(StandardCharsets.UTF_8), "no-store");
             }
             case "/players" -> send(client, head, 200, "application/json; charset=utf-8", players(settings).getBytes(StandardCharsets.UTF_8), "no-store");
+            case "/height" -> send(client, head, 200, "application/json; charset=utf-8",
+                    height(param(query, "realm"), param(query, "y"), number(param(query, "x")), number(param(query, "z"))).getBytes(StandardCharsets.UTF_8), "no-store");
             case "/tile" -> tile(client, head, query, match);
             case "/head" -> {
                 byte[] face = settings.players ? head(param(query, "name")) : null;
@@ -476,6 +478,58 @@ final class MapWeb {
     }
 
     // ---- what the page asks for ---------------------------------------------------------------------------
+
+    /**
+     * Asks the map thread to draw a height layer around (x, z), the same way the app does through requests.json,
+     * and answers with that layer's progress.
+     */
+    private synchronized String height(String realm, String yText, int x, int z) {
+        int y;
+        try {
+            y = Integer.parseInt(yText);
+        } catch (NumberFormatException bad) {
+            return "{}";
+        }
+        String layer = realm + "-y" + y;
+        if (!realmOk(realm) || MapRender.depthLayer(realm) || !MapRender.depthLayer(layer) || !Files.isDirectory(out.resolve(realm))) {
+            return "{}";
+        }
+        Path file = out.resolve("requests.json");
+        long now = System.currentTimeMillis();
+        List<String> keep = new ArrayList<>();
+        boolean fresh = false;
+        try {
+            if (Files.isRegularFile(file) && MiniJson.parse(Files.readString(file)) instanceof Map<?, ?> root && root.get("layers") instanceof List<?> list) {
+                for (int i = 0; i < list.size(); i++) {
+                    if (!(list.get(i) instanceof Map<?, ?> entry) || !(entry.get("layer") instanceof String name) || !MapRender.depthLayer(name)) {
+                        continue;
+                    }
+                    int ox = entry.get("x") instanceof Number value ? value.intValue() : 0;
+                    int oz = entry.get("z") instanceof Number value ? value.intValue() : 0;
+                    long at = entry.get("at") instanceof Number value ? value.longValue() : 0L;
+                    if (i == 0 && name.equals(layer) && Math.abs(ox - x) < 256 && Math.abs(oz - z) < 256
+                            && now - Files.getLastModifiedTime(file).toMillis() < 60_000L) {
+                        fresh = true;
+                    }
+                    if (!name.equals(layer) && keep.size() < 3) {
+                        keep.add(new Json().put("layer", name).put("x", ox).put("z", oz).put("at", at).end());
+                    }
+                }
+            }
+            if (!fresh) {
+                StringBuilder text = new StringBuilder("{\"layers\":[");
+                text.append(new Json().put("layer", layer).put("x", x).put("z", z).put("at", now).end());
+                for (String one : keep) {
+                    text.append(',').append(one);
+                }
+                MapRender.write(file, text.append("]}").toString().getBytes(StandardCharsets.UTF_8));
+            }
+            Path status = out.resolve(layer).resolve("status.json");
+            return Files.isRegularFile(status) ? Files.readString(status) : "{}";
+        } catch (IOException | RuntimeException trouble) {
+            return "{}";
+        }
+    }
 
     private static boolean realmOk(String realm) {
         return !realm.isEmpty() && realm.length() <= 96 && !realm.contains("..") && !realm.startsWith(".")
@@ -968,6 +1022,6 @@ final class MapWeb {
                 (float) bpp,
                 night,
                 voidRgb,
-                realm.endsWith("-cave"));
+                realm.endsWith("-cave") || MapRender.depthLayer(realm));
     }
 }

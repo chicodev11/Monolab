@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const ADDON_VERSION: u32 = 31;
+pub const ADDON_VERSION: u32 = 32;
 
 #[cfg(test)]
 const GRADLE_PROPERTIES: &str = include_str!("../../gradle.properties");

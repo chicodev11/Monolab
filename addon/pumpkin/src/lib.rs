@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const VERSION: &str = "31";
+const VERSION: &str = "32";
 const NAME: &str = "monolab";
 const LIVE_TICKS: u64 = 20;
 const MAP_TICKS: u64 = 1;

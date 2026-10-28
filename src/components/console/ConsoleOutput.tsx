@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { hasStyle, parseAnsi, type AnsiPiece } from "../../lib/ansi";
 import { groupConsole, isErrorTail, readChat, readLevel, readPlayerCommand, tidyLogLine } from "../../lib/console";
 import { useHead } from "../../lib/heads";
@@ -134,6 +134,19 @@ export function LogLines({
   }, [chunks, followTail, total]);
   const followRef = useRef(followTail);
   followRef.current = followTail;
+  // While reading older lines, old lines drop off the front of the capped log; keep the same line in view.
+  const anchor = useRef<{ row: LogLine; index: number; offset: number } | null>(null);
+  useLayoutEffect(() => {
+    const node = box.current;
+    const held = anchor.current;
+    if (!node || followTail || !held) return;
+    const index = chunks.findIndex((chunk) => (chunk.kind === "error" ? chunk.rows.includes(held.row) : chunk.row === held.row));
+    if (index < 0 || index === held.index) return;
+    const start = virtualizer.getOffsetForIndex(index, "start")?.[0];
+    if (start === undefined) return;
+    held.index = index;
+    node.scrollTop = start + held.offset;
+  }, [chunks, followTail, virtualizer]);
   useEffect(() => {
     const node = box.current;
     if (!node) return;
@@ -148,6 +161,9 @@ export function LogLines({
   }, []);
   const onScroll = (node: HTMLDivElement) => {
     const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 60;
+    const top = virtualizer.getVirtualItems().find((item) => item.end > node.scrollTop);
+    const chunk = top ? chunks[top.index] : undefined;
+    anchor.current = !atBottom && top && chunk ? { row: chunk.kind === "error" ? chunk.rows[0] : chunk.row, index: top.index, offset: node.scrollTop - top.start } : null;
     if (atBottom) {
       userMoved.current = false;
       setFollowTail(true);

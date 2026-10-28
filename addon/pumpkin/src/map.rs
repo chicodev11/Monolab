@@ -84,6 +84,15 @@ pub struct Map {
     regions: Vec<(Key, Region)>,
     colors: HashMap<String, u8>,
     colors_changed: bool,
+    depth: Option<Depth>,
+}
+
+/// Progress of the height layer the app is showing: chunks queued for it and chunks looked at so far.
+struct Depth {
+    layer: String,
+    queued: HashSet<(i32, i32)>,
+    done: HashSet<(i32, i32)>,
+    written: (usize, usize),
 }
 
 impl Map {
@@ -100,6 +109,7 @@ impl Map {
             regions: Vec::new(),
             colors: HashMap::new(),
             colors_changed: false,
+            depth: None,
         }
     }
 
@@ -110,6 +120,9 @@ impl Map {
         }
         let start = Instant::now();
         while let Some((layer, cx, cz)) = self.queue.pop_front() {
+            if let Some(depth) = self.depth.as_mut().filter(|depth| depth.layer == layer) {
+                depth.done.insert((cx, cz));
+            }
             if let Some(columns) = self.sample(&layer, cx, cz) {
                 let key = (layer.clone(), cx, cz);
                 if self.seen.insert(key, columns.hash) != Some(columns.hash) {
@@ -124,8 +137,26 @@ impl Map {
         if now.saturating_sub(self.flushed_at) >= FLUSH_MS {
             self.flushed_at = now;
             self.flush()?;
+            self.write_depth_status(now)
+                .map_err(|error| format!("Couldn't write the map height progress: {error}"))?;
         }
         Ok(())
+    }
+
+    /// The same `status.json` the Java addons write, so the app can show how far a height layer got.
+    fn write_depth_status(&mut self, now: u64) -> std::io::Result<()> {
+        let Some(depth) = self.depth.as_mut() else {
+            return Ok(());
+        };
+        let counts = (depth.done.len(), depth.queued.len());
+        if counts == depth.written {
+            return Ok(());
+        }
+        depth.written = counts;
+        let dir = self.out.join(&depth.layer);
+        fs::create_dir_all(&dir)?;
+        let text = json!({ "at": now, "done": counts.0, "total": counts.1 }).to_string();
+        write_atomic(&dir.join("status.json"), text.as_bytes())
     }
 
     pub fn flush(&mut self) -> Result<(), String> {
@@ -162,6 +193,9 @@ impl Map {
         let mut players = Vec::new();
         self.worlds.clear();
         let wanted = self.wanted_layer();
+        if self.depth.as_ref().map(|depth| &depth.layer) != wanted.as_ref() {
+            self.depth = wanted.clone().map(|layer| Depth { layer, queued: HashSet::new(), done: HashSet::new(), written: (0, 0) });
+        }
         for player in server.get_all_players() {
             let world = player.get_world();
             let Some(layer) = layer_of(&world.get_dimension()) else {
@@ -188,6 +222,9 @@ impl Map {
                         }
                         let key = (layer.clone(), pcx + dx, pcz + dz);
                         if added.insert(key.clone()) {
+                            if let Some(depth) = self.depth.as_mut().filter(|depth| depth.layer == key.0) {
+                                depth.queued.insert((key.1, key.2));
+                            }
                             self.queue.push_back(key);
                         }
                     }

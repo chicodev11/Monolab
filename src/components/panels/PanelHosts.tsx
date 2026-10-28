@@ -332,15 +332,13 @@ export function PanelHosts({
       {editing === "new" ? (
         <div className="panel-card glow-card">{form}</div>
       ) : (
-        <button className="button primary small panel-add" onClick={startNew}>
+        <button className="ssh-add-card" type="button" onClick={startNew}>
           <Icon name="plus" />
-          {tr("Add panel")}
+          <span>
+            <strong>{tr("Add panel")}</strong>
+            <small>{tr("Add a Pterodactyl-compatible panel (Pterodactyl, Pelican or Hydrodactyl) to start and stop its servers and view their consoles here.")}</small>
+          </span>
         </button>
-      )}
-      {!hosts.length && editing !== "new" && (
-        <p className="panel-hint">
-          {tr("Add a Pterodactyl-compatible panel (Pterodactyl, Pelican or Hydrodactyl) to start and stop its servers and view their consoles here.")}
-        </p>
       )}
     </div>
   );

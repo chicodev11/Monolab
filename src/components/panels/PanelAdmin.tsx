@@ -39,10 +39,10 @@ export function PanelAdmin(props: Props) {
       <EmptyState
         icon="cloud"
         title={tr("No panels registered")}
-        hint={tr("Add a panel using Add session above the server list.")}
+        hint={tr("Add a panel in Manage sessions above the server list.")}
         action={
           <Button variant="primary" icon="plus" onClick={props.openSessions}>
-            {tr("Add session")}
+            {tr("Add panel")}
           </Button>
         }
       />

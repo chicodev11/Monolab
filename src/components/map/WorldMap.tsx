@@ -771,6 +771,41 @@ export function WorldMap({
         >
           <Icon name={night ? "moon" : "sun"} />
         </button>
+        {chunks && (
+          <button
+            className={`map-tool ${chunks.on ? "on" : ""}`}
+            aria-pressed={chunks.on}
+            data-tip={
+              chunks.on
+                ? tr("{0, plural, one {# loaded chunk} other {# loaded chunks}}", [(chunks.loaded.length + chunks.forced.length) / 2])
+                : chunks.known
+                  ? tr("Blue: loaded chunks · orange: force-loaded chunks")
+                  : tr("Loaded chunks in this dimension. This server type can't tell which ones are force-loaded.")
+            }
+            aria-label={tr("Loaded chunks")}
+            onClick={chunks.toggle}
+          >
+            <Icon name="grid" />
+          </button>
+        )}
+        <button
+          className={`map-tool ${showGrid ? "on" : ""}`}
+          aria-pressed={showGrid}
+          data-tip={tr("Chunk borders · thick lines are region files (512 blocks)")}
+          aria-label={tr("Chunk borders")}
+          onClick={() => setShowGrid((was) => !was)}
+        >
+          <Icon name="chunk-grid" />
+        </button>
+        <button
+          className={`map-tool ${showPins ? "on" : ""}`}
+          aria-pressed={showPins}
+          data-tip={tr("Players and bookmarks")}
+          aria-label={tr("Players and bookmarks")}
+          onClick={() => setShowPins((was) => !was)}
+        >
+          <Icon name="users" />
+        </button>
         {height && (() => {
           const { min, max } = height.range;
           const auto = max + 1;
@@ -814,41 +849,6 @@ export function WorldMap({
             </div>
           );
         })()}
-        {chunks && (
-          <button
-            className={`map-tool ${chunks.on ? "on" : ""}`}
-            aria-pressed={chunks.on}
-            data-tip={
-              chunks.on
-                ? tr("{0, plural, one {# loaded chunk} other {# loaded chunks}}", [(chunks.loaded.length + chunks.forced.length) / 2])
-                : chunks.known
-                  ? tr("Blue: loaded chunks · orange: force-loaded chunks")
-                  : tr("Loaded chunks in this dimension. This server type can't tell which ones are force-loaded.")
-            }
-            aria-label={tr("Loaded chunks")}
-            onClick={chunks.toggle}
-          >
-            <Icon name="grid" />
-          </button>
-        )}
-        <button
-          className={`map-tool ${showGrid ? "on" : ""}`}
-          aria-pressed={showGrid}
-          data-tip={tr("Chunk borders · thick lines are region files (512 blocks)")}
-          aria-label={tr("Chunk borders")}
-          onClick={() => setShowGrid((was) => !was)}
-        >
-          <Icon name="chunk-grid" />
-        </button>
-        <button
-          className={`map-tool ${showPins ? "on" : ""}`}
-          aria-pressed={showPins}
-          data-tip={tr("Players and bookmarks")}
-          aria-label={tr("Players and bookmarks")}
-          onClick={() => setShowPins((was) => !was)}
-        >
-          <Icon name="users" />
-        </button>
       </div>
 
       {area && !selecting && (() => {

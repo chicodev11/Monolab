@@ -1069,7 +1069,7 @@ final class MapRender {
         }
     }
 
-    private static void write(Path target, byte[] bytes) throws IOException {
+    static void write(Path target, byte[] bytes) throws IOException {
         Path temp = target.resolveSibling(target.getFileName() + ".tmp");
         Files.write(temp, bytes);
         try {

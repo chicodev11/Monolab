@@ -69,12 +69,23 @@ canvas.drag { cursor: grabbing; }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
 .empty { position: fixed; inset: 0; display: none; place-items: center; text-align: center; color: var(--dim); padding: 24px; pointer-events: none; z-index: 2; }
 .empty.on { display: grid; animation: rise .5s var(--ease) both; }
+.height { position: relative; }
+.hpop { position: absolute; top: 46px; right: 0; display: none; align-items: center; gap: 10px; height: 38px; padding: 0 14px; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); white-space: nowrap; }
+.hpop::before { content: ""; position: absolute; left: 0; right: 0; top: -10px; height: 10px; }
+.height:hover .hpop, .height:focus-within .hpop { display: flex; }
+.hpop span { color: var(--dim); font-size: 12.5px; font-weight: 600; }
+.hpop input { width: 170px; accent-color: var(--accent); }
+.hpop b { min-width: 34px; font-variant-numeric: tabular-nums; }
+.hpop small { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes slide { 0% { transform: translateX(-100%) scaleX(.4); } 100% { transform: translateX(100%) scaleX(.4); } }
 @media (max-width: 640px) {
   .top-right { top: auto; bottom: 14px; right: 14px; }
   .bottom-left { bottom: 62px; }
   .bottom-right { bottom: 62px; }
+  .hpop { top: auto; bottom: 46px; }
+  .hpop::before { top: auto; bottom: -10px; }
   .pill strong { max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -88,6 +99,10 @@ canvas.drag { cursor: grabbing; }
   <div class="seg" id="realms"></div>
   <button class="icon" id="link" title="Copy link"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></button>
   <button class="icon" id="night" title="Night">&#9790;</button>
+  <div class="height">
+    <button class="icon" id="heightBtn" title="Map height"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg></button>
+    <div class="hpop"><span>Y</span><input type="range" id="hy" step="1"><b id="hval"></b><small id="hprog"></small></div>
+  </div>
   <button class="icon" id="in" title="Zoom in">+</button>
   <button class="icon" id="out" title="Zoom out">&#8722;</button>
 </div>
@@ -105,12 +120,36 @@ canvas.drag { cursor: grabbing; }
   var canvas = document.getElementById("map");
   var ctx = canvas.getContext("2d");
   var TILE = 128, MIN_Z = -3, MAX_Z = 5;
-  var state = { realm: "", x: 0, z: 0, scale: 1, night: false, bounds: null };
+  var state = { realm: "", y: null, x: 0, z: 0, scale: 1, night: false, bounds: null };
   var tiles = {}, inflight = 0, queue = [], realms = [], showPeople = false, people = [], dpr = 1, w = 0, h = 0;
   var pointers = {}, last = null, velocity = { x: 0, z: 0 }, glide = 0, dirty = true, hashTimer = 0, loading = 0, aim = null;
 
   function el(id) { return document.getElementById(id); }
   function text(key, fallback) { return L[key] || fallback || key; }
+  function layer() { return state.y === null ? state.realm : state.realm + "-y" + state.y; }
+  function heightRange() { return state.realm === "nether" || state.realm === "end" ? [0, 255] : [-64, 319]; }
+  function showHeight() {
+    var r = heightRange(), slider = el("hy");
+    slider.min = r[0]; slider.max = r[1] + 1;
+    slider.value = state.y === null ? r[1] + 1 : state.y;
+    el("hval").textContent = state.y === null ? text("auto", "Auto") : String(state.y);
+    el("heightBtn").classList.toggle("on", state.y !== null);
+    if (state.y === null) el("hprog").textContent = "";
+  }
+  function setHeight(value) {
+    var r = heightRange(), y = Math.round(+value);
+    var next = !isFinite(y) || y > r[1] ? null : Math.max(r[0], y);
+    if (next === state.y) { showHeight(); return; }
+    state.y = next; queue = []; dirty = true; showHeight(); askHeight(); moved();
+  }
+  function askHeight() {
+    if (state.y === null || document.visibilityState !== "visible") return;
+    var y = state.y, realm = state.realm;
+    get("height?realm=" + encodeURIComponent(realm) + "&y=" + y + "&x=" + Math.round(state.x) + "&z=" + Math.round(state.z)).then(function (p) {
+      if (state.y !== y || state.realm !== realm) return;
+      el("hprog").textContent = p && p.total > 0 && p.done < p.total ? text("drawing", "Drawing {0}/{1}").replace("{0}", p.done).replace("{1}", p.total) : "";
+    }, function () { });
+  }
   function get(url) { return fetch(url, { cache: "no-store" }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }); }
 
   function resize() {
@@ -124,7 +163,7 @@ canvas.drag { cursor: grabbing; }
     var z = Math.round(Math.log(1 / scale) / Math.LN2);
     return Math.max(MIN_Z, Math.min(MAX_Z, z));
   }
-  function key(z, tx, ty) { return state.realm + "|" + (state.night ? "n" : "d") + "|" + z + "|" + tx + "|" + ty; }
+  function key(z, tx, ty) { return layer() + "|" + (state.night ? "n" : "d") + "|" + z + "|" + tx + "|" + ty; }
 
   function wanted(z, pad) {
     var span = TILE * Math.pow(2, z);
@@ -143,7 +182,7 @@ canvas.drag { cursor: grabbing; }
     if (t && (t.busy || (t.empty && now - t.at < 30000) || (t.img && now - t.at < 180000))) return;
     if (!t) t = tiles[k] = { img: null, at: 0, shown: 0, busy: false, empty: false };
     t.busy = true;
-    queue.push({ t: t, z: z, tx: tx, ty: ty, realm: state.realm, night: state.night });
+    queue.push({ t: t, z: z, tx: tx, ty: ty, realm: layer(), night: state.night });
   }
 
   function pump() {
@@ -153,11 +192,11 @@ canvas.drag { cursor: grabbing; }
         var q = queue[i];
         span = TILE * Math.pow(2, q.z);
         var d = Math.abs((q.tx + .5) * span - state.x) + Math.abs((q.ty + .5) * span - state.z);
-        if (q.realm !== state.realm) d += 1e9;
+        if (q.realm !== layer()) d += 1e9;
         if (d < bestD) { bestD = d; best = i; }
       }
       var job = queue.splice(best, 1)[0];
-      if (job.realm !== state.realm || job.night !== state.night) { job.t.busy = false; continue; }
+      if (job.realm !== layer() || job.night !== state.night) { job.t.busy = false; continue; }
       load(job);
     }
     el("load").classList.toggle("on", inflight > 0 || queue.length > 0);
@@ -419,7 +458,7 @@ canvas.drag { cursor: grabbing; }
   }
 
   function switchRealm(r, fit) {
-    state.realm = r; queue = []; buildRealms();
+    state.realm = r; state.y = null; queue = []; buildRealms(); showHeight();
     get("bounds?realm=" + encodeURIComponent(r)).then(function (b) {
       state.bounds = b;
       if (fit) {
@@ -470,8 +509,8 @@ canvas.drag { cursor: grabbing; }
 
   var stamps = {}, asking = false;
   function pollChanges() {
-    var realm = state.realm;
-    if (!realm || asking || document.visibilityState !== "visible") return;
+    var realm = layer();
+    if (!state.realm || asking || document.visibilityState !== "visible") return;
     asking = true;
     get("changes?realm=" + encodeURIComponent(realm)).then(function (list) {
       asking = false;
@@ -492,7 +531,7 @@ canvas.drag { cursor: grabbing; }
           if (left < rl + 514 && rl < left + span && top < rt + 514 && rt < top + span) { tiles[key].at = 0; tiles[key].empty = false; tiles[key].rev = (tiles[key].rev || 0) + 1; break; }
         }
       }
-      if (grew) get("bounds?realm=" + encodeURIComponent(realm)).then(function (b) { if (state.realm === realm) state.bounds = b; }, function () {});
+      if (grew && realm === state.realm) get("bounds?realm=" + encodeURIComponent(realm)).then(function (b) { if (state.realm === realm) state.bounds = b; }, function () {});
       dirty = true;
     }, function () { asking = false; });
   }
@@ -503,7 +542,7 @@ canvas.drag { cursor: grabbing; }
       for (var k in info.labels) L[k] = info.labels[k];
       var name = info.name ? L.title.indexOf("{0}") >= 0 ? L.title.replace("{0}", info.name) : info.name : L.title;
       el("title").textContent = name; document.title = name;
-      el("in").title = text("zoomIn"); el("out").title = text("zoomOut"); el("night").title = text("night"); el("link").title = text("copyLink");
+      el("in").title = text("zoomIn"); el("out").title = text("zoomOut"); el("night").title = text("night"); el("link").title = text("copyLink"); el("heightBtn").title = text("height", "Map height");
       realms = info.realms; showPeople = !!info.players;
       var saved = applyHash();
       if (!realms.length) { el("emptyText").textContent = text("missing"); el("empty").classList.add("on"); return; }
@@ -518,6 +557,9 @@ canvas.drag { cursor: grabbing; }
       }, function () { switchRealm(first, true); });
       pollPeople(); setInterval(pollPeople, 3000);
       setInterval(pollChanges, 4000);
+      el("hy").oninput = function () { el("hval").textContent = +this.value > heightRange()[1] ? text("auto", "Auto") : this.value; };
+      el("hy").onchange = function () { setHeight(this.value); };
+      showHeight(); setInterval(askHeight, 4000);
     }, function () { el("emptyText").textContent = text("missing"); el("empty").classList.add("on"); });
     requestAnimationFrame(frame);
   }

@@ -600,7 +600,7 @@ final class MapView {
         if (realm.equals("overworld") || realm.equals("nether")) {
             return null;
         }
-        if (realm.endsWith("-cave")) {
+        if (realm.endsWith("-cave") || MapRender.depthLayer(realm)) {
             return new int[] {20, 20, 20};
         }
         return new int[] {8, 0, 24};

@@ -5461,6 +5461,18 @@ function App() {
     void loadTool("overview", selected);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, selected?.status]);
+  useEffect(() => {
+    // Escape acts like a click outside the topmost popup, so each popup keeps its own closing rules.
+    const close = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || document.querySelector(".ask-backdrop, .dropdown-menu, .context-menu")) return;
+      const popups = [...document.querySelectorAll<HTMLElement>(".modal-backdrop:not(.as-panel)")];
+      popups.at(-1)?.click();
+    };
+    document.addEventListener("keydown", close);
+    return () => document.removeEventListener("keydown", close);
+  }, []);
+  const paletteRun = useRef({ openCreate, openManage, openConsole, toggle, openServerFolder });
+  paletteRun.current = { openCreate, openManage, openConsole, toggle, openServerFolder };
   const paletteItems = useMemo(() => {
     const items: {
       id: string;
@@ -5472,7 +5484,7 @@ function App() {
         id: "create",
         label: tr("New server"),
         hint: tr("Create a new server"),
-        run: () => void openCreate(),
+        run: () => void paletteRun.current.openCreate(),
       },
       {
         id: "import",
@@ -5486,13 +5498,13 @@ function App() {
         id: `open-${instance.id}`,
         label: tr("Manage {0}", [instance.name]),
         hint: `${instance.core} ${instance.version}`,
-        run: () => openManage(instance),
+        run: () => paletteRun.current.openManage(instance),
       });
       items.push({
         id: `console-${instance.id}`,
         label: tr("{0} console", [instance.name]),
         hint: tr("Live log"),
-        run: () => void openConsole(instance),
+        run: () => void paletteRun.current.openConsole(instance),
       });
       items.push({
         id: `toggle-${instance.id}`,
@@ -5501,13 +5513,13 @@ function App() {
             ? tr("Stop {0}", [instance.name])
             : tr("Start {0}", [instance.name]),
         hint: instance.status === "running" ? tr("Stop server") : tr("Start server"),
-        run: () => void toggle(instance),
+        run: () => void paletteRun.current.toggle(instance),
       });
       items.push({
         id: `folder-${instance.id}`,
         label: tr("Open {0} folder", [instance.name]),
         hint: instance.path,
-        run: () => void openServerFolder(instance),
+        run: () => void paletteRun.current.openServerFolder(instance),
       });
     }
     return items;
@@ -5615,7 +5627,7 @@ function App() {
       } catch {}
     }
     syncNavState();
-  }, [page, selected, tool, browsePath, activeFile, browseOpen, projectView?.hit.projectId, modal]);
+  }, [page, selected, tool, browsePath, activeFile, browseOpen, projectView?.hit, modal]);
   useEffect(() => {
     if (!onWeb) return;
     function onPop(event: PopStateEvent) {
@@ -10298,24 +10310,13 @@ function App() {
                   <button
                     className="button ghost small"
                     type="button"
-                    onClick={() => setSessionOpen({ tab: "ssh", adding: true })}
+                    onClick={() =>
+                      setSessionOpen({ tab: remotePlaces.length || !Object.keys(panelHosts).length ? "ssh" : "panel", adding: false })
+                    }
                   >
-                    <Icon name="plus" />
-                    {tr("Add session")}
+                    <Icon name="settings" />
+                    {tr("Manage sessions")}
                   </button>
-                  {(remotePlaces.length > 0 || Object.keys(panelHosts).length > 0) && (
-                    <button
-                      className="icon-button"
-                      type="button"
-                      data-tip={tr("Manage sessions")}
-                      aria-label={tr("Manage sessions")}
-                      onClick={() =>
-                        setSessionOpen({ tab: remotePlaces.length ? "ssh" : "panel", adding: false })
-                      }
-                    >
-                      <Icon name="settings" />
-                    </button>
-                  )}
                 </div>
               )}
               </div>
@@ -11370,7 +11371,7 @@ function App() {
                     </div>
                   </section>
                   <section className="settings-group">
-                    <h3 className="settings-group-title"><Icon name="cloud" />{tr("Notifications & updates")}</h3>
+                    <h3 className="settings-group-title"><Icon name="bell" />{tr("Notifications & updates")}</h3>
                     <div className="settings-group-rows">
                   <div className="setting-row">
                     <div>
@@ -11434,7 +11435,7 @@ function App() {
                     <div className="settings-group-rows">
                   <div className="setting-row">
                     <div>
-                      <strong>{tr("Go to settings")}</strong>
+                      <strong>{tr("Move settings")}</strong>
                       <small>
                         {tr("Transfer your server list and settings to another computer using a file.")}</small>
                     </div>
@@ -11458,8 +11459,8 @@ function App() {
                     <div className="settings-group-rows">
                   <div className="setting-row about-row">
                     <div>
-                      <strong>{tr("About")}</strong>
-                      <small>Monolab {appVersion ? `v${appVersion}` : ""}</small>
+                      <strong>Monolab</strong>
+                      {appVersion && <small>v{appVersion}</small>}
                       <small className="about-notice">
                         {tr("This app is a personal project and is not affiliated with Mojang or Microsoft.")}
                         {" "}
