@@ -20,6 +20,21 @@ pub fn realm_key(value: &str) -> String {
     if fine { value.to_string() } else { "overworld".to_string() }
 }
 
+/// `overworld-y32` → (`overworld`, Some(32)): a map drawn below that height. The cave layer of addon 30 was Y 32.
+pub fn split_layer(layer: &str) -> (&str, Option<i32>) {
+    if let Some(realm) = layer.strip_suffix("-cave") {
+        return (realm, Some(32));
+    }
+    if let Some((realm, y)) = layer.rsplit_once("-y") {
+        if let Ok(y) = y.parse::<i32>() {
+            if !realm.is_empty() && (-4096..=4096).contains(&y) {
+                return (realm, Some(y));
+            }
+        }
+    }
+    (layer, None)
+}
+
 pub fn modded_dims(world: &Path) -> Vec<(String, PathBuf)> {
     fn walk(base: &Path, at: &Path, depth: usize, out: &mut Vec<(String, PathBuf)>) {
         let Ok(list) = std::fs::read_dir(at) else { return };
@@ -538,7 +553,7 @@ fn shade(
 pub fn void_color(realm: &str) -> Option<[u8; 3]> {
     match realm {
         "overworld" | "nether" => None,
-        key if key.ends_with("-cave") => Some([20, 20, 20]),
+        key if split_layer(key).1.is_some() => Some([20, 20, 20]),
         _ => Some([8, 0, 24]),
     }
 }
@@ -728,6 +743,11 @@ mod tests {
         assert_eq!(void_color("overworld"), None);
         assert_eq!(void_color("overworld-cave"), Some([20, 20, 20]));
         assert_eq!(realm_key("overworld-cave"), "overworld-cave");
+        assert_eq!(void_color("nether-y40"), Some([20, 20, 20]));
+        assert_eq!(split_layer("overworld-y-20"), ("overworld", Some(-20)));
+        assert_eq!(split_layer("overworld-cave"), ("overworld", Some(32)));
+        assert_eq!(split_layer("mod.sky_lands"), ("mod.sky_lands", None));
+        assert_eq!(realm_key("overworld-y-20"), "overworld-y-20");
 
         let marked = Arc::new(parse_tile(&tile_bytes(&["minecraft:end_stone"], |x, _| {
             if x < 256 { (0, u16::MAX, 60, 0) } else if x < 384 { (0xFFFE, u16::MAX, 0, 0) } else { (u16::MAX, u16::MAX, 0, 0) }
@@ -789,7 +809,7 @@ mod tests {
         let bpp: f32 = std::env::var("SE_MAP_BPP").ok().and_then(|one| one.parse().ok()).unwrap_or(1.0);
         let tall: u32 = std::env::var("SE_MAP_TALL").ok().and_then(|one| one.parse().ok()).unwrap_or(size);
         let px = |blocks: u32| ((blocks as f32) / bpp).round() as u32;
-        let png = render_view(&mut fetch, &palette, left, top, px(size), px(tall), bpp, night, void_color(&realm), realm.ends_with("-cave")).unwrap();
+        let png = render_view(&mut fetch, &palette, left, top, px(size), px(tall), bpp, night, void_color(&realm), split_layer(&realm).1.is_some()).unwrap();
         std::fs::write(out, png).unwrap();
     }
 }

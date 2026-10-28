@@ -159,6 +159,13 @@ import {
 import "./App.css";
 import "./polish.css";
 
+/** Build heights of each dimension, and the height a map starts at when leaving Auto. */
+function mapHeightRange(realm: string): { min: number; max: number; start: number } {
+  if (realm === "nether") return { min: 0, max: 255, start: 64 };
+  if (realm === "end") return { min: 0, max: 255, start: 64 };
+  return { min: -64, max: 319, start: 32 };
+}
+
 type Instance = Sent<GenInstance>;
 type WebPanelView = Sent<GenWebPanelView>;
 type WebAccount = Sent<GenWebAccount>;
@@ -689,7 +696,8 @@ function App() {
   const [mapOpen, setMapOpen] = useState(false);
   const [playerSpots, setPlayerSpots] = useState<PlayerSpot[]>([]);
   const [mapRealm, setMapRealm] = useState("overworld");
-  const [mapCave, setMapCave] = useState<boolean | null>(null);
+  const [mapY, setMapY] = useState<number | null>(null);
+  const mapLayer = mapY === null ? mapRealm : `${mapRealm}-y${mapY}`;
   const [mapChunksOn, setMapChunksOn] = useState(false);
   const [loadedChunks, setLoadedChunks] = useState<LoadedChunks | null>(null);
   const [mapBusy, setMapBusy] = useState(false);
@@ -4890,14 +4898,7 @@ function App() {
       .catch(() => {});
     try {
       setError(null);
-      setMapCave(null);
-      if (realm === "overworld") {
-        const id = inst.id;
-        void commands.worldMapBounds(id, "overworld-cave").then(
-          () => setMapCave(false),
-          () => setMapCave(null),
-        );
-      }
+      setMapY(null);
       const [minX, minZ, maxX, maxZ] = await commands.worldMapBounds(inst.id, realm);
       const box = 900;
       const level = Math.max(
@@ -4917,13 +4918,15 @@ function App() {
   }
   async function fetchMapTile(z: number, tx: number, ty: number, night: boolean) {
     if (!selected) throw new Error(tr("No servers found."));
-    const layer = mapCave && mapRealm === "overworld" ? "overworld-cave" : mapRealm;
-    return await commands.renderMapTile(selected.id, layer, z, tx, ty, night);
+    return await commands.renderMapTile(selected.id, mapLayer, z, tx, ty, night);
   }
   async function fetchMapChanges(): Promise<[number, number][]> {
     if (!selected) return [];
-    const layer = mapCave && mapRealm === "overworld" ? "overworld-cave" : mapRealm;
-    return (await commands.mapChanges(selected.id, layer)) as [number, number][];
+    return (await commands.mapChanges(selected.id, mapLayer)) as [number, number][];
+  }
+  async function askMapLayer(x: number, z: number) {
+    if (!selected || mapY === null) return null;
+    return await commands.mapRequestLayer(selected.id, mapLayer, Math.round(x), Math.round(z));
   }
   const mapPins: MapPin[] = [
     ...(mapSpawn && mapRealm === "overworld"
@@ -7848,7 +7851,13 @@ function App() {
                   onPick={(x, z) => void bookmarkSpot(x, z)}
                   onExport={(png) => void saveMapPng(png)}
                   chunks={mapChunks && { ...mapChunks, on: mapChunksOn, toggle: () => setMapChunksOn((was) => !was) }}
-                  cave={mapCave === null ? null : { on: mapCave, toggle: () => setMapCave((was) => !was) }}
+                  height={{
+                    y: mapY,
+                    range: mapHeightRange(mapRealm),
+                    ready: (addon?.installedVersion ?? 0) >= 31,
+                    onChange: setMapY,
+                    ask: askMapLayer,
+                  }}
                   stats={selected.panelHost ? null : fetchChunkStats}
                   onDeleteArea={!selected.panelHost && ["overworld", "nether", "end"].includes(mapRealm) ? (area) => void deleteAreaChunks(area) : null}
                   onPregenArea={

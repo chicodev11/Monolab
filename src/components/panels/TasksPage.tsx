@@ -467,12 +467,6 @@ export function TasksPage({
           icon="refresh"
           title={tr("No tasks yet.")}
           hint={tr("Back up, restart or run commands on a schedule. For example: back up every day at 4 AM.")}
-          action={
-            <button className="button secondary small" onClick={() => onDraft(blankTask())}>
-              <Icon name="plus" />
-              {tr("Add task")}
-            </button>
-          }
         />
       )}
     </div>

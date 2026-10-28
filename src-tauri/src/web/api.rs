@@ -110,6 +110,7 @@ const READS: &[&str] = &[
     "render_map_tile",
     "world_map_bounds",
     "map_changes",
+    "map_request_layer",
     "search_addon_catalog",
     "check_addon_updates",
     "enrich_addons",

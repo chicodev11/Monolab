@@ -2099,6 +2099,7 @@ pub(crate) fn web_invoke(
         "render_map_tile" => ok(tauri::async_runtime::block_on(render_map_tile(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?, arg(body, "z")?, arg(body, "tx")?, arg(body, "ty")?, arg(body, "night")?))?),
         "world_map_bounds" => ok(tauri::async_runtime::block_on(world_map_bounds(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?))?),
         "map_changes" => ok(tauri::async_runtime::block_on(map_changes(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?))?),
+        "map_request_layer" => ok(tauri::async_runtime::block_on(map_request_layer(app.clone(), arg(body, "id")?, arg(body, "layer")?, arg(body, "x")?, arg(body, "z")?))?),
         "search_addon_catalog" => ok(search_addon_catalog(app.clone(), arg(body, "id")?, arg(body, "query")?, arg(body, "page")?, arg(body, "categories")?, arg(body, "environment")?, arg(body, "versions")?, arg(body, "loader")?)?),
         "check_addon_updates" => ok(tauri::async_runtime::block_on(check_addon_updates(app.clone(), arg(body, "id")?))?),
         "enrich_addons" => ok(tauri::async_runtime::block_on(enrich_addons(app.clone(), arg(body, "id")?))?),
@@ -8464,7 +8465,7 @@ async fn render_map_tile(
                 .insert(key, one.clone());
             one
         };
-        let map = worldmap::render_view(&mut fetch, &palette, tx * span, ty * span, TILE, TILE, bpp, night, worldmap::void_color(&realm_name), realm_name.ends_with("-cave"))?;
+        let map = worldmap::render_view(&mut fetch, &palette, tx * span, ty * span, TILE, TILE, bpp, night, worldmap::void_color(&realm_name), worldmap::split_layer(&realm_name).1.is_some())?;
         use base64::Engine;
         let url = format!(
             "data:image/png;base64,{}",
@@ -8506,7 +8507,11 @@ fn map_tile_folder(instance: &ServerInstance, realm: &str) -> String {
 
 fn supply_client_jar(app: &AppHandle, instance: &ServerInstance) {
     static TRIED: std::sync::OnceLock<Mutex<HashSet<String>>> = std::sync::OnceLock::new();
-    let version = instance.version.trim().to_string();
+    let version = if pumpkin::is_pumpkin(&instance.core) {
+        pumpkin_game_version(&instance.version)
+    } else {
+        instance.version.trim().to_string()
+    };
     if !looks_like_version(&version) {
         return;
     }
@@ -8518,6 +8523,9 @@ fn supply_client_jar(app: &AppHandle, instance: &ServerInstance) {
     std::thread::spawn(move || {
         let done = (|| -> Result<(), String> {
             let jar = textures::client_jar(&app, &version)?;
+            if pumpkin::is_pumpkin(&instance.core) {
+                return supply_map_palette(&app, &instance, &jar);
+            }
             let name = format!("client-{version}.jar");
             let folder = map_tile_folder(&instance, "");
             if is_far(&instance) {
@@ -8532,6 +8540,34 @@ fn supply_client_jar(app: &AppHandle, instance: &ServerInstance) {
             eprintln!("[map] Could not supply the client jar: {error}");
         }
     });
+}
+
+/// `0.2.1+26.3-26.51` → `26.3`.
+fn pumpkin_game_version(version: &str) -> String {
+    version.split('+').nth(1).and_then(|rest| rest.split('-').next()).unwrap_or_default().trim().to_string()
+}
+
+fn supply_map_palette(app: &AppHandle, instance: &ServerInstance, jar: &Path) -> Result<(), String> {
+    let palette = textures::map_palette(jar)?;
+    let folder = map_tile_folder(instance, "");
+    let mut files = vec![("palette.json", palette.json.into_bytes())];
+    files.extend(palette.grass.map(|bytes| ("grass.png", bytes)));
+    files.extend(palette.foliage.map(|bytes| ("foliage.png", bytes)));
+    for (name, bytes) in files.iter().rev() {
+        if is_far(instance) {
+            tauri::async_runtime::block_on(far_upload(app, instance, &format!("{folder}/{name}"), bytes, name))?;
+        } else {
+            fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
+            fs::write(Path::new(&folder).join(name), bytes).map_err(|error| error.to_string())?;
+        }
+    }
+    let state = app.state::<AppState>();
+    state.map_palettes.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).remove(&instance.id);
+    state.map_tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).retain(|key, _| key.0 != instance.id);
+    if let Ok(dir) = instance_data_dir(app, &instance.id) {
+        let _ = fs::remove_dir_all(dir.join("map-tiles"));
+    }
+    Ok(())
 }
 
 fn map_file_bytes(app: &AppHandle, instance: &ServerInstance, name: &str) -> Result<Option<Vec<u8>>, String> {
@@ -8659,9 +8695,13 @@ async fn map_changes(
     };
     let index_key = (id.clone(), realm.clone());
     let old = state.map_index.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&index_key).cloned();
-    let Some(old) = old else {
-        state.map_index.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(index_key, Arc::new(fresh));
-        return Ok(Vec::new());
+    let old = match old {
+        Some(old) => old,
+        None if worldmap::split_layer(&realm).1.is_some() => Arc::new(RegionStamps::default()),
+        None => {
+            state.map_index.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(index_key, Arc::new(fresh));
+            return Ok(Vec::new());
+        }
     };
     let changed = changed_regions(&old, &fresh);
     if changed.is_empty() {
@@ -8932,9 +8972,59 @@ async fn map_web_write(app: &AppHandle, instance: &ServerInstance, name: &str, t
     if is_far(instance) {
         return far_write(app, instance, &format!("{}/{name}", remote_addon_data_dir(instance)), text).await;
     }
-    let dir = events::event_folder(Path::new(&instance.path));
-    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    fs::write(dir.join(name), text).map_err(|error| error.to_string())
+    let target = events::event_folder(Path::new(&instance.path)).join(name);
+    if let Some(dir) = target.parent() {
+        fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    }
+    fs::write(target, text).map_err(|error| error.to_string())
+}
+
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct MapLayerProgress {
+    done: u32,
+    total: u32,
+}
+
+/// Asks the addon to draw a height layer (`overworld-y32`) around (x, z), nearest first, and says how far it got.
+#[tauri::command(async)]
+#[specta::specta]
+async fn map_request_layer(app: AppHandle, id: String, layer: String, x: i32, z: i32) -> Result<Option<MapLayerProgress>, String> {
+    let instance = instance_by_id(&app, &id)?;
+    let layer = worldmap::realm_key(&layer);
+    if worldmap::split_layer(&layer).1.is_none() || layer.ends_with("-cave") {
+        return Err("Not a map height layer.".into());
+    }
+    let now = chrono::Utc::now().timestamp_millis();
+    let entries: Vec<serde_json::Value> = map_web_read(&app, &instance, "map/requests.json")
+        .await
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .and_then(|value| value.get("layers").and_then(|one| one.as_array()).cloned())
+        .unwrap_or_default();
+    let number = |one: &serde_json::Value, key: &str| one.get(key).and_then(|value| value.as_i64());
+    let fresh = entries.first().is_some_and(|one| {
+        one.get("layer").and_then(|value| value.as_str()) == Some(layer.as_str())
+            && number(one, "x").is_some_and(|old| (old - i64::from(x)).abs() < 256)
+            && number(one, "z").is_some_and(|old| (old - i64::from(z)).abs() < 256)
+            && number(one, "at").is_some_and(|at| (0..60_000).contains(&(now - at)))
+    });
+    if !fresh {
+        let mut next = vec![serde_json::json!({ "layer": layer, "x": x, "z": z, "at": now })];
+        next.extend(
+            entries
+                .into_iter()
+                .filter(|one| one.get("layer").and_then(|value| value.as_str()).is_some_and(|name| name != layer && worldmap::split_layer(name).1.is_some()))
+                .take(3),
+        );
+        map_web_write(&app, &instance, "map/requests.json", &serde_json::json!({ "layers": next }).to_string()).await?;
+    }
+    let status = map_web_read(&app, &instance, &format!("map/{layer}/status.json"))
+        .await
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
+    Ok(status.map(|value| MapLayerProgress {
+        done: value.get("done").and_then(|one| one.as_u64()).unwrap_or(0) as u32,
+        total: value.get("total").and_then(|one| one.as_u64()).unwrap_or(0) as u32,
+    }))
 }
 
 async fn map_web_view(app: &AppHandle, state: &AppState, instance: &ServerInstance) -> MapWebView {
@@ -9105,7 +9195,7 @@ async fn chunk_stats(
     }
     let instance = instance_by_id(&app, &id)?;
     let realm = worldmap::realm_key(&realm);
-    let realm = realm.strip_suffix("-cave").unwrap_or(&realm).to_string();
+    let realm = worldmap::split_layer(&realm).0.to_string();
     let key = (id.clone(), realm.clone(), rx, rz);
     let cached_grid = |state: &AppState| -> Option<Vec<Option<f64>>> {
         if metric == "entities" {
@@ -16271,6 +16361,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             render_map_tile,
             world_map_bounds,
             map_changes,
+            map_request_layer,
             list_event_days,
             perf_history,
             read_live,

@@ -487,14 +487,14 @@ final class MapWeb {
         try (var list = Files.list(out)) {
             for (Path one : (Iterable<Path>) list::iterator) {
                 String name = one.getFileName().toString();
-                if (Files.isDirectory(one) && realmOk(name) && !index(name).isEmpty()) {
+                if (Files.isDirectory(one) && realmOk(name) && !MapRender.depthLayer(name) && !index(name).isEmpty()) {
                     found.add(name);
                 }
             }
         } catch (IOException none) {
             return found;
         }
-        List<String> order = List.of("overworld", "overworld-cave", "nether", "end");
+        List<String> order = List.of("overworld", "nether", "end");
         found.sort((a, b) -> {
             int x = order.indexOf(a);
             int y = order.indexOf(b);

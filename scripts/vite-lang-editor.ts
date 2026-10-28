@@ -1,4 +1,6 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
 
 const langDir = new URL("../src/lang/", import.meta.url);
@@ -10,6 +12,37 @@ export function langEditor(): Plugin {
     name: "monolab-lang-editor",
     apply: "serve",
     configureServer(server) {
+      // Sections of the language file, and the values in the last commit so the editor can show what changed.
+      server.middlewares.use("/__lang/doc", (req, res) => {
+        const lang = new URL(req.url ?? "", "http://x").searchParams.get("lang") ?? "";
+        res.setHeader("Content-Type", "application/json");
+        if (!/^[a-z]+(-[A-Za-z]+)?$/.test(lang)) {
+          res.statusCode = 400;
+          return res.end("{}");
+        }
+        const sectionsOf = (text: string) => {
+          const out: Record<string, Record<string, string>> = {};
+          for (const [name, one] of Object.entries(JSON.parse(text) as Record<string, unknown>)) {
+            if (typeof one === "object" && one !== null) out[name] = one as Record<string, string>;
+          }
+          return out;
+        };
+        try {
+          const now = sectionsOf(readFileSync(new URL(lang + ".json", langDir), "utf8"));
+          let committed: Record<string, string> | null = null;
+          try {
+            const old = execFileSync("git", ["show", `HEAD:src/lang/${lang}.json`], { cwd: fileURLToPath(new URL("../../", langDir)), encoding: "utf8", maxBuffer: 32 << 20 });
+            committed = Object.assign({}, ...Object.values(sectionsOf(old)));
+          } catch {
+            committed = null;
+          }
+          const sections = Object.fromEntries(Object.entries(now).map(([name, one]) => [name, Object.keys(one)]));
+          res.end(JSON.stringify({ sections, committed }));
+        } catch (error) {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ message: String(error) }));
+        }
+      });
       server.middlewares.use("/__lang/set", (req, res) => {
         const reply = (status: number, message: string) => {
           res.statusCode = status;

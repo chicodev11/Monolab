@@ -1,4 +1,6 @@
 
+mod map;
+
 use pumpkin_plugin_api::permissions;
 use pumpkin_plugin_api::scheduler::SchedulerExt;
 use pumpkin_plugin_api::{Context, Player, Plugin, PluginMetadata, Server, register_plugin};
@@ -10,9 +12,10 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const VERSION: &str = "30";
+const VERSION: &str = "31";
 const NAME: &str = "monolab";
 const LIVE_TICKS: u64 = 20;
+const MAP_TICKS: u64 = 1;
 const PERF_TICKS: u64 = 1200;
 const KEEP_DAYS: i64 = 90;
 
@@ -25,6 +28,8 @@ struct State {
     offset_minutes: AtomicI64,
     swept_day: Mutex<String>,
     warned: AtomicBool,
+    map: Mutex<Option<map::Map>>,
+    map_warned: AtomicBool,
 }
 
 impl Plugin for Monolab {
@@ -35,6 +40,8 @@ impl Plugin for Monolab {
                 offset_minutes: AtomicI64::new(0),
                 swept_day: Mutex::new(String::new()),
                 warned: AtomicBool::new(false),
+                map: Mutex::new(None),
+                map_warned: AtomicBool::new(false),
             }),
         }
     }
@@ -55,11 +62,14 @@ impl Plugin for Monolab {
         *lock(&state.folder) = PathBuf::from(context.get_data_folder());
         state.read_timezone();
         state.sweep();
+        *lock(&state.map) = Some(map::Map::new(&lock(&state.folder)));
 
         let live = Arc::clone(&state);
         context.schedule_repeating_task(LIVE_TICKS, LIVE_TICKS, move |server| live.snapshot(&server));
         let perf = Arc::clone(&state);
         context.schedule_repeating_task(PERF_TICKS, PERF_TICKS, move |server| perf.perf(&server));
+        let map = Arc::clone(&state);
+        context.schedule_repeating_task(MAP_TICKS, MAP_TICKS, move |server| map.draw(&server));
 
         tracing::info!("Starting the Monolab monitor: {}", lock(&state.folder).display());
         Ok(())
@@ -67,6 +77,9 @@ impl Plugin for Monolab {
 
     fn on_unload(&self, _context: Context) -> Result<(), String> {
         self.state.set_live(json!({ "at": now_ms(), "players": [] }));
+        if let Some(map) = lock(&self.state.map).as_mut() {
+            let _ = map.flush();
+        }
         Ok(())
     }
 }
@@ -93,6 +106,18 @@ impl State {
             "mspt": hundredths(server.get_mspt()),
             "players": people,
         }));
+    }
+
+    fn draw(&self, server: &Server) {
+        let mut held = lock(&self.map);
+        let Some(map) = held.as_mut() else {
+            return;
+        };
+        if let Err(error) = map.tick(server, now_ms())
+            && !self.map_warned.swap(true, Ordering::Relaxed)
+        {
+            tracing::warn!("{error}");
+        }
     }
 
     fn perf(&self, server: &Server) {

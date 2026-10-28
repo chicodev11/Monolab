@@ -27,8 +27,17 @@ type AreaStay = { chunks: number; visited: number; total: number; max: number; t
 
 export type TileFetch = (z: number, tx: number, ty: number, night: boolean) => Promise<string>;
 export type MapChanges = () => Promise<[number, number][]>;
+export type MapLayerProgress = { done: number; total: number };
+export type MapHeight = {
+  y: number | null;
+  range: { min: number; max: number; start: number };
+  ready: boolean;
+  onChange: (y: number | null) => void;
+  ask: (x: number, z: number) => Promise<MapLayerProgress | null>;
+};
 
 const CHANGES_MS = 3000;
+const ASK_MS = 4000;
 
 /** Whether a tile shows any of a region, counting the one-block edge its shading reads. */
 export function tileTouchesRegion(level: number, tx: number, ty: number, rx: number, rz: number) {
@@ -71,7 +80,7 @@ export function WorldMap({
   fetchTile,
   changes,
   start,
-  cave,
+  height,
   onExport,
   chunks,
   stats,
@@ -85,7 +94,7 @@ export function WorldMap({
   fetchTile: TileFetch;
   changes?: MapChanges | null;
   start: { x: number; z: number; level: number };
-  cave?: { on: boolean; toggle: () => void } | null;
+  height?: MapHeight | null;
   onExport?: (png: string) => void;
   chunks?: { on: boolean; toggle: () => void; loaded: number[]; forced: number[]; known: boolean } | null;
   stats?: StatFetch | null;
@@ -132,7 +141,37 @@ export function WorldMap({
 
   const bpp = 2 ** zoom;
   const level = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.floor(zoom + 1e-6)));
-  const prefix = (night ? "n" : "d") + (cave?.on ? "c" : "");
+  const prefix = (night ? "n" : "d") + (height?.y != null ? `y${height.y}` : "");
+  const heightRef = useRef(height);
+  heightRef.current = height;
+  const [progress, setProgress] = useState<MapLayerProgress | null>(null);
+  const [heightDraft, setHeightDraft] = useState<string | null>(null);
+  const wantY = height?.y ?? null;
+  const heightReady = height?.ready ?? false;
+  useEffect(() => {
+    setProgress(null);
+    if (wantY === null || !heightReady) return;
+    let stopped = false;
+    const ask = () => {
+      const node = box.current;
+      const one = heightRef.current;
+      if (!node || !one || document.visibilityState !== "visible") return;
+      const at = viewRef.current;
+      const scale = 2 ** at.zoom;
+      void one
+        .ask(at.x + (node.clientWidth * scale) / 2, at.z + (node.clientHeight * scale) / 2)
+        .then((found) => {
+          if (!stopped) setProgress(found);
+        })
+        .catch(() => {});
+    };
+    ask();
+    const timer = window.setInterval(ask, ASK_MS);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [wantY, heightReady]);
 
   useEffect(() => {
     const node = box.current;
@@ -198,7 +237,7 @@ export function WorldMap({
       if (!next) return;
       busy.current.add(next.key);
       running.current += 1;
-      const asNight = next.key.startsWith("n/");
+      const asNight = next.key.startsWith("n");
       void fetchRef
         .current(next.level, next.tx, next.ty, asNight)
         .then(
@@ -722,6 +761,67 @@ export function WorldMap({
         )}
       </div>
 
+      {height && (() => {
+        const { min, max, start: first } = height.range;
+        const shown = heightDraft ?? String(height.y ?? first);
+        const commit = (value: string) => {
+          setHeightDraft(null);
+          const y = Math.round(Number(value));
+          if (value.trim() === "" || !Number.isFinite(y)) return;
+          height.onChange(Math.min(max, Math.max(min, y)));
+        };
+        const drawing = height.y !== null && progress && progress.total > 0 && progress.done < progress.total;
+        return (
+          <div
+            className={`map-float map-float-height map-float-box ${height.y === null ? "auto" : ""}`}
+            data-tip={height.ready ? undefined : tr("Update the Monolab addon to pick a map height.")}
+          >
+            <button
+              className={`map-height-auto ${height.y === null ? "on" : ""}`}
+              aria-pressed={height.y === null}
+              data-tip={tr("Draws the highest block, like the map item")}
+              disabled={!height.ready}
+              onClick={() => {
+                setHeightDraft(null);
+                height.onChange(null);
+              }}
+            >
+              {tr("Auto")}
+            </button>
+            <span className="map-height-name">Y</span>
+            <input
+              type="range"
+              className="map-height-slider"
+              min={min}
+              max={max}
+              step={1}
+              value={Number(shown) || 0}
+              disabled={!height.ready}
+              aria-label={tr("Map height")}
+              onChange={(event) => setHeightDraft(event.target.value)}
+              onPointerUp={(event) => commit(event.currentTarget.value)}
+              onKeyUp={(event) => commit(event.currentTarget.value)}
+            />
+            <input
+              type="number"
+              className="map-height-number"
+              min={min}
+              max={max}
+              value={shown}
+              disabled={!height.ready}
+              aria-label={tr("Map height")}
+              onChange={(event) => setHeightDraft(event.target.value)}
+              onBlur={(event) => commit(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") commit(event.currentTarget.value);
+                if (event.key === "Escape") setHeightDraft(null);
+              }}
+            />
+            {drawing && <small className="map-height-progress">{tr("Drawing {0}/{1}", [progress.done, progress.total])}</small>}
+          </div>
+        );
+      })()}
+
       <div className="map-float map-float-layers map-float-box">
         <button
           className={`map-tool ${night ? "on" : ""}`}
@@ -732,17 +832,6 @@ export function WorldMap({
         >
           <Icon name={night ? "moon" : "sun"} />
         </button>
-        {cave && (
-          <button
-            className={`map-tool ${cave.on ? "on" : ""}`}
-            aria-pressed={cave.on}
-            data-tip={tr("Shows cave floors below Y 32")}
-            aria-label={tr("Caves")}
-            onClick={cave.toggle}
-          >
-            <Icon name="layers" />
-          </button>
-        )}
         {chunks && (
           <button
             className={`map-tool ${chunks.on ? "on" : ""}`}

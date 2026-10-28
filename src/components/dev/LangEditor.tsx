@@ -1,29 +1,66 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { language, setWord, tr, wordEntries } from "../../lib/i18n";
+import { Dropdown } from "../ui/Dropdown";
 import { Icon } from "../ui/Icon";
 
 type Entry = { key: string; value: string };
+type Doc = { sections: Record<string, string[]>; committed: Record<string, string> | null };
+type View = "all" | "changed" | "warn";
 
 export const LANG_EDIT_EVENT = "monolab-lang-edit";
 
+const LIMIT = 200;
+
 const PAIRS: [string, string, string][] = [
-  ["을(를)", "을", "를"],
-  ["를(을)", "를", "을"],
-  ["이(가)", "이", "가"],
-  ["가(이)", "가", "이"],
-  ["은(는)", "은", "는"],
-  ["는(은)", "는", "은"],
-  ["과(와)", "과", "와"],
-  ["와(과)", "와", "과"],
-  ["(으)로", "으로", "로"],
-  ["(이)", "이", ""],
+  ["\uC744(\uB97C)", "\uC744", "\uB97C"],
+  ["\uB97C(\uC744)", "\uB97C", "\uC744"],
+  ["\uC774(\uAC00)", "\uC774", "\uAC00"],
+  ["\uAC00(\uC774)", "\uAC00", "\uC774"],
+  ["\uC740(\uB294)", "\uC740", "\uB294"],
+  ["\uB294(\uC740)", "\uB294", "\uC740"],
+  ["\uACFC(\uC640)", "\uACFC", "\uC640"],
+  ["\uC640(\uACFC)", "\uC640", "\uACFC"],
+  ["(\uC73C)\uB85C", "\uC73C\uB85C", "\uB85C"],
+  ["(\uC774)", "\uC774", ""],
 ];
+
+// Words the Korean style guide replaces: [pattern, word to use, word found, allowed when this also matches].
+const WORDS: [RegExp, string, string, RegExp?][] = [
+  [/\uC9C0(?:\uC6B0(?!\uAE30)|\uC6CC|\uC6E0|\uC6B8|\uC6B4)/, "\uC0AD\uC81C", "\uC9C0\uC6B0\uB2E4", /\uAC80\uC0C9/],
+  [/\uB2E4\uC6B4\s?\uBC1B/, "\uB2E4\uC6B4\uB85C\uB4DC", "\uB2E4\uC6B4\uBC1B\uB2E4"],
+  [/\uC555\uCD95(?:\uC744)?\s?\uD480/, "\uC555\uCD95 \uD574\uC81C", "\uC555\uCD95 \uD480\uAE30"],
+  [/\uC790\uB3D9\uC801\uC73C\uB85C/, "\uC790\uB3D9\uC73C\uB85C", "\uC790\uB3D9\uC801\uC73C\uB85C"],
+  [/\uB2E8\uCD94/, "\uBC84\uD2BC", "\uB2E8\uCD94"],
+  [/\uC2F1\uD06C/, "\uB3D9\uAE30\uD654", "\uC2F1\uD06C"],
+  [/\uBCF5\uAD6C/, "\uBCF5\uC6D0", "\uBCF5\uAD6C"],
+  [/\uD14D\uC2A4\uD2B8\uD30C\uC77C/, "\uD14D\uC2A4\uD2B8 \uD30C\uC77C", "\uD14D\uC2A4\uD2B8\uD30C\uC77C"],
+];
+
+/** Style problems in a value, following the Korean writing rules in CLAUDE.md. */
+function issuesOf(key: string, value: string, lang: string): string[] {
+  const out: string[] = [];
+  if (!value) return out;
+  const extra = (pattern: RegExp) => pattern.test(value) && !pattern.test(key);
+  if (extra(/^\s/) || extra(/\s$/)) out.push(tr("Starts or ends with a space."));
+  if (/\S {2,}\S/.test(value)) out.push(tr("Has two spaces in a row."));
+  if (lang !== "ko") return out;
+  if (/\uC2B5\uB2C8\uB2E4|\uC2B5\uB2C8\uAE4C/.test(value)) out.push(tr("Use the -yo ending, not -seumnida."));
+  if (/\S\s+\uC8FC\uC138\uC694/.test(value)) out.push(tr("Write the request ending as one word (haejuseyo)."));
+  if (/\uB2F9\uC2E0|\uC800\uD76C|\uC5EC\uB7EC\uBD84/.test(value)) out.push(tr("Leave out personal pronouns."));
+  if (/\uC131\uACF5\uC801\uC73C\uB85C/.test(value)) out.push(tr("Drop 'successfully'."));
+  if ((value.match(/\uC218 \uC788\uC5B4\uC694/g) ?? []).length > 1) out.push(tr("Repeats 'can do'; say it once or not at all."));
+  if (/\}(?:\uC744|\uB97C|\uC774|\uAC00|\uC740|\uB294|\uACFC|\uC640)(?!\()|\}(?:\uC73C\uB85C|\uB85C)/.test(value) && !key.startsWith("particle.")) out.push(tr("After a placeholder, write both particle forms so the right one is picked."));
+  for (const [pattern, use, found, unless] of WORDS) {
+    if (pattern.test(value) && !unless?.test(value)) out.push(tr("Use '{0}', not '{1}'.", [use, found]));
+  }
+  return out;
+}
 
 function escape(text: string) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// A value with {slots} or 을(를) markers becomes a pattern that matches what the screen shows.
+// A value with {slots} or \uC744(\uB97C) markers becomes a pattern that matches what the screen shows.
 function patternOf(value: string): RegExp | null {
   if (!value.includes("{") && !PAIRS.some(([marker]) => value.includes(marker))) return null;
   let source = "";
@@ -103,10 +140,13 @@ export function LangEditor() {
   const [current, setCurrent] = useState<Entry | null>(null);
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
+  const [section, setSection] = useState("");
+  const [view, setView] = useState<View>("all");
   const [status, setStatus] = useState("");
+  const [doc, setDoc] = useState<Doc | null>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const original = useRef(new Map<string, string>());
   const [version, setVersion] = useState(0);
+  const lang = language();
 
   const entries = useMemo<Entry[]>(
     () => wordEntries().filter(([key]) => !key.startsWith("$")).map(([key, value]) => ({ key, value })),
@@ -115,11 +155,34 @@ export function LangEditor() {
   );
 
   useEffect(() => {
+    if (!on) return;
+    let gone = false;
+    void fetch(`/__lang/doc?lang=${encodeURIComponent(lang)}`)
+      .then((response) => (response.ok ? (response.json() as Promise<Doc>) : null))
+      .then((found) => {
+        if (!gone && found) setDoc(found);
+      })
+      .catch(() => {});
+    return () => {
+      gone = true;
+    };
+  }, [on, lang]);
+
+  const sectionOf = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const [name, keys] of Object.entries(doc?.sections ?? {})) for (const key of keys) out.set(key, name);
+    return out;
+  }, [doc]);
+  const changed = (entry: Entry) => doc?.committed != null && doc.committed[entry.key] !== entry.value;
+  const changedCount = useMemo(() => entries.filter(changed).length, [entries, doc]); // eslint-disable-line react-hooks/exhaustive-deps
+  const warned = useMemo(() => new Set(entries.filter((one) => issuesOf(one.key, one.value, lang).length > 0).map((one) => one.key)), [entries, lang]);
+
+  useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "l") {
         event.preventDefault();
         setOn((was) => !was);
-      } else if (event.key === "Escape" && on) {
+      } else if (event.key === "Escape" && on && !document.querySelector(".dropdown-menu.lang-edit-section")) {
         setOn(false);
       }
     };
@@ -133,7 +196,8 @@ export function LangEditor() {
       return;
     }
     const inPanel = (target: EventTarget | null) =>
-      target instanceof Node && (panel.current?.contains(target) || (target as Element).closest?.(".lang-edit-toggle"));
+      target instanceof Node &&
+      (panel.current?.contains(target) || (target as Element).closest?.(".lang-edit-toggle, .lang-edit-section"));
     const move = (event: MouseEvent) => {
       if (inPanel(event.target) || !(event.target instanceof Element)) return setBox(null);
       setBox(event.target.getBoundingClientRect());
@@ -150,6 +214,8 @@ export function LangEditor() {
       const found = findEntries(textsAt(event.target), entries);
       setPicked(found);
       setQuery("");
+      setSection("");
+      setView("all");
       choose(found[0] ?? null);
       setStatus(found.length ? "" : tr("No text from the language file here."));
     };
@@ -170,13 +236,27 @@ export function LangEditor() {
     setDraft(entry?.value ?? "");
   }
 
-  const searched = useMemo(() => {
+  const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return picked;
-    return entries
-      .filter((one) => one.value.toLowerCase().includes(needle) || one.key.toLowerCase().includes(needle))
-      .slice(0, 30);
-  }, [query, picked, entries]);
+    if (view === "all" && !section && !needle) return picked;
+    return entries.filter(
+      (one) =>
+        (view !== "changed" || changed(one)) &&
+        (view !== "warn" || warned.has(one.key)) &&
+        (!section || sectionOf.get(one.key) === section) &&
+        (!needle || one.value.toLowerCase().includes(needle) || one.key.toLowerCase().includes(needle)),
+    );
+  }, [query, view, section, picked, entries, warned, sectionOf, doc]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const groups = useMemo(() => {
+    const order = Object.keys(doc?.sections ?? {});
+    const out = new Map<string, Entry[]>();
+    for (const one of shown.slice(0, LIMIT)) {
+      const name = sectionOf.get(one.key) ?? "";
+      out.set(name, [...(out.get(name) ?? []), one]);
+    }
+    return [...out.entries()].sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
+  }, [shown, sectionOf, doc]);
 
   async function save(value: string) {
     if (!current) return;
@@ -184,13 +264,12 @@ export function LangEditor() {
       const response = await fetch("/__lang/set", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lang: language(), key: current.key, value }),
+        body: JSON.stringify({ lang, key: current.key, value }),
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { message?: string };
         throw new Error(body.message ?? String(response.status));
       }
-      if (!original.current.has(current.key)) original.current.set(current.key, current.value);
       setWord(current.key, value);
       const next = { key: current.key, value };
       setCurrent(next);
@@ -204,7 +283,9 @@ export function LangEditor() {
     }
   }
 
-  const before = current ? original.current.get(current.key) : undefined;
+  const committed = current && doc?.committed ? doc.committed[current.key] : undefined;
+  const draftIssues = current ? issuesOf(current.key, draft, lang) : [];
+  const browsing = view !== "all" || section !== "" || query.trim() !== "";
 
   return (
     <>
@@ -231,37 +312,110 @@ export function LangEditor() {
               <Icon name="close" />
             </button>
           </div>
-          <input
-            className="input"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={tr("Click text on screen, or search")}
-          />
-          {searched.length > 0 && (
-            <div className="lang-edit-list">
-              {searched.map((one) => (
-                <button
-                  type="button"
-                  key={one.key}
-                  className={current?.key === one.key ? "on" : ""}
-                  onClick={() => choose(one)}
-                >
-                  <span>{one.value || tr("(hidden)")}</span>
-                  <small>{one.key}</small>
-                </button>
-              ))}
+          <label className="search lang-edit-search">
+            <Icon name="search" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={tr("Click text on screen, or search")}
+            />
+            {query && (
+              <button type="button" className="icon-button" aria-label={tr("Clear search")} onClick={() => setQuery("")}>
+                <Icon name="close" />
+              </button>
+            )}
+          </label>
+          <div className="lang-edit-filters">
+            <div className="wb-chips">
+              <button type="button" className={`wb-chip ${view === "all" ? "on" : ""}`} onClick={() => setView("all")}>
+                {tr("All")}
+              </button>
+              <button type="button" className={`wb-chip ${view === "changed" ? "on" : ""}`} onClick={() => setView("changed")}>
+                {tr("Changed")} <b>{changedCount}</b>
+              </button>
+              <button type="button" className={`wb-chip ${view === "warn" ? "on" : ""}`} onClick={() => setView("warn")}>
+                {tr("Warnings")} <b>{warned.size}</b>
+              </button>
             </div>
+            <Dropdown
+              className="lang-edit-section"
+              value={section}
+              align="end"
+              options={[
+                { value: "", label: tr("All sections") },
+                ...Object.entries(doc?.sections ?? {}).map(([name, keys]) => ({ value: name, label: name, hint: String(keys.length) })),
+              ]}
+              onChange={setSection}
+            />
+          </div>
+          {groups.length > 0 ? (
+            <div className="lang-edit-list">
+              {groups.map(([name, list]) => (
+                <section key={name}>
+                  {name && <h4>{name}</h4>}
+                  {list.map((one) => (
+                    <button
+                      type="button"
+                      key={one.key}
+                      className={current?.key === one.key ? "on" : ""}
+                      onClick={() => choose(one)}
+                    >
+                      <span>{one.value || tr("(hidden)")}</span>
+                      <small>
+                        {changed(one) && <em>{tr("Changed")}</em>}
+                        {warned.has(one.key) && <Icon name="alert" />}
+                        {one.key}
+                      </small>
+                    </button>
+                  ))}
+                </section>
+              ))}
+              {shown.length > LIMIT && <p className="lang-edit-more">{tr("Showing {0} of {1}. Search to narrow it down.", [LIMIT, shown.length])}</p>}
+            </div>
+          ) : (
+            <p className={browsing ? "lang-edit-status" : "lang-edit-hint"}>
+              {browsing ? tr("Nothing matches.") : tr("Click text on screen to edit it.")}
+            </p>
           )}
           {current && (
             <div className="lang-edit-form">
-              <small className="lang-edit-key">{current.key}</small>
-              <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} />
+              <small className="lang-edit-key">
+                {sectionOf.get(current.key) ? `${sectionOf.get(current.key)} \u00B7 ` : ""}
+                {current.key}
+              </small>
+              <textarea
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && event.ctrlKey && draft !== current.value) {
+                    event.preventDefault();
+                    void save(draft);
+                  }
+                }}
+                rows={3}
+              />
+              {draftIssues.length > 0 && (
+                <ul className="lang-edit-issues">
+                  {draftIssues.map((one) => (
+                    <li key={one}>
+                      <Icon name="alert" />
+                      {one}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {committed !== undefined && committed !== current.value && (
+                <p className="lang-edit-was">
+                  <span>{tr("Last commit")}</span>
+                  {committed || tr("(hidden)")}
+                </p>
+              )}
               <div className="lang-edit-actions">
                 <button type="button" className="button ghost small" onClick={() => void save("")}>
                   {tr("Hide")}
                 </button>
-                {before !== undefined && before !== current.value && (
-                  <button type="button" className="button ghost small" onClick={() => void save(before)}>
+                {committed !== undefined && committed !== current.value && (
+                  <button type="button" className="button ghost small" onClick={() => void save(committed)}>
                     {tr("Undo")}
                   </button>
                 )}

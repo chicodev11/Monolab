@@ -135,6 +135,11 @@ export const commands = {
 	 *  refetch the tiles that show them while the add-on keeps drawing.
 	 */
 	mapChanges: (id: string, realm: string | null) => __TAURI_INVOKE<([number, number])[]>("map_changes", { id, realm }),
+	/**  Asks the addon to draw a height layer (`overworld-y32`) around (x, z), nearest first, and says how far it got. */
+	mapRequestLayer: (id: string, layer: string, x: number, z: number) => __TAURI_INVOKE<{
+	done: number,
+	total: number,
+} | null>("map_request_layer", { id, layer, x, z }),
 	listEventDays: (id: string) => __TAURI_INVOKE<string[]>("list_event_days", { id }),
 	perfHistory: (id: string, day: string) => __TAURI_INVOKE<GameEvent_Serialize[]>("perf_history", { id, day }),
 	readLive: (id: string) => __TAURI_INVOKE<{
@@ -989,6 +994,11 @@ export type LogFile = {
 	sizeBytes: number,
 	modifiedAt: number,
 	compressed: boolean,
+};
+
+export type MapLayerProgress = {
+	done: number,
+	total: number,
 };
 
 export type MapWebView = {

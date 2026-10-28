@@ -31,7 +31,10 @@ final class MapRender {
     private static final List<String> STATUSES = List.of(
             "empty", "structure_starts", "structure_references", "biomes", "noise", "surface", "carvers",
             "liquid_carvers", "features", "initialize_light", "light", "spawn", "heightmaps", "full");
-    static final int CAVE_Y = 32;
+    /** A requested depth layer is drawn while the app keeps asking for it (it rewrites requests.json every minute). */
+    private static final long WANTED_MS = 10 * 60_000L;
+    private static final long KEEP_LAYER_MS = 3 * 24 * 3_600_000L;
+    private static final java.util.regex.Pattern DEPTH = java.util.regex.Pattern.compile("([a-z0-9_.-]+)-y(-?\\d{1,4})");
     private static final int OPEN = Integer.MAX_VALUE;
     private static final int VOID = -2;
     private static final java.util.Set<String> DRAWN_STATUS = java.util.Set.of(
@@ -50,6 +53,13 @@ final class MapRender {
     private final java.util.concurrent.atomic.AtomicInteger waiting = new java.util.concurrent.atomic.AtomicInteger();
     private final Map<Path, Long> drawnAt = new HashMap<>();
     private volatile java.util.Set<String> layers = java.util.Set.of();
+    private Map<String, Path> realmDirs = Map.of();
+    private long requestsStamp = Long.MIN_VALUE;
+    private String wanted;
+    private int wantedX;
+    private int wantedZ;
+    private List<Path> wantedTodo;
+    private int wantedTotal;
 
     MapRender(Path server, Path out, BiConsumer<String, Throwable> onTrouble) {
         this.server = server;
@@ -179,6 +189,11 @@ final class MapRender {
                 onTrouble.accept("Couldn't update the map live", error);
             }
             try {
+                requested(1_500L);
+            } catch (Throwable error) {
+                onTrouble.accept("Couldn't draw the requested map height", error);
+            }
+            try {
                 Thread.sleep(PATCH_MS);
             } catch (InterruptedException ignored) {
                 return;
@@ -235,6 +250,9 @@ final class MapRender {
     private void pass() throws IOException {
         Map<String, Path> realms = realms();
         layers = java.util.Set.copyOf(realms.keySet());
+        realmDirs = realms;
+        wantedTodo = null;
+        cleanLayers();
         List<Path[]> todo = new ArrayList<>();
         int total = 0;
         Path rules = out.resolve("rules.txt");
@@ -242,9 +260,8 @@ final class MapRender {
         List<Integer> cutoffs = new ArrayList<>();
         List<Path[]> extras = new ArrayList<>();
         for (Map.Entry<String, Path> realm : realms.entrySet()) {
-            List<String> layers = realm.getKey().equals("overworld") ? List.of("overworld", "overworld-cave") : List.of(realm.getKey());
-            for (String layer : layers) {
-                int cutoff = layer.equals("nether") ? 127 : layer.endsWith("-cave") ? CAVE_Y : OPEN;
+            for (String layer : List.of(realm.getKey())) {
+                int cutoff = layer.equals("nether") ? 127 : OPEN;
                 Path dir = out.resolve(layer);
                 try (var files = Files.list(realm.getValue())) {
                     for (Path mca : (Iterable<Path>) files::iterator) {
@@ -255,9 +272,8 @@ final class MapRender {
                         total++;
                         String base = name.substring(0, name.length() - 4);
                         Path tile = dir.resolve(base + ".mnm");
-                        boolean withStats = !layer.endsWith("-cave");
-                        Path stats = withStats ? dir.resolve(base + ".mst") : null;
-                        Path entities = withStats ? realm.getValue().resolveSibling("entities").resolve(name) : null;
+                        Path stats = dir.resolve(base + ".mst");
+                        Path entities = realm.getValue().resolveSibling("entities").resolve(name);
                         boolean statsFresh = stats == null || (Files.isRegularFile(stats) && !newer(entities, stats));
                         if (!redo && statsFresh && Files.isRegularFile(tile) && !changedSince(mca, drawnAt.getOrDefault(tile, Files.getLastModifiedTime(tile).toMillis()))) {
                             continue;
@@ -293,11 +309,165 @@ final class MapRender {
             } catch (IOException error) {
                 onTrouble.accept("Couldn't update the map live", error);
             }
+            requested(300L);
             Thread.yield();
         }
         if (redo) {
             Files.createDirectories(out);
             Files.writeString(rules, RULES);
+        }
+    }
+
+    /** `overworld-y32` and the like: a map drawn below that height instead of from the sky. */
+    static boolean depthLayer(String name) {
+        return DEPTH.matcher(name).matches();
+    }
+
+    private void readRequests() {
+        Path file = out.resolve("requests.json");
+        long stamp;
+        try {
+            stamp = Files.isRegularFile(file) ? Files.getLastModifiedTime(file).toMillis() : 0L;
+        } catch (IOException error) {
+            return;
+        }
+        if (stamp == requestsStamp) {
+            return;
+        }
+        requestsStamp = stamp;
+        String layer = null;
+        int x = 0;
+        int z = 0;
+        try {
+            if (stamp > 0 && MiniJson.parse(Files.readString(file)) instanceof Map<?, ?> root
+                    && root.get("layers") instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof Map<?, ?> first
+                    && first.get("layer") instanceof String name && depthLayer(name)) {
+                layer = name;
+                x = first.get("x") instanceof Number value ? value.intValue() : 0;
+                z = first.get("z") instanceof Number value ? value.intValue() : 0;
+            }
+        } catch (IOException | RuntimeException broken) {
+            layer = null;
+        }
+        if (layer == null || !layer.equals(wanted) || Math.abs(x - wantedX) >= 512 || Math.abs(z - wantedZ) >= 512) {
+            wantedTodo = null;
+        }
+        wanted = layer;
+        wantedX = x;
+        wantedZ = z;
+    }
+
+    /** Draws the depth layer the app is showing, nearest regions first, for at most `budgetMs`. */
+    private void requested(long budgetMs) {
+        long start = System.currentTimeMillis();
+        readRequests();
+        if (wanted == null || start - requestsStamp > WANTED_MS) {
+            return;
+        }
+        java.util.regex.Matcher match = DEPTH.matcher(wanted);
+        if (!match.matches()) {
+            return;
+        }
+        int cutoff = Integer.parseInt(match.group(2));
+        Path dir = out.resolve(wanted);
+        if (wantedTodo == null) {
+            if (realmDirs.isEmpty()) {
+                realmDirs = realms();
+            }
+            Path region = realmDirs.get(match.group(1));
+            List<Path> todo = new ArrayList<>();
+            int total = 0;
+            if (region != null) {
+                try (var files = Files.list(region)) {
+                    for (Path mca : (Iterable<Path>) files::iterator) {
+                        String name = mca.getFileName().toString();
+                        if (!name.startsWith("r.") || !name.endsWith(".mca")) {
+                            continue;
+                        }
+                        total++;
+                        Path tile = dir.resolve(name.substring(0, name.length() - 4) + ".mnm");
+                        try {
+                            if (!Files.isRegularFile(tile) || changedSince(mca, Files.getLastModifiedTime(tile).toMillis())) {
+                                todo.add(mca);
+                            }
+                        } catch (IOException broken) {
+                            // Skip a region we can't read.
+                        }
+                    }
+                } catch (IOException error) {
+                    onTrouble.accept("Couldn't list the regions for " + wanted, error);
+                }
+            }
+            int rx = Math.floorDiv(wantedX, SPAN);
+            int rz = Math.floorDiv(wantedZ, SPAN);
+            todo.sort(java.util.Comparator.comparingLong(mca -> {
+                String[] bits = mca.getFileName().toString().split("\\.");
+                long dx = Long.parseLong(bits[1]) - rx;
+                long dz = Long.parseLong(bits[2]) - rz;
+                return dx * dx + dz * dz;
+            }));
+            wantedTodo = todo;
+            wantedTotal = total;
+            depthStatus(dir, total - todo.size(), total);
+        }
+        while (!wantedTodo.isEmpty()) {
+            if (!running || System.currentTimeMillis() - start >= budgetMs) {
+                return;
+            }
+            Path mca = wantedTodo.remove(0);
+            String name = mca.getFileName().toString();
+            try {
+                renderRegion(mca, dir.resolve(name.substring(0, name.length() - 4) + ".mnm"), cutoff, null, null);
+            } catch (IOException error) {
+                onTrouble.accept("Couldn't draw region " + name, error);
+            }
+            depthStatus(dir, wantedTotal - wantedTodo.size(), wantedTotal);
+        }
+    }
+
+    private void depthStatus(Path dir, int done, int total) {
+        try {
+            Files.createDirectories(dir);
+            write(dir.resolve("status.json"), new Json()
+                    .put("at", System.currentTimeMillis())
+                    .put("done", done)
+                    .put("total", total)
+                    .end()
+                    .getBytes(StandardCharsets.UTF_8));
+        } catch (IOException ignored) {
+            // Only a progress indicator.
+        }
+    }
+
+    /** Removes depth layers the app stopped asking for, and the fixed cave layer of addon 30 and older. */
+    private void cleanLayers() {
+        java.util.Set<String> keep = new java.util.HashSet<>();
+        Path file = out.resolve("requests.json");
+        try {
+            if (Files.isRegularFile(file) && System.currentTimeMillis() - Files.getLastModifiedTime(file).toMillis() < KEEP_LAYER_MS
+                    && MiniJson.parse(Files.readString(file)) instanceof Map<?, ?> root && root.get("layers") instanceof List<?> list) {
+                for (Object one : list) {
+                    if (one instanceof Map<?, ?> entry && entry.get("layer") instanceof String name) {
+                        keep.add(name);
+                    }
+                }
+            }
+        } catch (IOException | RuntimeException broken) {
+            return;
+        }
+        try (var list = Files.list(out)) {
+            for (Path one : (Iterable<Path>) list::iterator) {
+                String name = one.getFileName().toString();
+                if (Files.isDirectory(one) && (name.equals("overworld-cave") || (depthLayer(name) && !keep.contains(name)))) {
+                    try (var walk = Files.walk(one)) {
+                        for (Path gone : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                            Files.deleteIfExists(gone);
+                        }
+                    }
+                }
+            }
+        } catch (IOException ignored) {
+            // Try again on the next pass.
         }
     }
 

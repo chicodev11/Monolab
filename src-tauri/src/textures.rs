@@ -263,6 +263,212 @@ pub fn icons(
         .collect())
 }
 
+pub(crate) struct MapPalette {
+    pub json: String,
+    pub grass: Option<Vec<u8>>,
+    pub foliage: Option<Vec<u8>>,
+}
+
+const MAP_KEYS: [&str; 11] = ["top", "end", "up", "all", "texture", "cross", "plant", "crop", "layer0", "particle", "side"];
+
+fn split_id(id: &str) -> (&str, &str) {
+    id.split_once(':').unwrap_or(("minecraft", id))
+}
+
+fn json_at<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>, path: &str) -> Option<serde_json::Value> {
+    serde_json::from_slice(&read(zip, path)?).ok()
+}
+
+fn map_model<R: std::io::Read + std::io::Seek>(
+    zip: &mut ZipArchive<R>,
+    id: &str,
+    textures: &mut HashMap<String, serde_json::Value>,
+    tinted: &mut bool,
+    depth: u32,
+) {
+    if depth > 12 {
+        return;
+    }
+    let (namespace, path) = split_id(id);
+    let Some(model) = json_at(zip, &format!("assets/{namespace}/models/{path}.json")) else {
+        return;
+    };
+    if let Some(parent) = model.get("parent").and_then(|one| one.as_str()) {
+        map_model(zip, parent, textures, tinted, depth + 1);
+    }
+    if let Some(own) = model.get("textures").and_then(|one| one.as_object()) {
+        for (key, value) in own {
+            textures.insert(key.clone(), value.clone());
+        }
+    }
+    if let Some(elements) = model.get("elements").and_then(|one| one.as_array()) {
+        *tinted = elements
+            .iter()
+            .any(|element| element.pointer("/faces/up/tintindex").is_some_and(|one| !one.is_null()));
+    }
+}
+
+fn texture_ref(value: Option<&serde_json::Value>) -> Option<String> {
+    let value = value?;
+    let value = if value.is_object() { value.get("sprite").or_else(|| value.get("texture"))? } else { value };
+    value.as_str().map(str::to_string)
+}
+
+fn average_color<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>, id: &str) -> Option<u32> {
+    let (namespace, path) = split_id(id);
+    let raw = read(zip, &format!("assets/{namespace}/textures/{path}.png"))?;
+    let image = image::load_from_memory(&raw).ok()?.to_rgba8();
+    let side = image.width().min(image.height());
+    let (mut r, mut g, mut b, mut n) = (0u64, 0u64, 0u64, 0u64);
+    for y in 0..side {
+        for x in 0..image.width() {
+            let pixel = image.get_pixel(x, y);
+            if pixel[3] < 30 {
+                continue;
+            }
+            r += u64::from(pixel[0]);
+            g += u64::from(pixel[1]);
+            b += u64::from(pixel[2]);
+            n += 1;
+        }
+    }
+    (n > 0).then(|| ((r / n) as u32) << 16 | ((g / n) as u32) << 8 | (b / n) as u32)
+}
+
+fn block_entry<R: std::io::Read + std::io::Seek>(
+    zip: &mut ZipArchive<R>,
+    colors: &mut HashMap<String, Option<u32>>,
+    path: &str,
+    block: &str,
+) -> Option<serde_json::Value> {
+    let state = json_at(zip, path)?;
+    let first = |value: &serde_json::Value| -> Option<String> {
+        let value = value.as_array().map_or(Some(value), |list| list.first())?;
+        value.get("model")?.as_str().map(str::to_string)
+    };
+    let variants = state.get("variants").and_then(|one| one.as_object()).filter(|one| !one.is_empty());
+    let model = match (variants, state.get("multipart").and_then(|one| one.as_array())) {
+        (Some(variants), _) => first(variants.values().next()?)?,
+        (None, Some(parts)) => first(parts.first()?.get("apply")?)?,
+        _ => return None,
+    };
+    let mut textures = HashMap::new();
+    let mut tinted = false;
+    map_model(zip, &model, &mut textures, &mut tinted, 0);
+    let mut color = None;
+    for key in MAP_KEYS {
+        let mut reference = texture_ref(textures.get(key));
+        for _ in 0..8 {
+            match reference.as_deref().and_then(|one| one.strip_prefix('#')) {
+                Some(rest) => reference = texture_ref(textures.get(rest)),
+                None => break,
+            }
+        }
+        let Some(reference) = reference.filter(|one| !one.starts_with('#')) else {
+            continue;
+        };
+        let found = match colors.get(&reference) {
+            Some(known) => *known,
+            None => {
+                let found = average_color(zip, &reference);
+                colors.insert(reference, found);
+                found
+            }
+        };
+        if found.is_some() {
+            color = found;
+            break;
+        }
+    }
+    let color = color?;
+    let (namespace, name) = split_id(block);
+    let tint = if namespace == "minecraft" {
+        match name {
+            "grass_block" | "short_grass" | "tall_grass" | "fern" | "large_fern" | "sugar_cane" | "vine" | "bush" => "grass",
+            "birch_leaves" => "fixed:80a755",
+            "spruce_leaves" => "fixed:619961",
+            "mangrove_leaves" => "fixed:92c648",
+            "water" | "bubble_column" => "water",
+            "lily_pad" => "fixed:208030",
+            _ if name.ends_with("_leaves") && !["cherry", "azalea", "pale_oak"].iter().any(|one| name.contains(one)) => "foliage",
+            _ => "none",
+        }
+    } else if tinted {
+        if name.contains("leaves") || name.contains("leaf") {
+            "foliage"
+        } else if name.contains("water") {
+            "water"
+        } else {
+            "grass"
+        }
+    } else {
+        "none"
+    };
+    Some(serde_json::json!([format!("{color:06x}"), tint]))
+}
+
+fn biome_color(value: Option<&serde_json::Value>, otherwise: &str) -> String {
+    match value {
+        Some(serde_json::Value::Number(number)) => format!("{:06x}", number.as_i64().unwrap_or(0) & 0xFF_FF_FF),
+        Some(serde_json::Value::String(text)) if text.starts_with('#') && text.len() >= 7 => text[1..7].to_lowercase(),
+        _ => otherwise.to_string(),
+    }
+}
+
+fn biome_entry<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>, path: &str) -> Option<serde_json::Value> {
+    let biome = json_at(zip, path)?;
+    let effects = biome.get("effects");
+    let effect = |key: &str| effects.and_then(|one| one.get(key));
+    Some(serde_json::json!([
+        biome.get("temperature").and_then(|one| one.as_f64()).unwrap_or(0.8),
+        biome.get("downfall").and_then(|one| one.as_f64()).unwrap_or(0.4),
+        biome_color(effect("water_color"), "3f76e4"),
+        biome_color(effect("grass_color"), ""),
+        biome_color(effect("foliage_color"), ""),
+        effect("grass_color_modifier").and_then(|one| one.as_str()).unwrap_or(""),
+    ]))
+}
+
+/// Builds the map's `palette.json` from a client jar, for servers whose addon can't (Pumpkin).
+pub(crate) fn map_palette(jar: &std::path::Path) -> Result<MapPalette, String> {
+    let file = fs::File::open(jar).map_err(|error| error.to_string())?;
+    let mut zip = ZipArchive::new(file).map_err(|error| error.to_string())?;
+    let names: Vec<String> = zip.file_names().filter_map(|one| one.ok().map(|name| name.into_owned())).collect();
+    let mut blocks = serde_json::Map::new();
+    let mut biomes = serde_json::Map::new();
+    let mut colors = HashMap::new();
+    for name in &names {
+        if let Some(rest) = name.strip_prefix("assets/") {
+            let Some((namespace, path)) = rest.split_once("/blockstates/") else { continue };
+            let Some(block) = path.strip_suffix(".json") else { continue };
+            let block = format!("{namespace}:{block}");
+            if !blocks.contains_key(&block) {
+                if let Some(entry) = block_entry(&mut zip, &mut colors, name, &block) {
+                    blocks.insert(block, entry);
+                }
+            }
+        } else if let Some(rest) = name.strip_prefix("data/") {
+            let Some((namespace, path)) = rest.split_once("/worldgen/biome/") else { continue };
+            let Some(biome) = path.strip_suffix(".json") else { continue };
+            let biome = format!("{namespace}:{biome}");
+            if !biomes.contains_key(&biome) {
+                if let Some(entry) = biome_entry(&mut zip, name) {
+                    biomes.insert(biome, entry);
+                }
+            }
+        }
+    }
+    if blocks.is_empty() {
+        return Err("The client file has no block models.".into());
+    }
+    let json = serde_json::json!({ "key": "client", "vanilla": true, "blocks": blocks, "biomes": biomes }).to_string();
+    Ok(MapPalette {
+        json,
+        grass: read(&mut zip, "assets/minecraft/textures/colormap/grass.png"),
+        foliage: read(&mut zip, "assets/minecraft/textures/colormap/foliage.png"),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -293,6 +499,20 @@ mod tests {
         for (x, y) in [(0, 0), (SIZE - 1, 0), (0, SIZE - 1), (SIZE - 1, SIZE - 1)] {
             assert_eq!(drawn.get_pixel(x, y)[3], 0, "corner ({x},{y}) is filled");
         }
+    }
+
+    #[test]
+    #[ignore]
+    fn builds_a_map_palette_from_a_real_jar() {
+        let Ok(path) = std::env::var("SE_CLIENT_JAR") else {
+            return;
+        };
+        let palette = map_palette(std::path::Path::new(&path)).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&palette.json).unwrap();
+        println!("{} blocks, {} biomes", value["blocks"].as_object().unwrap().len(), value["biomes"].as_object().unwrap().len());
+        println!("grass_block {} stone {} plains {}", value["blocks"]["minecraft:grass_block"], value["blocks"]["minecraft:stone"], value["biomes"]["minecraft:plains"]);
+        assert_eq!(value["blocks"]["minecraft:grass_block"][1], "grass");
+        assert!(palette.grass.is_some());
     }
 
     #[test]
