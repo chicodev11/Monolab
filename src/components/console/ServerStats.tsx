@@ -84,6 +84,7 @@ function Card({
   plain,
   icon,
   delay,
+  onOpen,
 }: {
   label: string;
   value: string;
@@ -95,10 +96,18 @@ function Card({
   plain?: boolean;
   icon: string;
   delay: number;
+  onOpen?: () => void;
 }) {
   const level = tone ?? (plain || ratio === undefined ? undefined : ratio >= 0.9 ? "danger" : ratio >= 0.75 ? "warn" : undefined);
   return (
-    <div className={`stat-card${level ? ` ${level}` : ""}`} style={{ animationDelay: `${delay * 40}ms` }}>
+    <div
+      className={`stat-card${level ? ` ${level}` : ""}${onOpen ? " link" : ""}`}
+      style={{ animationDelay: `${delay * 40}ms` }}
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={onOpen ? (event) => (event.key === "Enter" || event.key === " ") && onOpen() : undefined}
+    >
       <div className="stat-head">
         <Icon name={icon} />
         <span>{label}</span>
@@ -141,7 +150,8 @@ function PlayerRow({ player, onOpen }: { player: LivePlayer; onOpen: (name: stri
   );
 }
 
-export function ServerStats({ server, onOpenPlayer, bare }: { server: Server; onOpenPlayer: (name: string) => void; bare?: boolean }) {
+export function ServerStats({ server, onOpenPlayer, onOpenTool, bare }: { server: Server; onOpenPlayer: (name: string) => void; onOpenTool?: (tool: "monitor" | "players" | "disk") => void; bare?: boolean }) {
+  const toMonitor = onOpenTool ? () => onOpenTool("monitor") : undefined;
   const [stats, setStats] = useState<Stats | null>(null);
   const [cpuTrace, setCpuTrace] = useState<number[]>([]);
   const [copied, setCopied] = useState(false);
@@ -218,20 +228,21 @@ export function ServerStats({ server, onOpenPlayer, bare }: { server: Server; on
   const memoryRatio = stats && stats.memoryLimit > 0 ? stats.memory / stats.memoryLimit : undefined;
   const cards: (Parameters<typeof Card>[0] | null)[] = stats
     ? [
-        { icon: "cpu", label: tr("CPU load"), value: stats.cpu == null ? "—" : `${stats.cpu.toFixed(1)}%`, trace: cpuTrace, zero: true, delay: 0 },
+        { icon: "cpu", label: tr("CPU load"), value: stats.cpu == null ? "—" : `${stats.cpu.toFixed(1)}%`, trace: cpuTrace, zero: true, delay: 0, onOpen: toMonitor },
         {
           icon: "memory",
           label: tr("Memory"),
           value: stats.memoryLimit > 0 ? `${fileSize(stats.memory)} / ${fileSize(stats.memoryLimit)}` : fileSize(stats.memory),
           ratio: memoryRatio,
           delay: 1,
+          onOpen: toMonitor,
         },
         stats.tps != null
-          ? { icon: "gauge", label: "TPS", value: stats.tps.toFixed(1), note: stats.mspt != null ? `${stats.mspt.toFixed(1)} ms/tick` : undefined, tone: stats.tps < 15 ? "danger" : stats.tps < 18 ? "warn" : undefined, delay: 2 }
+          ? { icon: "gauge", label: "TPS", value: stats.tps.toFixed(1), note: stats.mspt != null ? `${stats.mspt.toFixed(1)} ms/tick` : undefined, tone: stats.tps < 15 ? "danger" : stats.tps < 18 ? "warn" : undefined, delay: 2, onOpen: toMonitor }
           : null,
-        stats.players != null ? { icon: "users", label: tr("Players"), value: String(stats.players), delay: 3 } : null,
+        stats.players != null ? { icon: "users", label: tr("Players"), value: String(stats.players), delay: 3, onOpen: onOpenTool ? () => onOpenTool("players") : undefined } : null,
         stats.entities != null
-          ? { icon: "ghost", label: tr("Entities"), value: Math.round(stats.entities).toLocaleString(), note: stats.chunks != null ? tr("{0} chunks loaded", [Math.round(stats.chunks).toLocaleString()]) : undefined, delay: 4 }
+          ? { icon: "ghost", label: tr("Entities"), value: Math.round(stats.entities).toLocaleString(), note: stats.chunks != null ? tr("{0} chunks loaded", [Math.round(stats.chunks).toLocaleString()]) : undefined, delay: 4, onOpen: toMonitor }
           : null,
         stats.disk != null
           ? {
@@ -243,6 +254,7 @@ export function ServerStats({ server, onOpenPlayer, bare }: { server: Server; on
               plain: !panel,
               tone: !panel && stats.diskLimit && stats.disk / stats.diskLimit >= 0.95 ? ("danger" as const) : undefined,
               delay: 5,
+              onOpen: onOpenTool ? () => onOpenTool(panel ? "monitor" : "disk") : undefined,
             }
           : null,
         panel && stats.rx != null ? { icon: "network", label: tr("Network"), value: `↓ ${fileSize(stats.rx)}`, note: `↑ ${fileSize(stats.tx ?? 0)}`, delay: 6 } : null,

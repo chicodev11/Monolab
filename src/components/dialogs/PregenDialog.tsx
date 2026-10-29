@@ -121,7 +121,7 @@ export function PregenDialog({ server, realm: startRealm = 0, area = null, onClo
                   </small>
                   <button className="button secondary small" disabled={busy} onClick={() => void install(tool)}>
                     <Icon name="import" />
-                    {tr("Install {0}", [tool.name])}
+                    {tr("Install tool {0}", [tool.name])}
                   </button>
                 </div>
               ))}

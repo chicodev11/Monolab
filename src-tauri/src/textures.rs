@@ -86,10 +86,10 @@ fn read<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>, name: &str) -
 
 fn model_textures<R: std::io::Read + std::io::Seek>(
     zip: &mut ZipArchive<R>,
-    id: &str,
+    start: &str,
 ) -> HashMap<String, String> {
     let mut found: HashMap<String, String> = HashMap::new();
-    let mut next = Some(format!("block/{id}"));
+    let mut next = Some(start.to_string());
     for _ in 0..5 {
         let Some(name) = next.take() else { break };
         let path = format!("assets/minecraft/models/{name}.json");
@@ -203,6 +203,57 @@ fn to_data_url(image: &RgbaImage) -> Option<String> {
     ))
 }
 
+/// The model an item shows in the inventory (`items/<id>.json` since 1.21.4), and the special renderer if it has one.
+fn item_model<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>, id: &str) -> (String, Option<String>) {
+    fn find(value: &serde_json::Value) -> Option<(Option<String>, Option<String>)> {
+        match value {
+            serde_json::Value::Object(map) => {
+                let kind = map.get("type").and_then(|one| one.as_str()).unwrap_or_default();
+                let named = |key: &str| map.get(key).and_then(|one| one.as_str()).map(|one| one.trim_start_matches("minecraft:").to_string());
+                if kind == "minecraft:model" || kind == "model" {
+                    if let Some(model) = named("model") {
+                        return Some((Some(model), None));
+                    }
+                }
+                if kind == "minecraft:special" || kind == "special" {
+                    let special = map.get("model").and_then(|one| one.get("type")).and_then(|one| one.as_str());
+                    return Some((named("base"), special.map(|one| one.trim_start_matches("minecraft:").to_string())));
+                }
+                map.values().find_map(find)
+            }
+            serde_json::Value::Array(list) => list.iter().find_map(find),
+            _ => None,
+        }
+    }
+    let found = json_at(zip, &format!("assets/minecraft/items/{id}.json")).and_then(|one| find(&one));
+    let (model, special) = found.unwrap_or((None, None));
+    let model = model.unwrap_or_else(|| {
+        let item = format!("item/{id}");
+        if zip.by_name(&format!("assets/minecraft/models/{item}.json")).is_ok() {
+            item
+        } else {
+            format!("block/{id}")
+        }
+    });
+    (model, special)
+}
+
+/// The shield's front face from its entity texture, centred on a square.
+fn shield<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>) -> Option<RgbaImage> {
+    let raw = ["entity/shield/shield_base_nopattern", "entity/shield_base_nopattern"]
+        .iter()
+        .find_map(|name| read(zip, &format!("assets/minecraft/textures/{name}.png")))?;
+    let full = image::load_from_memory(&raw).ok()?.to_rgba8();
+    let unit = full.width() / 64;
+    if unit == 0 {
+        return None;
+    }
+    let front = image::imageops::crop_imm(&full, unit, unit, 12 * unit, 22 * unit).to_image();
+    let mut square = RgbaImage::new(22 * unit, 22 * unit);
+    image::imageops::overlay(&mut square, &front, i64::from(5 * unit), 0);
+    Some(flat(&square))
+}
+
 fn draw<R: std::io::Read + std::io::Seek>(
     zip: &mut ZipArchive<R>,
     id: &str,
@@ -210,18 +261,35 @@ fn draw<R: std::io::Read + std::io::Seek>(
     if let Some(texture) = face(zip, &format!("item/{id}")) {
         return Some(flat(&texture));
     }
-    let map = model_textures(zip, id);
+    let (model, special) = item_model(zip, id);
+    if special.as_deref() == Some("shield") {
+        if let Some(image) = shield(zip) {
+            return Some(image);
+        }
+    }
+    let map = model_textures(zip, &model);
     let pick = |keys: &[&str]| -> Option<String> {
         keys.iter().find_map(|key| resolve(&map, key))
     };
+    if let Some(texture) = pick(&["layer0"]).and_then(|name| face(zip, &name)) {
+        return Some(flat(&texture));
+    }
+    if model.ends_with("_bed_head") {
+        if let Some(texture) = pick(&["up"]).and_then(|name| face(zip, &name)) {
+            return Some(flat(&texture));
+        }
+    }
+    let particle = pick(&["particle"]);
     let top = pick(&["up", "top", "end", "all", "texture"]);
     let side = pick(&["side", "north", "all", "texture"]);
-    let top = top.or_else(|| {
+    let Some(top) = top.or_else(|| {
         ["_top", ""].iter().find_map(|tail| {
             let name = format!("block/{id}{tail}");
             face(zip, &name).is_some().then_some(name)
         })
-    })?;
+    }) else {
+        return particle.and_then(|name| face(zip, &name)).map(|texture| flat(&texture));
+    };
     let side = side.unwrap_or_else(|| top.clone());
     let top_image = face(zip, &top)?;
     let side_image = face(zip, &side)?;

@@ -85,7 +85,7 @@ fn read_gzip_nbt(path: &Path) -> Result<fastnbt::Value, String> {
     decode_nbt(raw)
 }
 
-fn decode_nbt(raw: Vec<u8>) -> Result<fastnbt::Value, String> {
+pub(crate) fn decode_nbt(raw: Vec<u8>) -> Result<fastnbt::Value, String> {
     let mut decoded = Vec::new();
     if GzDecoder::new(&raw[..]).read_to_end(&mut decoded).is_err() {
         decoded = raw;

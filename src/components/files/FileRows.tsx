@@ -1,7 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import type { BrowseEntry } from "../../lib/bindings";
-import { date, fileSize, isImage, relativeTime } from "../../lib/format";
+import { date, fileSize, isImage, isViewable, relativeTime } from "../../lib/format";
 import { tr } from "../../lib/i18n";
 import type { Sent } from "../../lib/sent";
 import { DropdownMenu } from "../primitives";
@@ -108,11 +108,11 @@ export function FileRows({ entries, activeFile, scroll, locked, picked, onPick, 
     >
       {virtualizer.getVirtualItems().map((item) => {
         const entry = entries[item.index];
-        const openable = entry.isDir || entry.editable || isImage(entry.name);
+        const openable = entry.isDir || entry.editable || isImage(entry.name) || isViewable(entry.name);
         return (
           <div
             className={`file-row ${activeFile === entry.path ? "selected" : ""} ${
-              entry.isDir ? "is-dir" : entry.editable || isImage(entry.name) ? "" : "locked"
+              entry.isDir ? "is-dir" : openable ? "" : "locked"
             }`}
             key={item.key}
             data-index={item.index}
@@ -136,7 +136,7 @@ export function FileRows({ entries, activeFile, scroll, locked, picked, onPick, 
                   : `${
                       entry.editable
                         ? tr("Edit")
-                        : isImage(entry.name)
+                        : isImage(entry.name) || isViewable(entry.name)
                           ? tr("View")
                           : tr("This isn't a text file, so it can't be opened here. You can still download it.")
                     } · ${fileSize(entry.sizeBytes)}`

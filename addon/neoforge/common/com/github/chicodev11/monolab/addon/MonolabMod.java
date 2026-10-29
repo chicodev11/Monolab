@@ -85,6 +85,7 @@ public final class MonolabMod {
         flusher.scheduleAtFixedRate(this::flushQuietly, 1, 1, TimeUnit.SECONDS);
         ticks = 0;
         LOGGER.info("Starting the Monolab monitor: {}", folder);
+        MonolabApi.serverThread(event.getServer()::execute);
         dumpCommands(event.getServer(), folder);
         try {
             map = startMap(folder);
@@ -152,7 +153,13 @@ public final class MonolabMod {
     }
 
     @SubscribeEvent
+    public void onTickStart(ServerTickEvent.Pre event) {
+        JvmStats.tickStart();
+    }
+
+    @SubscribeEvent
     public void onTick(ServerTickEvent.Post event) {
+        JvmStats.tickEnd();
         if (log == null) {
             return;
         }
@@ -169,6 +176,9 @@ public final class MonolabMod {
     }
 
     private void logPerf(MinecraftServer server) {
+        if (!AddonConfig.on("performance-log")) {
+            return;
+        }
         Runtime runtime = Runtime.getRuntime();
         long usedMib = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024);
         double mspt = server.getAverageTickTimeNanos() / 1_000_000.0;
@@ -254,7 +264,7 @@ private static String itemId(net.minecraft.world.item.ItemStack stack) {
                 byName.put(worldName(server, Bridge.dimensionId(level)), level);
             }
             log.setLoaded(chunks.json(name -> byName.containsKey(name) ? forcedOf(byName.get(name)) : null));
-            if (!inventoriesBroken) {
+            if (!inventoriesBroken && AddonConfig.on("inventories")) {
                 try {
                     log.setInventories(inventories(server));
                 } catch (Throwable trouble) {
@@ -299,6 +309,7 @@ private static String itemId(net.minecraft.world.item.ItemStack stack) {
                 .raw("hotspots", tally.hotspotsJson())
                 .raw("worlds", tally.worldsJson())
                 .raw("players", people.toString())
+                .raw("jvm", JvmStats.json())
                 .end());
     }
 

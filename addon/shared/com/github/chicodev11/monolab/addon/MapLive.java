@@ -63,7 +63,7 @@ final class MapLive {
 
     /** Called every tick on the server thread. */
     void tick(Source source) {
-        if (broken) {
+        if (broken || !AddonConfig.on("map") || !AddonConfig.on("live-map")) {
             return;
         }
         try {

@@ -9,6 +9,8 @@ type Props = {
   onClose: () => void;
   onNotice: (message: string) => void;
   onOpen: (url: string) => void;
+  /** Web map hash for the spot and height shown in the app: realm,x,z,scale,night,y. */
+  spot?: string;
 };
 
 type View = Awaited<ReturnType<typeof commands.mapWebState>>;
@@ -37,7 +39,9 @@ function labels(): Record<string, string> {
   };
 }
 
-export function MapShareDialog({ server, onClose, onNotice, onOpen }: Props) {
+export function MapShareDialog({ server, onClose, onNotice, onOpen, spot }: Props) {
+  const [atSpot, setAtSpot] = useState(true);
+  const link = (url: string) => (spot && atSpot ? `${url}#${spot}` : url);
   const [view, setView] = useState<View | null>(null);
   const [port, setPort] = useState("8100");
   const [busy, setBusy] = useState(false);
@@ -217,6 +221,18 @@ export function MapShareDialog({ server, onClose, onNotice, onOpen }: Props) {
                   <span />
                 </label>
               </div>
+              {spot && (
+                <div className="share-row">
+                  <span>
+                    <strong>{tr("Open where you are looking")}</strong>
+                    <small>{tr("Copied links open at this spot and map height. Needs add-on 33.")}</small>
+                  </span>
+                  <label className="switch">
+                    <input type="checkbox" checked={atSpot} onChange={(event) => setAtSpot(event.target.checked)} />
+                    <span />
+                  </label>
+                </div>
+              )}
             </div>
 
             {view.enabled && (
@@ -236,11 +252,11 @@ export function MapShareDialog({ server, onClose, onNotice, onOpen }: Props) {
                   <div className="share-link">
                     <small>{tr("Home network")}</small>
                     <code>{view.lanUrl}</code>
-                    <button className="button secondary small" onClick={() => void copy(view.lanUrl)}>
+                    <button className="button secondary small" onClick={() => void copy(link(view.lanUrl))}>
                       <Icon name="copy" />
                       {tr("Copy")}
                     </button>
-                    <button className="button ghost small" onClick={() => onOpen(view.lanUrl)}>
+                    <button className="button ghost small" onClick={() => onOpen(link(view.lanUrl))}>
                       {tr("Open")}
                     </button>
                   </div>
@@ -257,7 +273,7 @@ export function MapShareDialog({ server, onClose, onNotice, onOpen }: Props) {
                     <div className="share-link">
                       <small>{tr("Outside")}</small>
                       <code>{outside}</code>
-                      <button className="button secondary small" onClick={() => void copy(outside)}>
+                      <button className="button secondary small" onClick={() => void copy(link(outside))}>
                         <Icon name="copy" />
                         {tr("Copy")}
                       </button>

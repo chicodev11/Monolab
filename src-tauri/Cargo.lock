@@ -3277,12 +3277,13 @@ dependencies = [
 
 [[package]]
 name = "monolab"
-version = "1.6.1"
+version = "1.6.2"
 dependencies = [
  "ammonia",
  "argon2",
  "base64 0.23.1",
  "chrono",
+ "crc32fast",
  "fastnbt",
  "flate2",
  "futures-util",

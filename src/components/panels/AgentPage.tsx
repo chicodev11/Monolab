@@ -73,50 +73,74 @@ function AccountManager({
         </button>
       </div>
       <p className="modal-copy">{tr("Choose an account for this server. Each account only needs to sign in once. Switching accounts on the same server keeps the conversation going.")}</p>
-      {list.accounts.map((one) => (
+      <div className="claude-account-list">
+      {list.accounts.map((one) => {
+        const current = one.id === list.current;
+        const label = one.id === "default" ? tr("Default account") : names[one.id] ?? one.name;
+        return (
         <div
-          className={`claude-account-row ${one.id === list.current ? "on" : ""}`}
+          className={`claude-account-row ${current ? "on" : ""}`}
           key={one.id}
           role="radio"
-          aria-checked={one.id === list.current}
+          aria-checked={current}
           tabIndex={0}
           onClick={(event) => {
             if ((event.target as HTMLElement).closest("input, button")) return;
-            if (one.id !== list.current) onPick(one.id);
+            if (!current) onPick(one.id);
           }}
           onKeyDown={(event) => {
-            if ((event.key === "Enter" || event.key === " ") && event.target === event.currentTarget && one.id !== list.current) onPick(one.id);
+            if ((event.key === "Enter" || event.key === " ") && event.target === event.currentTarget && !current) onPick(one.id);
           }}
         >
-          <span className="claude-account-radio" aria-hidden>
-            {one.id === list.current && <Icon name="check" />}
+          <span className="claude-account-avatar" aria-hidden>
+            {(one.email || label || "?").slice(0, 1).toUpperCase()}
           </span>
-          {one.id === "default" ? (
-            <span className="claude-account-name">{tr(one.name)}</span>
-          ) : (
-            <input
-              className="claude-account-name"
-              value={names[one.id] ?? one.name}
-              onChange={(event) => setNames({ ...names, [one.id]: event.target.value })}
-              onBlur={() => {
-                const next = (names[one.id] ?? one.name).trim();
-                if (next && next !== one.name) void run(() => commands.claudeAccountRename(one.id, next));
-              }}
-            />
-          )}
-          {one.loggedIn ? (
-            <span className="claude-account-who" data-tip={[one.email, one.displayName, one.plan].filter(Boolean).join(" · ") || undefined}>
-              <small className="claude-account-in">{one.email || tr("Signed in")}</small>
-              {(one.displayName || one.plan) && <small className="muted">{[one.displayName, one.plan].filter(Boolean).join(" · ")}</small>}
-            </span>
-          ) : (
+          <span className="claude-account-main">
+            {one.id === "default" ? (
+              <span className="claude-account-name">{label}</span>
+            ) : (
+              <input
+                className="claude-account-name"
+                value={label}
+                aria-label={tr("Account name")}
+                onChange={(event) => setNames({ ...names, [one.id]: event.target.value })}
+                onBlur={() => {
+                  const next = (names[one.id] ?? one.name).trim();
+                  if (next && next !== one.name) void run(() => commands.claudeAccountRename(one.id, next));
+                }}
+              />
+            )}
+            <small className="claude-account-who" data-tip={[one.email, one.displayName, one.plan].filter(Boolean).join(" · ") || undefined}>
+              {one.loggedIn ? [one.email || tr("Signed in"), one.plan].filter(Boolean).join(" · ") : tr("Not signed in")}
+            </small>
+          </span>
+          {!one.loggedIn ? (
             <button className="button secondary small" onClick={() => onLogin(one.id)}>
               {tr("Sign in")}
+            </button>
+          ) : current ? (
+            <span className="claude-account-current">
+              <Icon name="check" />
+              {tr("In use")}
+            </span>
+          ) : (
+            <button className="button ghost small" onClick={() => onPick(one.id)}>
+              {tr("Use")}
+            </button>
+          )}
+          {one.loggedIn && (
+            <button
+              className="wb-icon ghost"
+              aria-label={tr("Sign out")}
+              data-tip={tr("Sign out")}
+              onClick={() => void run(() => commands.claudeAccountLogout(one.id))}
+            >
+              <Icon name="exit" />
             </button>
           )}
           {one.id !== "default" && (
             <button
-              className="icon-button danger"
+              className="wb-icon ghost danger"
               aria-label={tr("Remove account")}
               data-tip={tr("Remove account — removes sign-in details, keeps chat history")}
               onClick={() => void run(() => commands.claudeAccountRemove(one.id))}
@@ -125,7 +149,8 @@ function AccountManager({
             </button>
           )}
         </div>
-      ))}
+        );
+      })}
       <form
         className="claude-account-add"
         onSubmit={(event) => {
@@ -138,12 +163,15 @@ function AccountManager({
           });
         }}
       >
+        <span className="claude-account-avatar add" aria-hidden>
+          <Icon name="plus" />
+        </span>
         <input value={draft} placeholder={tr("New account name (e.g. Friend)")} onChange={(event) => setDraft(event.target.value)} />
         <button className="button secondary small" type="submit" disabled={!draft.trim()}>
-          <Icon name="plus" />
           {tr("Add")}
         </button>
       </form>
+      </div>
     </div>
     </div>,
     document.body,

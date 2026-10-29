@@ -127,6 +127,12 @@ export const today = () => {
 export const realVersion = (text: string | null | undefined) =>
   !!text && /^[\x21-\x7e]+$/.test(text.trim()) && /^[0-9]/.test(text.trim());
 
+const VIEWABLE = ["class", "jar", "zip", "mrpack", "gz", "dat", "dat_old", "nbt", "schem", "schematic", "litematic", "mcstructure"];
+
+/** Files the editor can't change but the app can show read-only (decompiled, NBT, archive contents). */
+export const isViewable = (name: string) =>
+  name.includes("!/") || VIEWABLE.includes((name.split(".").pop() ?? "").toLowerCase());
+
 export const isImage = (name: string) =>
   ["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg"].includes(
     (name.split(".").pop() ?? "").toLowerCase(),

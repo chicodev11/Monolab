@@ -1,12 +1,38 @@
 import { tr } from "../../lib/i18n";
 import { Icon } from "../ui/Icon";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lastViews } from "./views";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MapPin } from "./pins";
 import { useSmoothPins } from "./pins";
 import { Dropdown } from "../ui/Dropdown";
-import { METRICS, colorOf, formatValue, gradient, makeScale, metricHint, metricLabel, type Metric, type StatFetch, type StatGrid } from "./chunkStats";
+import { METRICS, colorOf, formatValue, gradient, makeScale, metricHint, metricLabel, type Metric, type Scale, type StatFetch, type StatGrid } from "./chunkStats";
 
 const TILE = 128;
+
+type Layer = { key: string; url: string; left: number; top: number; px: number; depth: number };
+
+/** Tile images; kept apart so hovering (which only moves the cursor readout) doesn't touch hundreds of images. */
+const MapTiles = memo(function MapTiles({ layers }: { layers: Layer[] }) {
+  return (
+    <>
+      {layers.map((one) => (
+        <img
+          key={one.key}
+          className="map-tile"
+          src={one.url}
+          alt=""
+          draggable={false}
+          style={{
+            left: `${one.left}px`,
+            top: `${one.top}px`,
+            width: `${one.px + 0.5}px`,
+            height: `${one.px + 0.5}px`,
+          }}
+        />
+      ))}
+    </>
+  );
+});
 const MIN_ZOOM = -4;
 const MAX_ZOOM = 5;
 const MAX_VIEW = 7;
@@ -55,6 +81,22 @@ const KEEP_MS = 3 * 60 * 1000;
 const KEEP_TILES = 500;
 const held = new Map<string, { at: number; tiles: Record<string, string> }>();
 
+/** Sizes a canvas only when the view size changed (resizing reallocates it) and clears it. */
+function prepareCanvas(canvas: HTMLCanvasElement, w: number, h: number) {
+  const ratio = window.devicePixelRatio || 1;
+  const width = Math.round(w * ratio);
+  const height = Math.round(h * ratio);
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const pen = canvas.getContext("2d");
+  if (!pen) return null;
+  pen.setTransform(ratio, 0, 0, ratio, 0, 0);
+  pen.clearRect(0, 0, w, h);
+  return pen;
+}
+
 function tileCache(key: string) {
   const now = Date.now();
   for (const [name, one] of held) if (now - one.at > KEEP_MS) held.delete(name);
@@ -88,6 +130,8 @@ export function WorldMap({
   cacheKey,
   onPregenArea,
   onDeleteArea,
+  players,
+  onSendPlayer,
 }: {
   pins: MapPin[];
   onPick?: (x: number, z: number) => void;
@@ -102,6 +146,8 @@ export function WorldMap({
   cacheKey?: string;
   onPregenArea?: ((area: MapArea) => void) | null;
   onDeleteArea?: ((area: MapArea) => void) | null;
+  players?: string[];
+  onSendPlayer?: ((name: string, x: number, z: number) => void) | null;
 }) {
   const drawn = useSmoothPins(pins, true);
   const box = useRef<HTMLDivElement>(null);
@@ -114,6 +160,11 @@ export function WorldMap({
   const zoom = view.zoom;
   const corner = view;
   const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    if (!cacheKey || !size.w) return;
+    const bpp = 2 ** view.zoom;
+    lastViews.set(cacheKey, { x: view.x + (size.w * bpp) / 2, z: view.z + (size.h * bpp) / 2, scale: 1 / bpp });
+  }, [cacheKey, view, size]);
   const [where, setWhere] = useState<{ x: number; z: number } | null>(null);
   const [tiles, setTiles] = useState<Record<string, string>>(() => (cacheKey ? { ...tileCache(cacheKey).tiles } : {}));
   const [night, setNight] = useState(false);
@@ -122,6 +173,7 @@ export function WorldMap({
   const gridCanvas = useRef<HTMLCanvasElement>(null);
   const [area, setArea] = useState<MapArea | null>(null);
   const picking = useRef<{ x: number; z: number } | null>(null);
+  const clicked = useRef<{ x: number; z: number } | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [stay, setStay] = useState<AreaStay | "loading" | null>(null);
   const [copied, setCopied] = useState(false);
@@ -250,7 +302,17 @@ export function WorldMap({
               have.current[next.key] = clean;
               if (cacheKey) keepTile(cacheKey, next.key, clean);
             }
-            setTiles((held) => ({ ...held, [next.key]: clean }));
+            setTiles((held) => {
+              const grown = { ...held, [next.key]: clean };
+              const names = Object.keys(grown);
+              if (names.length <= KEEP_TILES * 2) return grown;
+              const wanted = new Set(wantRef.current.map((one) => one.key));
+              for (const name of names.slice(0, names.length - KEEP_TILES)) if (!wanted.has(name)) {
+                delete grown[name];
+                delete have.current[name];
+              }
+              return grown;
+            });
           },
           () => later.current.set(next.key, Date.now() + 3000),
         )
@@ -311,19 +373,20 @@ export function WorldMap({
   const [gridTick, setGridTick] = useState(0);
   const statsRef = useRef(stats);
   statsRef.current = stats;
+  // Region bounds only change when the view crosses a region edge, so panning doesn't rebuild the list every frame.
+  const firstRegion = Math.floor(corner.x / 512);
+  const lastRegion = Math.floor((corner.x + size.w * bpp) / 512);
+  const topRegion = Math.floor(corner.z / 512);
+  const bottomRegion = Math.floor((corner.z + size.h * bpp) / 512);
   const regions = useMemo(() => {
     if (!metric || size.w < 16) return [];
-    const first = Math.floor(corner.x / 512);
-    const last = Math.floor((corner.x + size.w * bpp) / 512);
-    const top = Math.floor(corner.z / 512);
-    const bottom = Math.floor((corner.z + size.h * bpp) / 512);
-    const midX = (corner.x + (size.w * bpp) / 2) / 512;
-    const midZ = (corner.z + (size.h * bpp) / 2) / 512;
+    const midX = (firstRegion + lastRegion + 1) / 2;
+    const midZ = (topRegion + bottomRegion + 1) / 2;
     const list: { rx: number; rz: number }[] = [];
-    for (let rz = top; rz <= bottom; rz += 1) for (let rx = first; rx <= last; rx += 1) list.push({ rx, rz });
+    for (let rz = topRegion; rz <= bottomRegion; rz += 1) for (let rx = firstRegion; rx <= lastRegion; rx += 1) list.push({ rx, rz });
     list.sort((a, b) => Math.hypot(a.rx + 0.5 - midX, a.rz + 0.5 - midZ) - Math.hypot(b.rx + 0.5 - midX, b.rz + 0.5 - midZ));
     return list.slice(0, 256);
-  }, [metric, corner.x, corner.z, size.w, size.h, bpp]);
+  }, [metric, firstRegion, lastRegion, topRegion, bottomRegion, size.w]);
   useEffect(() => {
     if (!metric || !statsRef.current) return;
     let stop = false;
@@ -339,7 +402,8 @@ export function WorldMap({
         } catch {
           grids.current.delete(key);
         }
-        if (!stop) setGridTick((was) => was + 1);
+        // Draw it even if the view moved on meanwhile; the next queue skips keys already started.
+        setGridTick((was) => was + 1);
       }
     };
     void Promise.all([work(), work(), work(), work(), work(), work()]);
@@ -354,7 +418,19 @@ export function WorldMap({
       .filter((one): one is { rx: number; rz: number; grid: StatGrid } => one.grid !== null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metric, regions, gridTick]);
-  const scale = useMemo(() => (metric ? makeScale(metric, shown.map((one) => one.grid)) : null), [metric, shown]);
+  const scaleRef = useRef<Scale | null>(null);
+  const scale = useMemo(() => {
+    const next = metric ? makeScale(metric, shown.map((one) => one.grid)) : null;
+    const was = scaleRef.current;
+    if (next && was && JSON.stringify(next) === JSON.stringify(was)) return was;
+    scaleRef.current = next;
+    return next;
+  }, [metric, shown]);
+  // One 32x32 picture per region (a pixel per chunk), redrawn only when its data or the colour scale changes.
+  const pictures = useRef(new Map<string, { scale: Scale; grid: StatGrid; canvas: HTMLCanvasElement }>());
+  useEffect(() => {
+    pictures.current.clear();
+  }, [metric]);
   const hover = useMemo(() => {
     if (!metric || !where) return null;
     const cx = Math.floor(where.x / 16);
@@ -364,17 +440,14 @@ export function WorldMap({
     return value === undefined || value === null ? null : formatValue(metric, value);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metric, where, gridTick]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const canvas = gridCanvas.current;
     if (!canvas) return;
-    const ratio = window.devicePixelRatio || 1;
-    canvas.width = Math.round(size.w * ratio);
-    canvas.height = Math.round(size.h * ratio);
-    const pen = canvas.getContext("2d");
-    if (!pen) return;
-    pen.setTransform(ratio, 0, 0, ratio, 0, 0);
-    pen.clearRect(0, 0, size.w, size.h);
-    if (!showGrid || size.w < 16) return;
+    const idle = !showGrid || size.w < 16;
+    if (idle && canvas.dataset.blank === "1") return;
+    const pen = prepareCanvas(canvas, size.w, size.h);
+    canvas.dataset.blank = idle ? "1" : "";
+    if (!pen || idle) return;
     const lines = (step: number, color: string, width: number) => {
       pen.strokeStyle = color;
       pen.lineWidth = width;
@@ -397,43 +470,51 @@ export function WorldMap({
     if (512 / bpp >= 12) lines(512, "rgba(255, 255, 255, 0.55)", 1.5);
   }, [showGrid, corner.x, corner.z, bpp, size.w, size.h]);
   const statCanvas = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const canvas = statCanvas.current;
     if (!canvas) return;
-    const ratio = window.devicePixelRatio || 1;
-    canvas.width = Math.round(size.w * ratio);
-    canvas.height = Math.round(size.h * ratio);
-    const pen = canvas.getContext("2d");
-    if (!pen) return;
-    pen.setTransform(ratio, 0, 0, ratio, 0, 0);
-    pen.clearRect(0, 0, size.w, size.h);
-    if (!scale) return;
-    const cell = 16 / bpp;
+    const idle = !scale;
+    if (idle && canvas.dataset.blank === "1") return;
+    const pen = prepareCanvas(canvas, size.w, size.h);
+    canvas.dataset.blank = idle ? "1" : "";
+    if (!pen || idle) return;
+    pen.imageSmoothingEnabled = false;
+    const span = 512 / bpp;
     for (const { rx, rz, grid } of shown) {
-      for (let index = 0; index < 1024; index += 1) {
-        const value = grid[index];
-        if (value === null || value === undefined) continue;
-        const left = ((rx * 32 + (index % 32)) * 16 - corner.x) / bpp;
-        const top = ((rz * 32 + Math.floor(index / 32)) * 16 - corner.z) / bpp;
-        if (left + cell < 0 || top + cell < 0 || left > size.w || top > size.h) continue;
-        pen.fillStyle = colorOf(scale, value);
-        pen.fillRect(left, top, cell + 0.5, cell + 0.5);
+      const left = (rx * 512 - corner.x) / bpp;
+      const top = (rz * 512 - corner.z) / bpp;
+      if (left + span < 0 || top + span < 0 || left > size.w || top > size.h) continue;
+      const key = `${rx}/${rz}`;
+      let picture = pictures.current.get(key);
+      if (!picture || picture.scale !== scale || picture.grid !== grid) {
+        const small = picture?.canvas ?? document.createElement("canvas");
+        small.width = 32;
+        small.height = 32;
+        const paint = small.getContext("2d");
+        if (!paint) continue;
+        paint.clearRect(0, 0, 32, 32);
+        for (let index = 0; index < 1024; index += 1) {
+          const value = grid[index];
+          if (value === null || value === undefined) continue;
+          paint.fillStyle = colorOf(scale, value);
+          paint.fillRect(index % 32, Math.floor(index / 32), 1, 1);
+        }
+        picture = { scale, grid, canvas: small };
+        pictures.current.set(key, picture);
       }
+      pen.drawImage(picture.canvas, left, top, span, span);
     }
   }, [shown, scale, corner.x, corner.z, bpp, size.w, size.h]);
 
   const overlay = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const canvas = overlay.current;
     if (!canvas) return;
-    const ratio = window.devicePixelRatio || 1;
-    canvas.width = Math.round(size.w * ratio);
-    canvas.height = Math.round(size.h * ratio);
-    const pen = canvas.getContext("2d");
-    if (!pen) return;
-    pen.setTransform(ratio, 0, 0, ratio, 0, 0);
-    pen.clearRect(0, 0, size.w, size.h);
-    if (!chunks?.on) return;
+    const idle = !chunks?.on;
+    if (idle && canvas.dataset.blank === "1") return;
+    const pen = prepareCanvas(canvas, size.w, size.h);
+    canvas.dataset.blank = idle ? "1" : "";
+    if (!pen || idle) return;
     const cell = 16 / bpp;
     const small = cell < 5;
     const dot = small ? 5 : cell;
@@ -525,6 +606,27 @@ export function WorldMap({
     top: (z - corner.z) / bpp,
   });
 
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  const pointerFrame = useRef(0);
+  const moveTo = useRef((clientX: number, clientY: number) => void [clientX, clientY]);
+  useEffect(() => () => cancelAnimationFrame(pointerFrame.current), []);
+  useEffect(() => {
+    moveTo.current = (clientX: number, clientY: number) => {
+      const spotNow = toWorld(clientX, clientY);
+      setWhere((old) => (old && spotNow && old.x === spotNow.x && old.z === spotNow.z ? old : spotNow));
+      if (picking.current) {
+        if (spotNow) setArea(snapArea(picking.current, spotNow));
+        return;
+      }
+      if (!drag.current) return;
+      const step = 2 ** viewRef.current.zoom;
+      const last = drag.current.from;
+      if (Math.abs(clientX - drag.current.x) + Math.abs(clientY - drag.current.y) > 4) drag.current.moved = true;
+      const v = viewRef.current;
+      setView({ zoom: v.zoom, x: v.x - (clientX - last.x) * step, z: v.z - (clientY - last.z) * step });
+      drag.current.from = { x: clientX, z: clientY };
+    };
+  });
   const animate = () => {
     cancelAnimationFrame(frame.current);
     const step = () => {
@@ -567,14 +669,15 @@ export function WorldMap({
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
   const layers = useMemo(() => {
-    const out: { key: string; url: string; left: number; top: number; px: number; depth: number }[] = [];
+    const out: Layer[] = [];
     const viewW = size.w * bpp;
     const viewH = size.h * bpp;
     for (const [key, url] of Object.entries(tiles)) {
       const [p, l, x, y] = key.split("/");
       if (p !== prefix) continue;
       const tl = Number(l);
-      if (Math.abs(tl - level) > 3) continue;
+      // Coarser tiles fill gaps while loading; finer ones only one step down, or a zoomed-out view draws thousands.
+      if (tl > level + 3 || tl < level - 1) continue;
       const span = TILE * 2 ** tl;
       const wx = Number(x) * span;
       const wz = Number(y) * span;
@@ -604,6 +707,7 @@ export function WorldMap({
             if (!spot) return;
             event.currentTarget.setPointerCapture(event.pointerId);
             picking.current = spot;
+            clicked.current = spot;
             setSelecting(true);
             setArea(snapArea(spot, spot));
             setStay(null);
@@ -615,21 +719,20 @@ export function WorldMap({
           drag.current = { x: event.clientX, y: event.clientY, from: { x: event.clientX, z: event.clientY }, moved: false };
         }}
         onPointerMove={(event) => {
-          const spotNow = toWorld(event.clientX, event.clientY);
-          setWhere(spotNow);
-          if (picking.current) {
-            if (spotNow) setArea(snapArea(picking.current, spotNow));
-            return;
-          }
-          if (!drag.current) return;
-          const step = 2 ** viewRef.current.zoom;
-          const last = drag.current.from;
-          if (Math.abs(event.clientX - drag.current.x) + Math.abs(event.clientY - drag.current.y) > 4) drag.current.moved = true;
-          const v = viewRef.current;
-          setView({ zoom: v.zoom, x: v.x - (event.clientX - last.x) * step, z: v.z - (event.clientY - last.z) * step });
-          drag.current.from = { x: event.clientX, z: event.clientY };
+          // Mice can report up to 1000 moves a second; act on the latest one once per frame.
+          pointer.current = { x: event.clientX, y: event.clientY };
+          if (pointerFrame.current) return;
+          pointerFrame.current = requestAnimationFrame(() => {
+            pointerFrame.current = 0;
+            if (pointer.current) moveTo.current(pointer.current.x, pointer.current.y);
+          });
         }}
         onPointerUp={(event) => {
+          if (pointerFrame.current) {
+            cancelAnimationFrame(pointerFrame.current);
+            pointerFrame.current = 0;
+            moveTo.current(event.clientX, event.clientY);
+          }
           if (picking.current) {
             event.currentTarget.releasePointerCapture(event.pointerId);
             picking.current = null;
@@ -647,21 +750,7 @@ export function WorldMap({
         }}
         onPointerLeave={() => setWhere(null)}
       >
-        {layers.map((one) => (
-          <img
-            key={one.key}
-            className="map-tile"
-            src={one.url}
-            alt=""
-            draggable={false}
-            style={{
-              left: `${one.left}px`,
-              top: `${one.top}px`,
-              width: `${one.px + 0.5}px`,
-              height: `${one.px + 0.5}px`,
-            }}
-          />
-        ))}
+        <MapTiles layers={layers} />
         <canvas ref={statCanvas} className="map-chunks" style={{ width: `${size.w}px`, height: `${size.h}px` }} />
         <canvas ref={gridCanvas} className="map-chunks" style={{ width: `${size.w}px`, height: `${size.h}px` }} />
         <canvas ref={overlay} className="map-chunks" style={{ width: `${size.w}px`, height: `${size.h}px` }} />
@@ -798,6 +887,24 @@ export function WorldMap({
         >
           <Icon name="chunk-grid" />
         </button>
+        {onExport && (
+          <button
+            className="map-tool"
+            data-tip={exporting ? tr("Saving…") : tr("Save what's on screen as PNG")}
+            aria-label={tr("Save what's on screen as PNG")}
+            disabled={exporting || size.w < 16}
+            onClick={() =>
+              void exportArea({
+                minX: Math.floor(corner.x),
+                minZ: Math.floor(corner.z),
+                maxX: Math.floor(corner.x + size.w * bpp) - 1,
+                maxZ: Math.floor(corner.z + size.h * bpp) - 1,
+              })
+            }
+          >
+            <Icon name="image" />
+          </button>
+        )}
         <button
           className={`map-tool ${showPins ? "on" : ""}`}
           aria-pressed={showPins}
@@ -915,6 +1022,26 @@ export function WorldMap({
             <code className="map-area-coords">
               X {area.minX} ~ {area.maxX} · Z {area.minZ} ~ {area.maxZ}
             </code>
+            {onSendPlayer && players && players.length > 0 && (() => {
+              const spot = clicked.current;
+              // A plain right-click selects one chunk; then the clicked block is the target, otherwise the middle.
+              const exact = spot && width === 16 && height === 16 && spot.x >= area.minX && spot.x <= area.maxX && spot.z >= area.minZ && spot.z <= area.maxZ;
+              const x = exact ? spot.x : Math.floor((area.minX + area.maxX) / 2);
+              const z = exact ? spot.z : Math.floor((area.minZ + area.maxZ) / 2);
+              return (
+                <div className="map-area-send">
+                  <small className="muted">{tr("Send a player to X {0} Z {1}", [x, z])}</small>
+                  <div className="map-area-people">
+                    {players.map((name) => (
+                      <button key={name} className="button secondary small" onClick={() => onSendPlayer(name, x, z)}>
+                        <Icon name="user" />
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             {onPregenArea && (
               <button className="map-area-action" onClick={() => onPregenArea(area)}>
                 <Icon name="layers" />

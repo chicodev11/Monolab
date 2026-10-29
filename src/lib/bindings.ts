@@ -46,9 +46,18 @@ export const commands = {
 	serverCommands: (id: string) => __TAURI_INVOKE<CommandBook>("server_commands", { id }),
 	precheckInstance: (id: string) => __TAURI_INVOKE<Finding[]>("precheck_instance", { id }),
 	listRemoteJavas: (id: string) => __TAURI_INVOKE<JavaRuntime[]>("list_remote_javas", { id }),
-	createBackup: (id: string, note: string) => __TAURI_INVOKE<BackupFile>("create_backup", { id, note }),
+	createBackup: (id: string, note: string, worldsOnly: boolean, paths: string[]) => __TAURI_INVOKE<BackupFile>("create_backup", { id, note, worldsOnly, paths }),
 	listBackups: (id: string) => __TAURI_INVOKE<BackupFile[]>("list_backups", { id }),
 	restoreBackup: (id: string, fileName: string) => __TAURI_INVOKE<BackupFile>("restore_backup", { id, fileName }),
+	backupContents: (id: string, fileName: string) => __TAURI_INVOKE<BackupContents>("backup_contents", { id, fileName }),
+	proxyNetwork: (id: string) => __TAURI_INVOKE<ProxyNetwork>("proxy_network", { id }),
+	/**
+	 *  Lists the chosen servers in velocity.toml with modern forwarding, sets each of them up to accept it,
+	 *  and turns forwarding back off on servers taken out of the list. Returns what still needs doing.
+	 */
+	linkProxy: (id: string, servers: string[], first: string) => __TAURI_INVOKE<string[]>("link_proxy", { id, servers, first }),
+	backupEntryText: (id: string, fileName: string, path: string) => __TAURI_INVOKE<string | null>("backup_entry_text", { id, fileName, path }),
+	restoreBackupPaths: (id: string, fileName: string, paths: string[]) => __TAURI_INVOKE<BackupFile>("restore_backup_paths", { id, fileName, paths }),
 	deleteBackup: (id: string, fileName: string) => __TAURI_INVOKE<null>("delete_backup", { id, fileName }),
 	requiredJava: (id: string) => __TAURI_INVOKE<number>("required_java", { id }),
 	downloadJava: (major: number) => __TAURI_INVOKE<JavaRuntime>("download_java", { major }),
@@ -80,6 +89,44 @@ export const commands = {
 	stopInstance: (id: string) => __TAURI_INVOKE<null>("stop_instance", { id }),
 	forceStopInstance: (id: string) => __TAURI_INVOKE<null>("force_stop_instance", { id }),
 	stopServersForUpdate: () => __TAURI_INVOKE<number>("stop_servers_for_update"),
+	appReleases: () => __TAURI_INVOKE<AppRelease[]>("app_releases"),
+	/**  Puts a server in a home screen group; an empty name takes it out. */
+	setServerGroup: (id: string, group: string) => __TAURI_INVOKE<InstanceView>("set_server_group", { id, group }),
+	/**  Renames a group for every server in it; an empty new name ungroups them. */
+	renameServerGroup: (from: string, to: string) => __TAURI_INVOKE<number>("rename_server_group", { from, to }),
+	/**  Which plugin integrations this server has (EssentialsX, LuckPerms). */
+	pluginIntegrations: (id: string) => __TAURI_INVOKE<Integrations>("plugin_integrations", { id }),
+	essentialsData: (id: string) => __TAURI_INVOKE<EssentialsData>("essentials_data", { id }),
+	essentialsSetSetting: (id: string, key: string, value: string) => __TAURI_INVOKE<null>("essentials_set_setting", { id, key, value }),
+	/**  Runs `lp export` on the running server, reads the file it writes, then removes it. */
+	luckpermsData: (id: string) => __TAURI_INVOKE<LuckPermsData>("luckperms_data", { id }),
+	/**  The add-on's feature switches (config.yml); missing file or key = on. */
+	addonConfig: (id: string) => __TAURI_INVOKE<AddonSwitch[]>("addon_config", { id }),
+	setAddonConfig: (id: string, key: string, on: boolean) => __TAURI_INVOKE<null>("set_addon_config", { id, key, on }),
+	/**  Controls declared in monolab.json files of this server's plugins and mods. */
+	extensionData: (id: string) => __TAURI_INVOKE<Extension[]>("extension_data", { id }),
+	extensionSet: (id: string, folder: string, index: number, value: string) => __TAURI_INVOKE<null>("extension_set", { id, folder, index, value }),
+	/**
+	 *  Presses a MonolabApi button: leaves a request for the add-on, which calls the plugin's handler on the server
+	 *  thread, then waits for its answer. Nothing goes through the console.
+	 */
+	runExtensionAction: (id: string, folder: string, label: string, argsJson: string) => __TAURI_INVOKE<string>("run_extension_action", { id, folder, label, argsJson }),
+	/**  Machine-side detail for the advanced monitor (local servers only; far servers return None). */
+	processDetails: (id: string) => __TAURI_INVOKE<{
+	cores: (number | null)[],
+	diskReadKib: number | null,
+	diskWriteKib: number | null,
+	processes: number,
+	runSeconds: number,
+	systemMemoryUsedMib: number,
+	systemMemoryTotalMib: number,
+	swapUsedMib: number,
+	swapTotalMib: number,
+} | null>("process_details", { id }),
+	/**  Read-only view of files the editor can't open: class files, NBT, archives (and files inside them), gzip. */
+	viewServerFile: (id: string, path: string) => __TAURI_INVOKE<FileView>("view_server_file", { id, path }),
+	/**  Installs a chosen release (older ones too) through the signed updater bundle of that release. */
+	installAppVersion: (version: string) => __TAURI_INVOKE<null>("install_app_version", { version }),
 	setStartWithApp: (id: string, on: boolean) => __TAURI_INVOKE<null>("set_start_with_app", { id, on }),
 	setCrashRestart: (id: string, on: boolean) => __TAURI_INVOKE<null>("set_crash_restart", { id, on }),
 	sendConsoleCommand: (id: string, command: string) => __TAURI_INVOKE<null>("send_console_command", { id, command }),
@@ -154,6 +201,7 @@ export const commands = {
 	hotspots: Hotspot_Serialize[],
 	worlds: LiveWorld[],
 	players: LivePlayer_Serialize[],
+	jvm?: JvmLive | null,
 } | null>("read_live", { id }),
 	readLoadedChunks: (id: string) => __TAURI_INVOKE<{
 	at: number | null,
@@ -269,6 +317,7 @@ export const commands = {
 	claudeAccountAdd: (name: string) => __TAURI_INVOKE<string>("claude_account_add", { name }),
 	claudeAccountRename: (id: string, name: string) => __TAURI_INVOKE<null>("claude_account_rename", { id, name }),
 	claudeAccountRemove: (id: string) => __TAURI_INVOKE<null>("claude_account_remove", { id }),
+	claudeAccountLogout: (id: string) => __TAURI_INVOKE<null>("claude_account_logout", { id }),
 	claudeAccountUse: (server: string, id: string) => __TAURI_INVOKE<null>("claude_account_use", { server, id }),
 	claudeAccountLogin: (id: string) => __TAURI_INVOKE<null>("claude_account_login", { id }),
 	codexLogin: () => __TAURI_INVOKE<null>("codex_login"),
@@ -384,6 +433,13 @@ export type AddonStatus = {
 	folder: string,
 };
 
+export type AddonSwitch = {
+	key: string,
+	on: boolean,
+	/**  Takes effect only after the server restarts. */
+	restart: boolean,
+};
+
 export type AddonUpdate = {
 	fileName: string,
 	displayName: string,
@@ -413,6 +469,11 @@ export type AddonVersion = {
 	downloads: number,
 };
 
+export type AppRelease = {
+	version: string,
+	published: string,
+};
+
 export type AppSettings = {
 	autoBackupOnSave?: boolean,
 	openConsoleOnStart?: boolean,
@@ -429,6 +490,11 @@ export type AppSettings = {
 	webAccounts?: Account[],
 };
 
+export type ArchiveEntry = {
+	path: string,
+	size: number | null,
+};
+
 export type AuditEntry = {
 	id: string,
 	serverId: string,
@@ -443,6 +509,19 @@ export type AutomationHistoryEntry = {
 	action: string,
 	detail: string,
 	createdAt: number,
+};
+
+export type BackupContents = {
+	entries: BackupEntry[],
+	/**  False when files of the same size are taken as unchanged without reading them (SSH). */
+	exact: boolean,
+};
+
+export type BackupEntry = {
+	path: string,
+	sizeBytes: number,
+	/**  `Same`, `Changed`, `Removed` (only in the backup) or `Added` (only on the server now). */
+	state: string,
 };
 
 export type BackupFile = {
@@ -714,11 +793,93 @@ export type EntityKind = {
 	count: number,
 };
 
+export type EssKit = {
+	name: string,
+	delay: string,
+	items: number,
+};
+
+export type EssSetting = {
+	key: string,
+	value: string,
+};
+
+export type EssUser = {
+	uuid: string,
+	name: string,
+	money: string,
+	homes: Spot[],
+	lastSeen: number | null,
+};
+
+export type EssentialsData = {
+	warps: Spot[],
+	kits: EssKit[],
+	users: EssUser[],
+	usersTotal: number,
+	settings: EssSetting[],
+};
+
+export type ExtAction = {
+	label: string,
+	/**  Console command template (monolab.json); empty for MonolabApi buttons, which call the plugin instead. */
+	command: string,
+	/**  True for MonolabApi buttons: the app leaves a request for the add-on rather than typing in the console. */
+	call: boolean,
+	args: ExtArg[],
+	confirm: string,
+};
+
+export type ExtArg = {
+	name: string,
+	label: string,
+	/**  player, text or number */
+	kind: string,
+};
+
+export type ExtSetting = {
+	label: string,
+	/**  number, text, bool or choice */
+	kind: string,
+	options: string[],
+	min: number | null,
+	max: number | null,
+	hint: string,
+	file: string,
+	key: string,
+	value: string | null,
+};
+
+export type ExtStatus = {
+	label: string,
+	unit: string,
+	value: string | null,
+};
+
+export type Extension = {
+	folder: string,
+	name: string,
+	settings: ExtSetting[],
+	actions: ExtAction[],
+	status: ExtStatus[],
+	/**  Why the file couldn't be used, when it couldn't. */
+	problem: string,
+};
+
 export type FileRow = {
 	name: string,
 	directory: boolean,
 	sizeBytes: number,
 	modifiedAt: number,
+};
+
+export type FileView = {
+	/**  text, java, nbt, archive, image or hex */
+	kind: string,
+	text: string,
+	entries: ArchiveEntry[],
+	/**  decompiled, truncated or binary */
+	note: string,
 };
 
 export type Finding = {
@@ -858,6 +1019,14 @@ export type InstanceView = {
 	missing?: boolean,
 } & ServerInstance;
 
+export type Integrations = {
+	essentials: boolean,
+	/**  LuckPerms data folder, empty when it isn't installed. */
+	luckperms: string,
+	/**  Plugin or mod folders that hold a monolab.json. */
+	extensions: string[],
+};
+
 export type InventoryItem = {
 	id: string,
 	count: number,
@@ -882,6 +1051,33 @@ export type JavaRuntime = {
 	major: number,
 	source: string,
 	managed: boolean,
+};
+
+export type JvmCollector = {
+	name: string,
+	count: number,
+	ms: number,
+};
+
+/**  JVM detail the add-on (34+) sends for the advanced monitor. */
+export type JvmLive = {
+	uptimeMs: number,
+	vm: string,
+	gc: JvmCollector[],
+	pools: JvmPool[],
+	threads: number,
+	daemonThreads: number,
+	peakThreads: number,
+	classes: number,
+	processCpu: number | null,
+	ticks: TickSpread | null,
+};
+
+export type JvmPool = {
+	name: string,
+	heap: boolean,
+	usedMib: number,
+	maxMib: number,
 };
 
 export type LagDiagnosis = {
@@ -956,6 +1152,7 @@ export type LiveState_Deserialize = {
 	hotspots: Hotspot_Deserialize[],
 	worlds: LiveWorld[],
 	players: LivePlayer_Deserialize[],
+	jvm: JvmLive | null,
 };
 
 export type LiveState_Serialize = {
@@ -970,6 +1167,7 @@ export type LiveState_Serialize = {
 	hotspots: Hotspot_Serialize[],
 	worlds: LiveWorld[],
 	players: LivePlayer_Serialize[],
+	jvm?: JvmLive | null,
 };
 
 export type LiveWorld = {
@@ -994,6 +1192,42 @@ export type LogFile = {
 	sizeBytes: number,
 	modifiedAt: number,
 	compressed: boolean,
+};
+
+export type LpGroup = {
+	name: string,
+	weight: number | null,
+	prefix: string,
+	parents: string[],
+	permissions: LpPermission[],
+};
+
+export type LpPermission = {
+	node: string,
+	value: boolean,
+	context: string,
+	temporary: boolean,
+};
+
+export type LpTrack = {
+	name: string,
+	groups: string[],
+};
+
+export type LpUser = {
+	uuid: string,
+	name: string,
+	primary: string,
+	groups: string[],
+	permissions: number,
+};
+
+export type LuckPermsData = {
+	/**  Console command root: `lp`, or `lpv` on Velocity. */
+	command: string,
+	groups: LpGroup[],
+	users: LpUser[],
+	tracks: LpTrack[],
 };
 
 export type MapLayerProgress = {
@@ -1260,6 +1494,18 @@ export type PlayerSpot = {
 	savedAt: number,
 };
 
+export type ProcessDetails = {
+	cores: (number | null)[],
+	diskReadKib: number | null,
+	diskWriteKib: number | null,
+	processes: number,
+	runSeconds: number,
+	systemMemoryUsedMib: number,
+	systemMemoryTotalMib: number,
+	swapUsedMib: number,
+	swapTotalMib: number,
+};
+
 export type ProjectDetail = {
 	projectId: string,
 	title: string,
@@ -1298,6 +1544,26 @@ export type PropertyInfo = {
 	min: number | null,
 	max: number | null,
 	common: boolean,
+};
+
+export type ProxyBackend = {
+	id: string,
+	name: string,
+	core: string,
+	port: number,
+	/**  What velocity.toml points at: 127.0.0.1 on the same machine, the SSH host's address otherwise. */
+	address: string,
+	/**  Listed in velocity.toml. */
+	linked: boolean,
+	/**  `Ready`, `Setup` (can be set up), `NeedsMod` (FabricProxy-Lite missing), `StartFirst` or `Unsupported`. */
+	state: string,
+};
+
+export type ProxyNetwork = {
+	modern: boolean,
+	first: string,
+	proxyPort: number,
+	backends: ProxyBackend[],
 };
 
 export type RconStatus = {
@@ -1359,6 +1625,8 @@ export type ServerInstance = {
 	jvmArgs: string,
 	port: number,
 	sortOrder?: number,
+	/**  Home screen group, empty when the server is in none. */
+	group?: string,
 	startWithApp?: boolean,
 	crashRestart?: boolean,
 	coreBuild?: string,
@@ -1400,6 +1668,14 @@ export type SparkInfo = {
 export type SparkReport = {
 	url: string,
 	at: number,
+};
+
+export type Spot = {
+	name: string,
+	world: string,
+	x: number | null,
+	y: number | null,
+	z: number | null,
 };
 
 export type SshHost = {
@@ -1464,6 +1740,13 @@ export type TextureAnimation = {
 export type TextureFrame = {
 	index: number,
 	time: number,
+};
+
+export type TickSpread = {
+	p50: number | null,
+	p95: number | null,
+	max: number | null,
+	samples: number,
 };
 
 export type TimelineEvent = {
@@ -1537,6 +1820,9 @@ export type UpgradeHistoryEntry = {
 	toVersion: string,
 	previousJar: string,
 	createdAt: number,
+	/**  Set when the upgrade also switched the core, so a rollback switches it back. */
+	fromCore: string | null,
+	toCore: string | null,
 };
 
 export type UpgradeInput = {
@@ -1544,6 +1830,8 @@ export type UpgradeInput = {
 	targetVersion: string,
 	targetBuild?: string | null,
 	skipBackup?: boolean,
+	/**  Another core to switch to (Paper, Purpur, Leaf, Folia; from Vanilla too); empty keeps the current one. */
+	targetCore?: string | null,
 };
 
 export type UploadFile = {

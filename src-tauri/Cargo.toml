@@ -1,6 +1,6 @@
 [package]
 name = "monolab"
-version = "1.6.1"
+version = "1.6.2"
 description = "Minecraft server management desktop application"
 authors = ["chicodev11"]
 license = "GPL-3.0-or-later"
@@ -30,6 +30,7 @@ specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json"] }
 specta-typescript = "=0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 zip = "9"
+crc32fast = "1"
 sysinfo = "0.33"
 reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "json", "multipart", "query", "rustls"] }
 sha2 = "0.10.9"

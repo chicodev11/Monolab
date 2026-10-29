@@ -1,4 +1,7 @@
 mod addons;
+mod viewer;
+mod integrations;
+mod extensions;
 mod liveinv;
 mod markdown;
 mod backups;
@@ -28,6 +31,7 @@ mod zips;
 mod logs;
 mod mcp;
 mod properties;
+mod proxy;
 mod pumpkin;
 mod chunky;
 mod game_server;
@@ -199,6 +203,9 @@ struct ServerInstance {
     port: u16,
     #[serde(default)]
     sort_order: u32,
+    /// Home screen group, empty when the server is in none.
+    #[serde(default)]
+    group: String,
     #[serde(default)]
     start_with_app: bool,
     #[serde(default)]
@@ -264,6 +271,23 @@ struct UpgradeInput {
     target_build: Option<String>,
     #[serde(default)]
     skip_backup: bool,
+    /// Another core to switch to (Paper, Purpur, Leaf, Folia; from Vanilla too); empty keeps the current one.
+    #[serde(default)]
+    target_core: Option<String>,
+}
+
+const PLUGIN_CORES: &[&str] = &["Paper", "Purpur", "Leaf", "Folia"];
+
+/// The core an upgrade ends on: the requested one when worlds and plugins carry over to it.
+fn core_after(current: &str, wanted: Option<&str>) -> Result<String, String> {
+    let wanted = wanted.map(str::trim).filter(|one| !one.is_empty() && *one != current);
+    let Some(next) = wanted else { return Ok(current.to_string()) };
+    let carries = PLUGIN_CORES.contains(&next) && (PLUGIN_CORES.contains(&current) || current == "Vanilla");
+    if carries {
+        Ok(next.to_string())
+    } else {
+        Err(format!("Switching from {current} to {next} isn't supported: worlds or add-ons don't carry over."))
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, specta::Type)]
@@ -544,6 +568,9 @@ struct UpgradeHistoryEntry {
     to_version: String,
     previous_jar: String,
     created_at: u64,
+    /// Set when the upgrade also switched the core, so a rollback switches it back.
+    from_core: Option<String>,
+    to_core: Option<String>,
 }
 
 type RegionKey = (String, String, i32, i32);
@@ -1372,7 +1399,7 @@ async fn far_task(app: &AppHandle, instance: &ServerInstance, task: &tasks::Task
                 record_audit(app, &instance.id, "Server", "Automatic backup (panel)", &name);
                 return Ok(format!("Asked the panel to back up: {name}"));
             }
-            let name = remote_backup(app, instance, "auto").await?;
+            let name = remote_backup(app, instance, "auto", read_app_settings(app).backup_worlds_only, &[]).await?;
             record_audit(app, &instance.id, "Server", "Automatic backup (SSH)", &name);
             let keep = read_app_settings(app).keep_backup_days;
             let _ = remote::sweep_backups(app, &instance.remote_host, &instance.path, keep).await;
@@ -1382,7 +1409,31 @@ async fn far_task(app: &AppHandle, instance: &ServerInstance, task: &tasks::Task
     }
 }
 
-async fn remote_backup(app: &AppHandle, instance: &ServerInstance, label: &str) -> Result<String, String> {
+async fn remote_backup(app: &AppHandle, instance: &ServerInstance, label: &str, worlds_only: bool, picked: &[String]) -> Result<String, String> {
+    let mut only = picked.to_vec();
+    if worlds_only {
+        for (name, dir, _) in server_names(app, instance, "").await {
+            if !dir || name.starts_with('.') {
+                continue;
+            }
+            let world = name.ends_with("_nether")
+                || name.ends_with("_the_end")
+                || server_names(app, instance, &name).await.iter().any(|(one, dir, _)| !dir && one == "level.dat");
+            if world {
+                only.push(name);
+            }
+        }
+        if only.is_empty() {
+            return Err("No world folder to back up. Start the server once.".into());
+        }
+    }
+    let label = if worlds_only {
+        format!("{label}_worlds_only")
+    } else if !picked.is_empty() {
+        format!("{label}_picked")
+    } else {
+        label.to_string()
+    };
     let session = session_of(&app.state::<AppState>(), &instance.id);
     let mut paused = false;
     if let Some(name) = &session {
@@ -1392,7 +1443,7 @@ async fn remote_backup(app: &AppHandle, instance: &ServerInstance, label: &str) 
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
     }
-    let made = remote::make_backup(app, &instance.remote_host, &instance.path, label).await;
+    let made = remote::make_backup(app, &instance.remote_host, &instance.path, &label, &only).await;
     if paused {
         let _ = remote::send_line(app, &instance.remote_host, &instance.id, "save-on", session.clone()).await;
     }
@@ -1511,9 +1562,15 @@ async fn create_backup(
     app: AppHandle,
     id: String,
     note: String,
+    worlds_only: bool,
+    paths: Vec<String>,
 ) -> Result<backups::BackupFile, String> {
     let instance = instance_by_id(&app, &id)?;
+    let picks = if paths.is_empty() { Vec::new() } else { backups::clean_picks(&paths)? };
     if !instance.panel_host.is_empty() {
+        if worlds_only || !picks.is_empty() {
+            return Err("Panel backups always include the whole server.".into());
+        }
         let (api, target) = panel_of(&app, &instance)?;
         let name = if note.trim().is_empty() { format!("Monolab {}", unix_now()) } else { note.trim().to_string() };
         api.create_backup(&target, &name).await?;
@@ -1528,7 +1585,7 @@ async fn create_backup(
     }
     if !instance.remote_host.is_empty() {
         tell_job(&app, "backup", &instance.name, "taring", 0, 0);
-        let made = remote_backup(&app, &instance, "manual").await;
+        let made = remote_backup(&app, &instance, "manual", worlds_only, &picks).await;
         tell_job(&app, "backup", &instance.name, "done", 0, 0);
         let name = made?;
         record_audit(&app, &id, "Backup", "Create backup (SSH)", &name);
@@ -1541,7 +1598,7 @@ async fn create_backup(
             created_at: made.as_ref().map(|one| one.modified_at).unwrap_or(0),
             file_name: name,
             note: if note.trim().is_empty() { "Manual".into() } else { note.trim().into() },
-            worlds_only: false,
+            worlds_only,
         });
     }
     let note = if note.trim().is_empty() {
@@ -1550,8 +1607,11 @@ async fn create_backup(
         note.trim().to_string()
     };
     let vault = backup_folder(&app, &instance)?;
-    let made =
-        off_runtime(|| backups::create(Path::new(&instance.path), &note, &vault, false))?;
+    let made = if picks.is_empty() {
+        off_runtime(|| backups::create(Path::new(&instance.path), &note, &vault, worlds_only))?
+    } else {
+        off_runtime(|| backups::create_picked(Path::new(&instance.path), &note, &vault, &picks))?
+    };
     record_audit(&app, &id, "Server", "Backup", &made.file_name);
     let set = read_app_settings(&app);
     let (keep, count) = (set.keep_backup_days, set.keep_auto_backups);
@@ -1676,6 +1736,338 @@ async fn restore_backup(
     let made =
         off_runtime(|| backups::restore(Path::new(&instance.path), &file_name, &vault))?;
     record_audit(&app, &id, "Server", "Backup restore", &file_name);
+    Ok(made)
+}
+
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct ProxyBackend {
+    id: String,
+    name: String,
+    core: String,
+    port: u16,
+    /// What velocity.toml points at: 127.0.0.1 on the same machine, the SSH host's address otherwise.
+    address: String,
+    /// Listed in velocity.toml.
+    linked: bool,
+    /// `Ready`, `Setup` (can be set up), `NeedsMod` (FabricProxy-Lite missing), `StartFirst` or `Unsupported`.
+    state: String,
+}
+
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct ProxyNetwork {
+    modern: bool,
+    first: String,
+    proxy_port: u16,
+    backends: Vec<ProxyBackend>,
+}
+
+/// A text file in the server folder, or None when it isn't there.
+async fn server_text(app: &AppHandle, instance: &ServerInstance, relative: &str) -> Result<Option<String>, String> {
+    if is_far(instance) {
+        return match far_read(app, instance, relative).await {
+            Ok(text) => Ok(Some(text)),
+            Err(error) if remote::is_missing(&error) => Ok(None),
+            Err(error) => Err(error),
+        };
+    }
+    match paths::resolve_in_server(Path::new(&instance.path), relative) {
+        Ok(path) => fs::read_to_string(path).map(Some).map_err(|error| format!("Could not read {relative}: {error}")),
+        Err(paths::PathError::Missing) => Ok(None),
+        Err(_) => Err(format!("Could not read {relative}.")),
+    }
+}
+
+async fn server_write_text(app: &AppHandle, instance: &ServerInstance, relative: &str, text: &str) -> Result<(), String> {
+    if is_far(instance) {
+        return far_write(app, instance, relative, text).await;
+    }
+    let root = Path::new(&instance.path);
+    let checked = paths::check_relative(relative).map_err(|_| format!("Could not write {relative}."))?;
+    if let Some(parent) = checked.parent().filter(|one| !one.as_os_str().is_empty()) {
+        fs::create_dir_all(root.join(parent)).map_err(|error| format!("Could not write {relative}: {error}"))?;
+    }
+    let path = paths::resolve_new_in_server(root, relative).map_err(|_| format!("Could not write {relative}."))?;
+    fs::write(path, text).map_err(|error| format!("Could not write {relative}: {error}"))
+}
+
+async fn has_fabric_proxy(app: &AppHandle, instance: &ServerInstance) -> bool {
+    let names: Vec<String> = if is_far(instance) {
+        far_list(app, instance, "mods").await.map(|rows| rows.into_iter().map(|row| row.name).collect()).unwrap_or_default()
+    } else {
+        fs::read_dir(Path::new(&instance.path).join("mods"))
+            .map(|entries| entries.flatten().map(|one| one.file_name().to_string_lossy().into_owned()).collect())
+            .unwrap_or_default()
+    };
+    names.iter().any(|name| name.to_lowercase().contains("fabricproxy-lite") && name.ends_with(".jar"))
+}
+
+/// Servers a proxy can reach at 127.0.0.1: on this computer for a local proxy, on the same SSH host for an SSH one.
+fn proxy_neighbors(app: &AppHandle, proxy: &ServerInstance) -> Result<Vec<ServerInstance>, String> {
+    if !proxy.panel_host.is_empty() {
+        return Err("Panel proxies can't be linked from the app yet.".into());
+    }
+    Ok(load_instances(app)?
+        .into_iter()
+        .filter(|one| {
+            one.id != proxy.id
+                && one.panel_host.is_empty()
+                && (one.remote_host == proxy.remote_host || (proxy.remote_host.is_empty() && !one.remote_host.is_empty()))
+        })
+        .filter(|one| kinds::minecraft(&one.core).is_some() && !kinds::is_proxy(&one.core) && !pumpkin::is_pumpkin(&one.core))
+        .collect())
+}
+
+fn backend_port(instance: &ServerInstance) -> u16 {
+    if is_far(instance) { instance.port } else { port_from_properties(instance) }
+}
+
+async fn proxy_secret(app: &AppHandle, proxy: &ServerInstance, file: &str, make: bool) -> Result<Option<String>, String> {
+    if let Some(found) = server_text(app, proxy, file).await?.map(|text| text.trim().to_string()).filter(|text| !text.is_empty()) {
+        return Ok(Some(found));
+    }
+    if !make {
+        return Ok(None);
+    }
+    let fresh = proxy::new_secret()?;
+    server_write_text(app, proxy, file, &fresh).await?;
+    Ok(Some(fresh))
+}
+
+async fn backend_state(app: &AppHandle, backend: &ServerInstance, secret: Option<&str>) -> Result<String, String> {
+    if kinds::addon_word(&backend.core) == "plugin" {
+        let Some(yaml) = server_text(app, backend, "config/paper-global.yml").await? else {
+            let started = server_text(app, backend, "server.properties").await?.is_some();
+            return Ok(if started { "Unsupported" } else { "StartFirst" }.into());
+        };
+        let offline = server_text(app, backend, "server.properties").await?.and_then(|text| proxy::property(&text, "online-mode")).as_deref() == Some("false");
+        let ready = secret.is_some_and(|secret| proxy::paper_velocity_on(&yaml, secret)) && offline;
+        return Ok(if ready { "Ready" } else { "Setup" }.into());
+    }
+    if backend.core == "Fabric" {
+        if !has_fabric_proxy(app, backend).await {
+            return Ok("NeedsMod".into());
+        }
+        let config = server_text(app, backend, "config/FabricProxy-Lite.toml").await?.unwrap_or_default();
+        let offline = server_text(app, backend, "server.properties").await?.and_then(|text| proxy::property(&text, "online-mode")).as_deref() == Some("false");
+        let ready = secret.is_some_and(|secret| proxy::fabric_proxy_on(&config, secret)) && offline;
+        return Ok(if ready { "Ready" } else { "Setup" }.into());
+    }
+    Ok("Unsupported".into())
+}
+
+fn is_local_address(address: &str, port: u16) -> bool {
+    let Some((host, at)) = address.rsplit_once(':') else { return false };
+    at.parse::<u16>().ok() == Some(port) && matches!(host, "127.0.0.1" | "localhost" | "0.0.0.0")
+}
+
+/// Where a proxy reaches a backend: loopback on the same machine, the SSH host's address for a local proxy.
+fn backend_address(app: &AppHandle, proxy: &ServerInstance, backend: &ServerInstance) -> Result<String, String> {
+    let port = backend_port(backend);
+    if backend.remote_host == proxy.remote_host {
+        return Ok(format!("127.0.0.1:{port}"));
+    }
+    let host = remote::host(app, &backend.remote_host)?.address.trim().to_string();
+    Ok(if host.contains(':') && !host.starts_with('[') { format!("[{host}]:{port}") } else { format!("{host}:{port}") })
+}
+
+fn same_backend(listed: &str, address: &str, port: u16) -> bool {
+    if address.starts_with("127.0.0.1:") { is_local_address(listed, port) } else { listed.eq_ignore_ascii_case(address) }
+}
+
+async fn answers(address: &str) -> bool {
+    let address = address.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::net::ToSocketAddrs;
+        address
+            .to_socket_addrs()
+            .ok()
+            .and_then(|mut all| all.next())
+            .is_some_and(|spot| std::net::TcpStream::connect_timeout(&spot, Duration::from_secs(4)).is_ok())
+    })
+    .await
+    .unwrap_or(false)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn proxy_network(app: AppHandle, id: String) -> Result<ProxyNetwork, String> {
+    let instance = instance_by_id(&app, &id)?;
+    if instance.core != "Velocity" {
+        return Err("Only Velocity proxies can be linked from the app.".into());
+    }
+    let neighbors = proxy_neighbors(&app, &instance)?;
+    let Some(text) = server_text(&app, &instance, "velocity.toml").await? else {
+        return Err("Start the proxy once so it writes velocity.toml.".into());
+    };
+    let config = proxy::read_velocity(&text)?;
+    let secret = proxy_secret(&app, &instance, &config.secret_file, false).await?;
+    let mut backends = Vec::new();
+    for one in neighbors {
+        let port = backend_port(&one);
+        let Ok(address) = backend_address(&app, &instance, &one) else { continue };
+        let linked = config.servers.iter().any(|(_, listed)| same_backend(listed, &address, port));
+        let state = backend_state(&app, &one, secret.as_deref()).await?;
+        backends.push(ProxyBackend { id: one.id, name: one.name, core: one.core, port, address, linked, state });
+    }
+    let first = config
+        .first
+        .first()
+        .and_then(|name| config.servers.iter().find(|(key, _)| key == name))
+        .and_then(|(_, listed)| backends.iter().find(|one| same_backend(listed, &one.address, one.port)))
+        .map(|one| one.id.clone())
+        .unwrap_or_default();
+    Ok(ProxyNetwork { modern: config.modern, first, proxy_port: backend_port(&instance), backends })
+}
+
+/// Lists the chosen servers in velocity.toml with modern forwarding, sets each of them up to accept it,
+/// and turns forwarding back off on servers taken out of the list. Returns what still needs doing.
+#[tauri::command(async)]
+#[specta::specta]
+async fn link_proxy(app: AppHandle, id: String, servers: Vec<String>, first: String) -> Result<Vec<String>, String> {
+    let instance = instance_by_id(&app, &id)?;
+    if instance.core != "Velocity" {
+        return Err("Only Velocity proxies can be linked from the app.".into());
+    }
+    let neighbors = proxy_neighbors(&app, &instance)?;
+    let Some(text) = server_text(&app, &instance, "velocity.toml").await? else {
+        return Err("Start the proxy once so it writes velocity.toml.".into());
+    };
+    let config = proxy::read_velocity(&text)?;
+    let secret = proxy_secret(&app, &instance, &config.secret_file, true).await?.unwrap_or_default();
+    let proxy_port = backend_port(&instance);
+    let mut notes = Vec::new();
+    let mut entries: Vec<(String, String)> = Vec::new();
+    let mut first_key = String::new();
+    for one in neighbors.iter().filter(|one| servers.contains(&one.id)) {
+        let port = backend_port(one);
+        if port == proxy_port && one.remote_host == instance.remote_host {
+            return Err(format!("{} uses the proxy's port {port}. Change one of the ports first.", one.name));
+        }
+        match backend_state(&app, one, Some(&secret)).await?.as_str() {
+            "StartFirst" => {
+                notes.push(format!("Start {} once, then link it again.", one.name));
+                continue;
+            }
+            "Unsupported" => {
+                notes.push(format!("{} can't take players from Velocity: it needs Paper or a fork of it, or Fabric with FabricProxy-Lite.", one.name));
+                continue;
+            }
+            "NeedsMod" => {
+                notes.push(format!("Add the FabricProxy-Lite mod to {}, then link it again.", one.name));
+                continue;
+            }
+            _ => {}
+        }
+        if kinds::addon_word(&one.core) == "plugin" {
+            let yaml = server_text(&app, one, "config/paper-global.yml").await?.unwrap_or_default();
+            server_write_text(&app, one, "config/paper-global.yml", &proxy::paper_velocity(&yaml, true, &secret)).await?;
+        } else {
+            let toml = server_text(&app, one, "config/FabricProxy-Lite.toml").await?.unwrap_or_default();
+            server_write_text(&app, one, "config/FabricProxy-Lite.toml", &proxy::fabric_proxy(&toml, &secret)?).await?;
+        }
+        let props = server_text(&app, one, "server.properties").await?.unwrap_or_default();
+        server_write_text(&app, one, "server.properties", &proxy::set_property(&props, "online-mode", "false")).await?;
+        let taken: Vec<String> = entries.iter().map(|(key, _)| key.clone()).collect();
+        let key = proxy::server_key(&one.name, &taken);
+        if one.id == first || first_key.is_empty() {
+            first_key = key.clone();
+        }
+        let address = backend_address(&app, &instance, one)?;
+        if !address.starts_with("127.0.0.1:") && !answers(&address).await {
+            notes.push(format!("{address} ({}) didn't answer from this PC. Open that port on the SSH server's firewall and start the server.", one.name));
+        }
+        entries.push((key, address));
+    }
+    if entries.is_empty() && !servers.is_empty() {
+        return Err(notes.first().cloned().unwrap_or_else(|| "Choose at least one server to link.".into()));
+    }
+    for one in neighbors.iter().filter(|one| !servers.contains(&one.id)) {
+        let port = backend_port(one);
+        let Ok(address) = backend_address(&app, &instance, one) else { continue };
+        if !config.servers.iter().any(|(_, listed)| same_backend(listed, &address, port)) {
+            continue;
+        }
+        if kinds::addon_word(&one.core) == "plugin" {
+            if let Some(yaml) = server_text(&app, one, "config/paper-global.yml").await? {
+                server_write_text(&app, one, "config/paper-global.yml", &proxy::paper_velocity(&yaml, false, "")).await?;
+            }
+        }
+        if let Some(props) = server_text(&app, one, "server.properties").await? {
+            server_write_text(&app, one, "server.properties", &proxy::set_property(&props, "online-mode", "true")).await?;
+        }
+    }
+    server_write_text(&app, &instance, "velocity.toml", &proxy::write_velocity(&text, &entries, &first_key)?).await?;
+    record_audit(&app, &id, "Server", "Link servers to the proxy", &entries.iter().map(|(key, address)| format!("{key}={address}")).collect::<Vec<_>>().join(", "));
+    notes.push("Restart the proxy and the linked servers to apply.".into());
+    Ok(notes)
+}
+
+const PANEL_WHOLE: &str = "Panel backups can only be restored whole.";
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn backup_contents(app: AppHandle, id: String, file_name: String) -> Result<backups::BackupContents, String> {
+    let instance = instance_by_id(&app, &id)?;
+    if !instance.panel_host.is_empty() {
+        return Err(PANEL_WHOLE.into());
+    }
+    if !instance.remote_host.is_empty() {
+        let (then, now) = remote::backup_listing(&app, &instance.remote_host, &instance.path, &file_name).await?;
+        let entries = backups::compare(then, now, backups::is_partial(&file_name), |_, _| true);
+        return Ok(backups::BackupContents { entries, exact: false });
+    }
+    let vault = backup_folder(&app, &instance)?;
+    off_runtime(|| backups::contents(Path::new(&instance.path), &vault, &file_name))
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn backup_entry_text(app: AppHandle, id: String, file_name: String, path: String) -> Result<Option<String>, String> {
+    let instance = instance_by_id(&app, &id)?;
+    if !instance.panel_host.is_empty() {
+        return Err(PANEL_WHOLE.into());
+    }
+    let inside = backups::clean_picks(std::slice::from_ref(&path))?.remove(0);
+    if !instance.remote_host.is_empty() {
+        return remote::backup_entry_text(&app, &instance.remote_host, &instance.path, &file_name, &inside).await;
+    }
+    let vault = backup_folder(&app, &instance)?;
+    off_runtime(|| backups::entry_text(&vault, &file_name, &inside))
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn restore_backup_paths(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    file_name: String,
+    paths: Vec<String>,
+) -> Result<backups::BackupFile, String> {
+    let instance = instance_by_id(&app, &id)?;
+    if !instance.panel_host.is_empty() {
+        return Err(PANEL_WHOLE.into());
+    }
+    let picks = backups::clean_picks(&paths)?;
+    let detail = format!("{file_name}: {}", picks.join(", "));
+    if !instance.remote_host.is_empty() {
+        ensure_remote_stopped(&app, &state, &instance).await?;
+        let safety = remote::restore_backup_paths(&app, &instance.remote_host, &instance.path, &file_name, &picks).await?;
+        record_audit(&app, &id, "Backup", "Restore files from backup (SSH)", &detail);
+        return Ok(backups::BackupFile {
+            file_name: safety,
+            size_mib: 0.0,
+            created_at: unix_now(),
+            note: "Before partial rollback".into(),
+            worlds_only: false,
+        });
+    }
+    ensure_stopped(&state, &id)?;
+    let vault = backup_folder(&app, &instance)?;
+    let made = off_runtime(|| backups::restore_paths(Path::new(&instance.path), &file_name, &vault, &picks))?;
+    record_audit(&app, &id, "Server", "Restore files from backup", &detail);
     Ok(made)
 }
 
@@ -2005,6 +2397,7 @@ pub(crate) fn web_invoke(
         "browse_server_files" => ok(tauri::async_runtime::block_on(browse_server_files(app.clone(), arg(body, "id")?, arg(body, "path")?, arg(body, "offset")?, arg(body, "limit")?))?),
         "read_editable_file" => ok(tauri::async_runtime::block_on(read_editable_file(app.clone(), arg(body, "id")?, arg(body, "path")?))?),
         "read_server_image" => ok(tauri::async_runtime::block_on(read_server_image(app.clone(), arg(body, "id")?, arg(body, "path")?))?),
+        "view_server_file" => ok(tauri::async_runtime::block_on(view_server_file(app.clone(), arg(body, "id")?, arg(body, "path")?))?),
         "read_texture_animation" => ok(tauri::async_runtime::block_on(read_texture_animation(app.clone(), arg(body, "id")?, arg(body, "path")?))?),
         "read_server_file_download" => ok(tauri::async_runtime::block_on(read_server_file_download(app.clone(), arg(body, "id")?, arg(body, "path")?))?),
         "list_backups" => ok(tauri::async_runtime::block_on(list_backups(app.clone(), arg(body, "id")?))?),
@@ -2044,6 +2437,15 @@ pub(crate) fn web_invoke(
         "stop_instance" => ok(tauri::async_runtime::block_on(stop_instance(app.clone(), app.state(), arg(body, "id")?))?),
         "restart_instance" => ok(tauri::async_runtime::block_on(restart_instance_as(app.clone(), app.state::<AppState>().inner(), arg(body, "id")?, false))?),
         "send_console_command" => ok(tauri::async_runtime::block_on(send_console_command(app.clone(), app.state(), arg(body, "id")?, arg(body, "command")?))?),
+        "plugin_integrations" => ok(tauri::async_runtime::block_on(plugin_integrations(app.clone(), arg(body, "id")?))?),
+        "essentials_data" => ok(tauri::async_runtime::block_on(essentials_data(app.clone(), arg(body, "id")?))?),
+        "essentials_set_setting" => ok(tauri::async_runtime::block_on(essentials_set_setting(app.clone(), arg(body, "id")?, arg(body, "key")?, arg(body, "value")?))?),
+        "luckperms_data" => ok(tauri::async_runtime::block_on(luckperms_data(app.clone(), app.state(), arg(body, "id")?))?),
+        "addon_config" => ok(tauri::async_runtime::block_on(addon_config(app.clone(), arg(body, "id")?))?),
+        "set_addon_config" => ok(tauri::async_runtime::block_on(set_addon_config(app.clone(), arg(body, "id")?, arg(body, "key")?, arg(body, "on")?))?),
+        "extension_data" => ok(tauri::async_runtime::block_on(extension_data(app.clone(), arg(body, "id")?))?),
+        "run_extension_action" => ok(tauri::async_runtime::block_on(run_extension_action(app.clone(), arg(body, "id")?, arg(body, "folder")?, arg(body, "label")?, arg(body, "argsJson")?))?),
+        "extension_set" => ok(tauri::async_runtime::block_on(extension_set(app.clone(), arg(body, "id")?, arg(body, "folder")?, arg(body, "index")?, arg(body, "value")?))?),
         "save_server_properties" => ok(tauri::async_runtime::block_on(save_server_properties(
             app.clone(),
             app.state(),
@@ -2069,7 +2471,7 @@ pub(crate) fn web_invoke(
         ))?),
         "zip_server_paths" => ok(tauri::async_runtime::block_on(zip_server_paths(app.clone(), arg(body, "id")?, arg(body, "paths")?, arg(body, "name")?))?),
         "unzip_server_path" => ok(tauri::async_runtime::block_on(unzip_server_path(app.clone(), app.state(), arg(body, "id")?, arg(body, "path")?))?),
-        "create_backup" => ok(tauri::async_runtime::block_on(create_backup(app.clone(), arg(body, "id")?, arg(body, "note")?))?),
+        "create_backup" => ok(tauri::async_runtime::block_on(create_backup(app.clone(), arg(body, "id")?, arg(body, "note")?, arg(body, "worldsOnly").unwrap_or(false), arg(body, "paths").unwrap_or_default()))?),
         "update_launch_settings" => ok(update_launch_settings(app.clone(), app.state(), arg(body, "input")?)?),
         "toggle_addon" => ok(tauri::async_runtime::block_on(toggle_addon(app.clone(), app.state(), arg(body, "id")?, arg(body, "fileName")?, arg(body, "kind")?))?),
         "save_task" => ok(save_task(app.clone(), arg(body, "task")?)?),
@@ -2164,6 +2566,8 @@ pub(crate) fn web_invoke(
         "set_start_with_app" => ok(set_start_with_app(app.clone(), arg(body, "id")?, arg(body, "on")?)?),
         "set_crash_restart" => ok(set_crash_restart(app.clone(), arg(body, "id")?, arg(body, "on")?)?),
         "rename_instance" => ok(rename_instance(app.clone(), app.state(), arg(body, "input")?)?),
+        "set_server_group" => ok(set_server_group(app.clone(), app.state(), arg(body, "id")?, arg(body, "group")?)?),
+        "rename_server_group" => ok(rename_server_group(app.clone(), arg(body, "from")?, arg(body, "to")?)?),
         "duplicate_instance" => ok(tauri::async_runtime::block_on(duplicate_instance(app.clone(), app.state(), arg(body, "id")?))?),
         "trash_instance" => ok(tauri::async_runtime::block_on(trash_instance(app.clone(), app.state(), arg(body, "id")?))?),
         "restore_trash_instance" => ok(restore_trash_instance(app.clone(), app.state(), arg(body, "id")?)?),
@@ -2173,6 +2577,11 @@ pub(crate) fn web_invoke(
         "upgrade_instance" => ok(tauri::async_runtime::block_on(upgrade_instance(app.clone(), app.state(), arg(body, "input")?))?),
         "rollback_last_upgrade" => ok(tauri::async_runtime::block_on(rollback_last_upgrade(app.clone(), app.state(), arg(body, "id")?))?),
         "restore_backup" => ok(tauri::async_runtime::block_on(restore_backup(app.clone(), app.state(), arg(body, "id")?, arg(body, "fileName")?))?),
+        "proxy_network" => ok(tauri::async_runtime::block_on(proxy_network(app.clone(), arg(body, "id")?))?),
+        "link_proxy" => ok(tauri::async_runtime::block_on(link_proxy(app.clone(), arg(body, "id")?, arg(body, "servers")?, arg(body, "first")?))?),
+        "backup_contents" => ok(tauri::async_runtime::block_on(backup_contents(app.clone(), arg(body, "id")?, arg(body, "fileName")?))?),
+        "backup_entry_text" => ok(tauri::async_runtime::block_on(backup_entry_text(app.clone(), arg(body, "id")?, arg(body, "fileName")?, arg(body, "path")?))?),
+        "restore_backup_paths" => ok(tauri::async_runtime::block_on(restore_backup_paths(app.clone(), app.state(), arg(body, "id")?, arg(body, "fileName")?, arg(body, "paths")?))?),
         "set_app_settings" => ok(set_app_settings(app.clone(), arg(body, "settings")?)?),
         "playit_state" => ok(playit_state(app.clone())),
         "lan_ip" => ok(lan_ip()),
@@ -2772,6 +3181,7 @@ async fn import_remote_instance(
         jvm_args: String::new(),
         port: found.port,
         sort_order: 0,
+        group: String::new(),
         start_with_app: false,
         crash_restart: false,
         core_build: String::new(),
@@ -2824,6 +3234,7 @@ async fn panel_new_instance(api: &panel::Api, host_id: &str, row: &panel::PanelS
         jvm_args: String::new(),
         port: row.port,
         sort_order: 0,
+        group: String::new(),
         start_with_app: false,
         crash_restart: false,
         core_build: String::new(),
@@ -3003,6 +3414,14 @@ fn claude_account_rename(app: AppHandle, id: String, name: String) -> Result<(),
 #[specta::specta]
 fn claude_account_remove(app: AppHandle, id: String) -> Result<(), String> {
     claude_accounts::remove(&app, &id)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn claude_account_logout(app: AppHandle, id: String) -> Result<(), String> {
+    claude_accounts::logout(&app, &id)?;
+    claude_chat::close_all();
+    Ok(())
 }
 
 #[tauri::command]
@@ -3551,6 +3970,7 @@ async fn register_remote_folder(
         jvm_args: String::new(),
         port: found.port,
         sort_order: instances.len() as u32,
+        group: String::new(),
         start_with_app: false,
         crash_restart: false,
         core_build: String::new(),
@@ -4868,6 +5288,7 @@ fn import_instance(
             jvm_args: String::new(),
             port,
             sort_order: 0,
+            group: String::new(),
             start_with_app: false,
             crash_restart: false,
             core_build: String::new(),
@@ -4906,6 +5327,7 @@ fn import_instance(
             25565
         },
         sort_order: 0,
+        group: String::new(),
         start_with_app: false,
         crash_restart: false,
         core_build: String::new(),
@@ -4934,6 +5356,7 @@ fn import_instance(
         jvm_args: String::new(),
         port: port_from_properties(&probe),
         sort_order: 0,
+        group: String::new(),
         start_with_app: false,
         crash_restart: false,
         core_build: String::new(),
@@ -5205,6 +5628,44 @@ fn rename_instance(
     let saved = instance.clone();
     save_instances(&app, &instances)?;
     Ok(instance_view(saved, &state))
+}
+
+fn clean_group(group: &str) -> Result<String, String> {
+    let group = group.trim();
+    if group.chars().count() > 40 || group.contains(['\r', '\n']) {
+        return Err("Group names are up to 40 characters on one line.".into());
+    }
+    Ok(group.to_string())
+}
+
+/// Puts a server in a home screen group; an empty name takes it out.
+#[tauri::command]
+#[specta::specta]
+fn set_server_group(app: AppHandle, state: State<'_, AppState>, id: String, group: String) -> Result<InstanceView, String> {
+    let group = clean_group(&group)?;
+    let _store = lock_instance_store();
+    let mut instances = load_instances(&app)?;
+    let instance = instances.iter_mut().find(|instance| instance.id == id).ok_or("Server not found.")?;
+    instance.group = group;
+    let saved = instance.clone();
+    save_instances(&app, &instances)?;
+    Ok(instance_view(saved, &state))
+}
+
+/// Renames a group for every server in it; an empty new name ungroups them.
+#[tauri::command]
+#[specta::specta]
+fn rename_server_group(app: AppHandle, from: String, to: String) -> Result<u32, String> {
+    let to = clean_group(&to)?;
+    let _store = lock_instance_store();
+    let mut instances = load_instances(&app)?;
+    let mut moved = 0;
+    for instance in instances.iter_mut().filter(|instance| instance.group == from) {
+        instance.group = to.clone();
+        moved += 1;
+    }
+    save_instances(&app, &instances)?;
+    Ok(moved)
 }
 
 #[tauri::command]
@@ -5608,6 +6069,7 @@ fn create_instance(
         jvm_args: String::new(),
         port: default_port,
         sort_order: 0,
+        group: String::new(),
         start_with_app: false,
         crash_restart: false,
         core_build: input.core_build.trim().to_string(),
@@ -5681,6 +6143,7 @@ fn create_instance_from_jar(
         jvm_args: String::new(),
         port: if core == "Velocity" { 25577 } else { 25565 },
         sort_order: 0,
+        group: String::new(),
         start_with_app: false,
         crash_restart: false,
         core_build: String::new(),
@@ -7621,7 +8084,7 @@ fn editable_file(path: &Path) -> bool {
 }
 
 /// Bytes that aren't text (NUL early on, or mostly undecodable) — opening them in the editor and saving would wreck them.
-fn looks_binary(text: &str) -> bool {
+pub(crate) fn looks_binary(text: &str) -> bool {
     let head: Vec<char> = text.chars().take(8192).collect();
     let broken = head.iter().filter(|one| **one == '\u{FFFD}').count();
     head.contains(&'\0') || broken * 20 > head.len().max(1)
@@ -10219,7 +10682,7 @@ async fn read_editable_file(app: AppHandle, id: String, path: String) -> Result<
     Ok(text)
 }
 
-fn image_kind(name: &str) -> Option<&'static str> {
+pub(crate) fn image_kind(name: &str) -> Option<&'static str> {
     let extension = name.rsplit('.').next()?.to_ascii_lowercase();
     match extension.as_str() {
         "png" => Some("image/png"),
@@ -10264,6 +10727,355 @@ async fn read_server_image(app: AppHandle, id: String, path: String) -> Result<S
         "data:{mime};base64,{}",
         base64::engine::general_purpose::STANDARD.encode(&bytes)
     ))
+}
+
+/// Names in a server folder (name, is folder, modified), for local, SSH and panel servers alike.
+async fn server_names(app: &AppHandle, instance: &ServerInstance, relative: &str) -> Vec<(String, bool, u64)> {
+    if is_far(instance) {
+        return far_list(app, instance, relative)
+            .await
+            .map(|rows| rows.into_iter().map(|row| (row.name, row.directory, row.modified_at)).collect())
+            .unwrap_or_default();
+    }
+    let Ok(dir) = paths::resolve_in_server(Path::new(&instance.path), relative) else {
+        return Vec::new();
+    };
+    fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|one| {
+                    let meta = one.metadata().ok();
+                    let modified = meta
+                        .as_ref()
+                        .and_then(|meta| meta.modified().ok())
+                        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                        .map(|time| time.as_secs())
+                        .unwrap_or(0);
+                    (one.file_name().to_string_lossy().into_owned(), meta.is_some_and(|meta| meta.is_dir()), modified)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+async fn server_has_dir(app: &AppHandle, instance: &ServerInstance, relative: &str) -> bool {
+    let (parent, name) = relative.rsplit_once('/').unwrap_or(("", relative));
+    server_names(app, instance, parent).await.iter().any(|(one, dir, _)| *dir && one == name)
+}
+
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct AddonSwitch {
+    key: String,
+    on: bool,
+    /// Takes effect only after the server restarts.
+    restart: bool,
+}
+
+const ADDON_SWITCHES: &[(&str, bool)] = &[
+    ("map", true),
+    ("live-map", false),
+    ("web-map", true),
+    ("inventories", false),
+    ("loaded-chunks", false),
+    ("commands", false),
+    ("performance-log", false),
+    ("jvm-stats", false),
+];
+const PUMPKIN_SWITCHES: &[&str] = &["map", "performance-log"];
+
+fn addon_config_path(instance: &ServerInstance) -> Option<&'static str> {
+    if pumpkin::is_pumpkin(&instance.core) {
+        Some("plugins/data/monolab/config.yml")
+    } else {
+        match kinds::addon_word(&instance.core) {
+            "plugin" => Some("plugins/Monolab/config.yml"),
+            "mod" => Some("config/monolab/config.yml"),
+            _ => None,
+        }
+    }
+}
+
+/// The add-on's feature switches (config.yml); missing file or key = on.
+#[tauri::command(async)]
+#[specta::specta]
+async fn addon_config(app: AppHandle, id: String) -> Result<Vec<AddonSwitch>, String> {
+    let instance = instance_by_id(&app, &id)?;
+    let Some(path) = addon_config_path(&instance) else { return Ok(Vec::new()) };
+    let text = server_text(&app, &instance, path).await?.unwrap_or_default();
+    let read = integrations::parse(&text);
+    let pumpkin = pumpkin::is_pumpkin(&instance.core);
+    Ok(ADDON_SWITCHES
+        .iter()
+        .filter(|(key, _)| !pumpkin || PUMPKIN_SWITCHES.contains(key))
+        .map(|(key, restart)| AddonSwitch { key: key.to_string(), on: read.text(key).as_deref() != Some("false"), restart: *restart })
+        .collect())
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn set_addon_config(app: AppHandle, id: String, key: String, on: bool) -> Result<(), String> {
+    if !ADDON_SWITCHES.iter().any(|(one, _)| *one == key) {
+        return Err("This setting can't be changed here.".into());
+    }
+    let instance = instance_by_id(&app, &id)?;
+    let path = addon_config_path(&instance).ok_or("This server has no Monolab add-on.")?;
+    let text = server_text(&app, &instance, path).await?.unwrap_or_default();
+    let value = if on { "true" } else { "false" };
+    let changed = match integrations::set_top_level(&text, &key, value) {
+        Some(changed) => changed,
+        None => {
+            let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+            let gap = if text.is_empty() || text.ends_with(newline) { "" } else { newline };
+            format!("{text}{gap}{key}: {value}{newline}")
+        }
+    };
+    server_write_text(&app, &instance, path, &changed).await
+}
+
+/// Which plugin integrations this server has (EssentialsX, LuckPerms).
+#[tauri::command(async)]
+#[specta::specta]
+async fn plugin_integrations(app: AppHandle, id: String) -> Result<integrations::Integrations, String> {
+    let instance = instance_by_id(&app, &id)?;
+    let mut found = integrations::Integrations {
+        essentials: server_has_dir(&app, &instance, "plugins/Essentials").await,
+        ..Default::default()
+    };
+    for folder in ["plugins/LuckPerms", "plugins/luckperms", "config/luckperms"] {
+        if server_has_dir(&app, &instance, folder).await {
+            found.luckperms = folder.to_string();
+            break;
+        }
+    }
+    found.extensions.extend(api_extensions(&app, &instance).await.into_iter().map(|one| one.folder));
+    for base in ["plugins", "config"] {
+        let folders: Vec<String> = server_names(&app, &instance, base)
+            .await
+            .into_iter()
+            .filter(|(name, dir, _)| *dir && !name.eq_ignore_ascii_case("monolab") && !name.starts_with('.'))
+            .map(|(name, _, _)| name)
+            .take(80)
+            .collect();
+        for name in folders {
+            let folder = format!("{base}/{name}");
+            if server_names(&app, &instance, &folder).await.iter().any(|(one, dir, _)| !dir && one == "monolab.json") {
+                found.extensions.push(folder);
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// Tabs other plugins publish through MonolabApi (the add-on writes them to integrations.json).
+async fn api_extensions(app: &AppHandle, instance: &ServerInstance) -> Vec<extensions::Extension> {
+    let Some(config) = addon_config_path(instance).filter(|_| !pumpkin::is_pumpkin(&instance.core)) else { return Vec::new() };
+    let path = config.replace("config.yml", "integrations.json");
+    let Ok(Some(text)) = server_text(app, instance, &path).await else { return Vec::new() };
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|time| time.as_millis() as u64).unwrap_or(0);
+    extensions::from_api(&text, now)
+}
+
+async fn read_extension(app: &AppHandle, instance: &ServerInstance, folder: &str) -> Result<extensions::Extension, String> {
+    let json = server_text(app, instance, &format!("{folder}/monolab.json")).await?.unwrap_or_default();
+    let mut texts = HashMap::new();
+    for file in extensions::declared_files(&json) {
+        texts.insert(file.clone(), server_text(app, instance, &format!("{folder}/{file}")).await.ok().flatten());
+    }
+    Ok(extensions::build(folder, &json, |file| texts.get(file).cloned().flatten()))
+}
+
+/// Presses a MonolabApi button: leaves a request for the add-on, which calls the plugin's handler on the server
+/// thread, then waits for its answer. Nothing goes through the console.
+#[tauri::command(async)]
+#[specta::specta]
+async fn run_extension_action(app: AppHandle, id: String, folder: String, label: String, args_json: String) -> Result<String, String> {
+    let owner = folder.strip_prefix("api:").ok_or("This button isn't from a plugin.")?.to_string();
+    let args: HashMap<String, String> = serde_json::from_str(&args_json).map_err(|_| "The button values are malformed.".to_string())?;
+    let instance = instance_by_id(&app, &id)?;
+    let config = addon_config_path(&instance).filter(|_| !pumpkin::is_pumpkin(&instance.core)).ok_or("This server has no Monolab add-on.")?;
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|time| time.as_millis()).unwrap_or(0);
+    let request = config.replace("config.yml", &format!("actions/req-{stamp}.json"));
+    let result = config.replace("config.yml", &format!("actions/req-{stamp}.result.json"));
+    let body = serde_json::json!({ "owner": owner, "label": label, "args": args }).to_string();
+    server_write_text(&app, &instance, &request, &body).await?;
+    record_audit(&app, &id, "Server", "Plugin button", &format!("{owner} · {label}"));
+    for _ in 0..30 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let Ok(Some(text)) = server_text(&app, &instance, &result).await else { continue };
+        let answer: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+        drop_server_file(&app, &instance, &result).await;
+        let message = answer.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        return if answer.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) { Ok(message) } else { Err(message) };
+    }
+    drop_server_file(&app, &instance, &request).await;
+    Err("The plugin didn't answer in 15 seconds. Check that the server is running with add-on 37 or later.".into())
+}
+
+/// Removes one of the add-on's own exchange files; a leftover is harmless, so failures are ignored.
+async fn drop_server_file(app: &AppHandle, instance: &ServerInstance, relative: &str) {
+    if !instance.panel_host.is_empty() {
+        if let Ok((api, target)) = panel_of(app, instance) {
+            let _ = api.delete(&target, &[relative.to_string()]).await;
+        }
+    } else if !instance.remote_host.is_empty() {
+        remote::drop_path(app, &instance.remote_host, &instance.path, relative).await;
+    } else if let Ok(path) = paths::resolve_in_server(Path::new(&instance.path), relative) {
+        let _ = fs::remove_file(path);
+    }
+}
+
+/// Controls declared in monolab.json files of this server's plugins and mods.
+#[tauri::command(async)]
+#[specta::specta]
+async fn extension_data(app: AppHandle, id: String) -> Result<Vec<extensions::Extension>, String> {
+    let instance = instance_by_id(&app, &id)?;
+    let found = plugin_integrations(app.clone(), id).await?;
+    let mut all = api_extensions(&app, &instance).await;
+    for folder in found.extensions.iter().filter(|folder| !folder.starts_with("api:")) {
+        all.push(read_extension(&app, &instance, folder).await?);
+    }
+    Ok(all)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn extension_set(app: AppHandle, id: String, folder: String, index: u32, value: String) -> Result<(), String> {
+    if !extensions::usable_folder(&folder) {
+        return Err("This folder can't hold app controls.".into());
+    }
+    let instance = instance_by_id(&app, &id)?;
+    let built = read_extension(&app, &instance, &folder).await?;
+    let setting = built.settings.get(index as usize).ok_or("This setting is no longer in monolab.json.")?;
+    let value = extensions::check(setting, &value)?;
+    let path = format!("{folder}/{}", setting.file);
+    let text = server_text(&app, &instance, &path).await?.ok_or_else(|| format!("{} was not found.", setting.file))?;
+    let changed = extensions::set_at(&setting.file, &text, &setting.key, &setting.kind, &value)?;
+    server_write_text(&app, &instance, &path, &changed).await
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn essentials_data(app: AppHandle, id: String) -> Result<integrations::EssentialsData, String> {
+    let instance = instance_by_id(&app, &id)?;
+    let config = server_text(&app, &instance, "plugins/Essentials/config.yml").await?.unwrap_or_default();
+    let kits = match server_text(&app, &instance, "plugins/Essentials/kits.yml").await? {
+        Some(text) => integrations::kits(&text),
+        None => integrations::kits(&config),
+    };
+    let mut warps = Vec::new();
+    for (name, dir, _) in server_names(&app, &instance, "plugins/Essentials/warps").await {
+        let Some(stem) = name.strip_suffix(".yml").filter(|_| !dir) else { continue };
+        if let Some(text) = server_text(&app, &instance, &format!("plugins/Essentials/warps/{name}")).await? {
+            warps.extend(integrations::warp(stem, &text));
+        }
+    }
+    warps.sort_by_key(|one| one.name.to_lowercase());
+    let files: Vec<(String, u64)> = server_names(&app, &instance, "plugins/Essentials/userdata")
+        .await
+        .into_iter()
+        .filter(|(name, dir, _)| !dir && name.ends_with(".yml"))
+        .map(|(name, _, modified)| (name, modified))
+        .collect();
+    let users_total = files.len() as u32;
+    let limit = if is_far(&instance) { 80 } else { 500 };
+    let mut users = Vec::new();
+    for name in integrations::newest_first(files).into_iter().take(limit) {
+        if let Some(text) = server_text(&app, &instance, &format!("plugins/Essentials/userdata/{name}")).await? {
+            users.push(integrations::user(name.trim_end_matches(".yml"), &text));
+        }
+    }
+    Ok(integrations::EssentialsData { warps, kits, users, users_total, settings: integrations::settings(&config) })
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn essentials_set_setting(app: AppHandle, id: String, key: String, value: String) -> Result<(), String> {
+    if !integrations::ESS_SETTINGS.contains(&key.as_str()) {
+        return Err("This setting can't be changed here.".into());
+    }
+    let value = value.trim();
+    if value.is_empty() || value.len() > 200 || value.contains(['\r', '\n']) {
+        return Err("Enter a value on one line.".into());
+    }
+    let instance = instance_by_id(&app, &id)?;
+    let config = server_text(&app, &instance, "plugins/Essentials/config.yml")
+        .await?
+        .ok_or("EssentialsX config.yml was not found.")?;
+    let changed = integrations::set_top_level(&config, &key, value).ok_or("EssentialsX config.yml was not found.")?;
+    server_write_text(&app, &instance, "plugins/Essentials/config.yml", &changed).await
+}
+
+/// Runs `lp export` on the running server, reads the file it writes, then removes it.
+#[tauri::command(async)]
+#[specta::specta]
+async fn luckperms_data(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<integrations::LuckPermsData, String> {
+    let instance = instance_by_id(&app, &id)?;
+    let found = plugin_integrations(app.clone(), id.clone()).await?;
+    if found.luckperms.is_empty() {
+        return Err("LuckPerms isn't installed on this server.".into());
+    }
+    let command = if kinds::is_proxy(&instance.core) { "lpv" } else { "lp" };
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|time| time.as_millis()).unwrap_or(0);
+    let name = format!("monolab-export-{stamp}");
+    send_console_command_inner(&app, &state, &id, &format!("{command} export {name}")).await?;
+    let file = format!("{}/{name}.json.gz", found.luckperms);
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let bytes = if is_far(&instance) {
+            far_read_bytes(&app, &instance, &file, 64 * 1024 * 1024).await.ok()
+        } else {
+            paths::resolve_in_server(Path::new(&instance.path), &file).ok().and_then(|path| fs::read(path).ok())
+        };
+        let Some(bytes) = bytes else { continue };
+        let mut json = String::new();
+        if flate2::read::GzDecoder::new(&bytes[..]).read_to_string(&mut json).is_err() {
+            continue;
+        }
+        let Ok(data) = integrations::luckperms(&json, command) else { continue };
+        if !instance.panel_host.is_empty() {
+            if let Ok((api, target)) = panel_of(&app, &instance) {
+                let _ = api.delete(&target, std::slice::from_ref(&file)).await;
+            }
+        } else if !instance.remote_host.is_empty() {
+            remote::drop_path(&app, &instance.remote_host, &instance.path, &file).await;
+        } else if let Ok(path) = paths::resolve_in_server(Path::new(&instance.path), &file) {
+            let _ = fs::remove_file(path);
+        }
+        return Ok(data);
+    }
+    Err("LuckPerms didn't finish exporting in 20 seconds. Check the console.".into())
+}
+
+/// Read-only view of files the editor can't open: class files, NBT, archives (and files inside them), gzip.
+#[tauri::command(async)]
+#[specta::specta]
+async fn view_server_file(app: AppHandle, id: String, path: String) -> Result<viewer::FileView, String> {
+    let (outer, inner) = match path.split_once(viewer::SPLIT) {
+        Some((outer, inner)) => (outer.to_string(), Some(inner.to_string())),
+        None => (path.clone(), None),
+    };
+    let instance = instance_by_id(&app, &id)?;
+    let bytes = if !instance.panel_host.is_empty() {
+        let (api, target) = panel_of(&app, &instance)?;
+        api.read_bytes(&target, &outer, viewer::FILE_LIMIT).await?
+    } else if instance.remote_host.is_empty() {
+        let at = paths::resolve_in_server(Path::new(&instance.path), &outer).map_err(|error| match error {
+            paths::PathError::Missing => "File not found.".to_string(),
+            other => other.to_string(),
+        })?;
+        if fs::metadata(&at).map_err(|error| error.to_string())?.len() > viewer::FILE_LIMIT {
+            return Err("This file is too large to open in the app.".into());
+        }
+        fs::read(&at).map_err(|error| format!("Could not read the file: {error}"))?
+    } else {
+        remote::read_bytes(&app, &instance.remote_host, &instance.path, &outer, viewer::FILE_LIMIT).await?
+    };
+    let name = outer.rsplit(['/', '\\']).next().unwrap_or(&outer).to_string();
+    tauri::async_runtime::spawn_blocking(move || off_runtime(|| viewer::view_bytes(&app, &name, bytes, inner.as_deref())))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[derive(serde::Serialize, specta::Type, Debug, Default, PartialEq)]
@@ -11459,7 +12271,7 @@ async fn copy_server_file_out(
     Ok(())
 }
 
-fn process_tree_usage(system: &System, root: Pid) -> (f32, u64) {
+fn process_tree(system: &System, root: Pid) -> HashSet<Pid> {
     let mut targets: HashSet<Pid> = HashSet::new();
     targets.insert(root);
     for (pid, process) in system.processes() {
@@ -11477,6 +12289,11 @@ fn process_tree_usage(system: &System, root: Pid) -> (f32, u64) {
             depth += 1;
         }
     }
+    targets
+}
+
+fn process_tree_usage(system: &System, root: Pid) -> (f32, u64) {
+    let targets = process_tree(system, root);
     let mut cpu = 0.0_f32;
     let mut memory = 0_u64;
     for pid in &targets {
@@ -11504,6 +12321,86 @@ fn system_memory_mib(state: State<'_, AppState>) -> u64 {
 #[specta::specta]
 fn panel_usage(state: State<'_, AppState>, id: String) -> Option<panel::PanelStats> {
     state.panel_live.lock().expect("panel state poisoned").get(&id).map(|one| one.stats.clone())
+}
+
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct ProcessDetails {
+    cores: Vec<f32>,
+    disk_read_kib: f64,
+    disk_write_kib: f64,
+    processes: u32,
+    run_seconds: u64,
+    system_memory_used_mib: u64,
+    system_memory_total_mib: u64,
+    swap_used_mib: u64,
+    swap_total_mib: u64,
+}
+
+static DISK_TOTALS: Mutex<Option<(String, Instant, u64, u64)>> = Mutex::new(None);
+
+/// Machine-side detail for the advanced monitor (local servers only; far servers return None).
+#[tauri::command]
+#[specta::specta]
+fn process_details(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<Option<ProcessDetails>, String> {
+    let instance = instance_by_id(&app, &id)?;
+    if !instance.panel_host.is_empty() || !instance.remote_host.is_empty() {
+        return Ok(None);
+    }
+    let Some(pid) = state
+        .processes
+        .lock()
+        .expect("process state poisoned")
+        .get(&id)
+        .map(|process| process.pid)
+    else {
+        return Ok(None);
+    };
+    let mut system = state.system.lock().expect("system state poisoned");
+    system.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::All,
+        true,
+        sysinfo::ProcessRefreshKind::nothing().with_disk_usage(),
+    );
+    system.refresh_cpu_usage();
+    system.refresh_memory();
+    let root = Pid::from_u32(pid);
+    let tree = process_tree(&system, root);
+    let (mut read, mut written) = (0_u64, 0_u64);
+    for one in &tree {
+        if let Some(process) = system.process(*one) {
+            let usage = process.disk_usage();
+            read = read.saturating_add(usage.total_read_bytes);
+            written = written.saturating_add(usage.total_written_bytes);
+        }
+    }
+    let now = Instant::now();
+    let (disk_read_kib, disk_write_kib) = {
+        let mut kept = DISK_TOTALS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let rate = match kept.as_ref() {
+            Some((was, at, before_read, before_written)) if *was == id => {
+                let seconds = now.duration_since(*at).as_secs_f64().max(0.5);
+                (
+                    read.saturating_sub(*before_read) as f64 / 1024.0 / seconds,
+                    written.saturating_sub(*before_written) as f64 / 1024.0 / seconds,
+                )
+            }
+            _ => (0.0, 0.0),
+        };
+        *kept = Some((id.clone(), now, read, written));
+        rate
+    };
+    Ok(Some(ProcessDetails {
+        cores: system.cpus().iter().map(|cpu| cpu.cpu_usage()).collect(),
+        disk_read_kib,
+        disk_write_kib,
+        processes: tree.len() as u32,
+        run_seconds: system.process(root).map(|process| process.run_time()).unwrap_or(0),
+        system_memory_used_mib: system.used_memory() / 1_048_576,
+        system_memory_total_mib: system.total_memory() / 1_048_576,
+        swap_used_mib: system.used_swap() / 1_048_576,
+        swap_total_mib: system.total_swap() / 1_048_576,
+    }))
 }
 
 #[tauri::command(async)]
@@ -12669,7 +13566,7 @@ async fn import_cfpack(
         Ok((overrides, kept))
     })();
     let result = match staged {
-        Ok(done) => remote::make_backup(&app, &instance.remote_host, &instance.path, "Before modpack import")
+        Ok(done) => remote::make_backup(&app, &instance.remote_host, &instance.path, "Before modpack import", &[])
             .await
             .map(|_| ())
             .or(Ok::<(), String>(()))
@@ -13606,6 +14503,7 @@ async fn upgrade_instance(
     if matches!(instance.core.as_str(), "Forge" | "NeoForge") {
         return Err("Forge and NeoForge use an installer layout that automatic upgrades don't support yet. Back up, create a new server and move your settings over.".into());
     }
+    let core = core_after(&instance.core, input.target_core.as_deref())?;
     let root = Path::new(&instance.path)
         .canonicalize().map(plain_path)
         .map_err(|error| error.to_string())?;
@@ -13634,7 +14532,7 @@ async fn upgrade_instance(
         .as_deref()
         .map(str::trim)
         .filter(|one| !one.is_empty());
-    let downloaded = match download_server_jar(&app, &instance.core, target, wanted, &staging, "") {
+    let downloaded = match download_server_jar(&app, &core, target, wanted, &staging, "") {
         Ok(Some(path)) => path,
         Ok(None) => {
             let _ = fs::remove_dir_all(&staging);
@@ -13653,7 +14551,7 @@ async fn upgrade_instance(
     let previous = stash.join(format!("previous-{stamp}-{current_name}"));
     move_file(&current, &previous)
         .map_err(|error| format!("Could not keep the existing jar: {error}"))?;
-    let destination = root.join(core_file_name(&instance.core));
+    let destination = root.join(core_file_name(&core));
     if let Err(error) = move_file(&downloaded, &destination) {
         let _ = move_file(&previous, &current);
         let _ = fs::remove_dir_all(&staging);
@@ -13662,12 +14560,15 @@ async fn upgrade_instance(
         ));
     }
     let _ = fs::remove_dir_all(&staging);
+    let switched = core != instance.core;
     let entry = UpgradeHistoryEntry {
         server_id: instance.id.clone(),
         from_version: instance.version.clone(),
         to_version: target.into(),
         previous_jar: previous.to_string_lossy().to_string(),
         created_at: stamp,
+        from_core: switched.then(|| instance.core.clone()),
+        to_core: switched.then(|| core.clone()),
     };
     let _store = lock_instance_store();
     let mut instances = load_instances(&app)?;
@@ -13676,6 +14577,7 @@ async fn upgrade_instance(
         .find(|saved| saved.id == instance.id)
         .ok_or("Server not found.")?;
     saved.version = target.into();
+    saved.core = core.clone();
     saved.core_build = wanted.unwrap_or("").to_string();
     saved.server_jar = Some(destination.to_string_lossy().to_string());
     save_instances(&app, &instances)?;
@@ -13729,6 +14631,7 @@ async fn upgrade_remote(
     if pumpkin::is_pumpkin(&instance.core) {
         return Err("Automatic upgrades aren't supported yet for Pumpkin on SSH servers.".into());
     }
+    let core = core_after(&instance.core, input.target_core.as_deref())?;
     let jar = instance
         .server_jar
         .as_deref()
@@ -13738,7 +14641,7 @@ async fn upgrade_remote(
         .to_string();
     if !input.skip_backup {
         tell_job(app, "upgrade", &instance.name, "taring", 0, 0);
-        remote::make_backup(app, &instance.remote_host, &instance.path, "before-upgrade").await?;
+        remote::make_backup(app, &instance.remote_host, &instance.path, "before-upgrade", &[]).await?;
     }
     let stamp = unix_now();
     let stash = upgrade_dir(app, &instance.id)?;
@@ -13751,7 +14654,7 @@ async fn upgrade_remote(
         .map(str::trim)
         .filter(|one| !one.is_empty());
     tell_job(app, "upgrade", &instance.name, "fetching", 0, 0);
-    let downloaded = download_server_jar(app, &instance.core, target, wanted, &staging, "");
+    let downloaded = download_server_jar(app, &core, target, wanted, &staging, "");
     let bytes = match downloaded {
         Ok(Some(path)) => fs::read(&path).map_err(|error| error.to_string()),
         Ok(None) => Err("Automatic upgrades are not supported for this core yet.".into()),
@@ -13770,12 +14673,15 @@ async fn upgrade_remote(
         remote::swap_core(app, &instance.remote_host, &instance.path, &jar, &bytes, stamp).await;
     tell_job(app, "upgrade", &instance.name, "done", 0, 0);
     let previous = previous?;
+    let switched = core != instance.core;
     let entry = UpgradeHistoryEntry {
         server_id: instance.id.clone(),
         from_version: instance.version.clone(),
         to_version: target.into(),
         previous_jar: previous,
         created_at: stamp,
+        from_core: switched.then(|| instance.core.clone()),
+        to_core: switched.then(|| core.clone()),
     };
     {
         let _store = lock_instance_store();
@@ -13785,6 +14691,7 @@ async fn upgrade_remote(
             .find(|saved| saved.id == instance.id)
             .ok_or("Server not found.")?;
         saved.version = target.into();
+        saved.core = core.clone();
         saved.core_build = wanted.unwrap_or("").to_string();
         save_instances(app, &instances)?;
     }
@@ -13833,6 +14740,9 @@ async fn rollback_remote(
             .find(|saved| saved.id == instance.id)
             .ok_or("Server not found.")?;
         saved.version = entry.from_version.clone();
+        if let Some(core) = &entry.from_core {
+            saved.core = core.clone();
+        }
         saved.core_build = String::new();
         save_instances(app, &instances)?;
     }
@@ -13913,6 +14823,9 @@ async fn rollback_last_upgrade(
         .find(|saved| saved.id == id)
         .ok_or("Server not found.")?;
     saved.version = entry.from_version.clone();
+    if let Some(core) = &entry.from_core {
+        saved.core = core.clone();
+    }
     saved.server_jar = Some(current.to_string_lossy().to_string());
     save_instances(&app, &instances)?;
     record_audit(
@@ -14495,7 +15408,7 @@ async fn trim_chunks(
     if apply {
         if is_far(&instance) {
             ensure_remote_stopped(&app, state.inner(), &instance).await?;
-            backup = remote_backup(&app, &instance, "before-chunk-trim").await?;
+            backup = remote_backup(&app, &instance, "before-chunk-trim", false, &[]).await?;
         } else {
             ensure_stopped(state.inner(), &id)?;
             let vault = backup_folder(&app, &instance)?;
@@ -16248,6 +17161,113 @@ fn stop_servers_for_update(app: AppHandle, state: State<'_, AppState>) -> Result
     Ok(running)
 }
 
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+struct AppRelease {
+    version: String,
+    published: String,
+}
+
+const APP_RELEASES: &str = "https://api.github.com/repos/chicodev11/Monolab/releases?per_page=60";
+
+fn fetch_app_releases() -> Result<Vec<AppRelease>, String> {
+    let client = net::builder()
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let releases: serde_json::Value = client
+        .get(APP_RELEASES)
+        .send()
+        .map_err(|error| format!("Could not fetch the version list: {error}"))?
+        .error_for_status()
+        .map_err(|error| format!("Could not fetch the version list: {error}"))?
+        .json()
+        .map_err(|error| error.to_string())?;
+    let list = releases
+        .as_array()
+        .ok_or("The version list is malformed.")?
+        .iter()
+        .filter(|one| {
+            !one.get("draft").and_then(|v| v.as_bool()).unwrap_or(false)
+                && !one.get("prerelease").and_then(|v| v.as_bool()).unwrap_or(false)
+                && one.get("assets").and_then(|v| v.as_array()).is_some_and(|assets| {
+                    assets
+                        .iter()
+                        .any(|asset| asset.get("name").and_then(|v| v.as_str()) == Some("latest.json"))
+                })
+        })
+        .filter_map(|one| {
+            let version = one.get("tag_name")?.as_str()?.strip_prefix('v')?.to_string();
+            if !valid_app_version(&version) {
+                return None;
+            }
+            let published = one
+                .get("published_at")
+                .and_then(|v| v.as_str())
+                .map(|date| date.chars().take(10).collect())
+                .unwrap_or_default();
+            Some(AppRelease { version, published })
+        })
+        .collect();
+    Ok(list)
+}
+
+fn valid_app_version(version: &str) -> bool {
+    let parts: Vec<&str> = version.split('.').collect();
+    parts.len() == 3 && parts.iter().all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()))
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn app_releases() -> Result<Vec<AppRelease>, String> {
+    tauri::async_runtime::spawn_blocking(|| off_runtime(fetch_app_releases))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+/// Installs a chosen release (older ones too) through the signed updater bundle of that release.
+#[tauri::command(async)]
+#[specta::specta]
+async fn install_app_version(app: AppHandle, version: String) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+    if !valid_app_version(&version) {
+        return Err("Unknown version.".into());
+    }
+    let endpoint: tauri::Url = format!("https://github.com/chicodev11/Monolab/releases/download/v{version}/latest.json")
+        .parse::<tauri::Url>()
+        .map_err(|error| error.to_string())?;
+    let wanted = version.clone();
+    let update = app
+        .updater_builder()
+        .endpoints(vec![endpoint])
+        .map_err(|error| error.to_string())?
+        .version_comparator(move |_, release| release.version.to_string() == wanted)
+        .build()
+        .map_err(|error| error.to_string())?
+        .check()
+        .await
+        .map_err(|error| format!("Could not fetch version {version}: {error}"))?
+        .ok_or_else(|| format!("Version {version} is already installed."))?;
+    let mut received = 0u64;
+    let progress = app.clone();
+    let bytes = update
+        .download(
+            move |chunk, total| {
+                received += chunk as u64;
+                let _ = progress.emit("app-version-download", serde_json::json!({ "received": received, "total": total }));
+            },
+            || {},
+        )
+        .await
+        .map_err(|error| format!("Could not download version {version}: {error}"))?;
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || stop_servers_for_update(handle.clone(), handle.state::<AppState>()))
+        .await
+        .map_err(|error| error.to_string())??;
+    update.install(bytes).map_err(|error| format!("Could not install version {version}: {error}"))?;
+    app.restart();
+}
+
 /// cloudflared and playitd started by an earlier run that ended without cleaning up (crash, force quit, update).
 /// Only our own copies in the app data folder whose Monolab is gone; another running Monolab keeps its own.
 fn sweep_stray_helpers(app: &AppHandle) {
@@ -16369,6 +17389,11 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             create_backup,
             list_backups,
             restore_backup,
+            backup_contents,
+            proxy_network,
+            link_proxy,
+            backup_entry_text,
+            restore_backup_paths,
             delete_backup,
             required_java,
             download_java,
@@ -16400,6 +17425,21 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             stop_instance,
             force_stop_instance,
             stop_servers_for_update,
+            app_releases,
+            set_server_group,
+            rename_server_group,
+            plugin_integrations,
+            essentials_data,
+            essentials_set_setting,
+            luckperms_data,
+            addon_config,
+            set_addon_config,
+            extension_data,
+            extension_set,
+            run_extension_action,
+            process_details,
+            view_server_file,
+            install_app_version,
             set_start_with_app,
             set_crash_restart,
             send_console_command,
@@ -16543,6 +17583,7 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             claude_account_add,
             claude_account_rename,
             claude_account_remove,
+            claude_account_logout,
             claude_account_use,
             claude_account_login,
             codex_login,
@@ -16759,6 +17800,16 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn switches_only_between_cores_that_keep_worlds_and_plugins() {
+        assert_eq!(super::core_after("Paper", None).unwrap(), "Paper");
+        assert_eq!(super::core_after("Paper", Some("Purpur")).unwrap(), "Purpur");
+        assert_eq!(super::core_after("Vanilla", Some("Leaf")).unwrap(), "Leaf");
+        assert!(super::core_after("Paper", Some("Vanilla")).is_err());
+        assert!(super::core_after("Fabric", Some("Paper")).is_err());
+        assert_eq!(super::core_after("Fabric", Some("Fabric")).unwrap(), "Fabric");
+    }
+
     #[test]
     fn map_cache_drops_the_least_recently_used() {
         let mut cache = super::Lru::new(4);
@@ -17181,6 +18232,7 @@ mod tests {
             jvm_args: String::new(),
             port: 25565,
             sort_order: 0,
+            group: String::new(),
             start_with_app: false,
             crash_restart: false,
             core_build: String::new(),

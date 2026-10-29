@@ -139,12 +139,16 @@ final class MapRender {
 
     void start() {
         running = true;
-        thread = new Thread(this::loop, "Monolab map");
-        thread.setDaemon(true);
-        thread.setPriority(Thread.MIN_PRIORITY);
-        thread.start();
-        web = new MapWeb(out, onTrouble);
-        web.start();
+        if (AddonConfig.on("map")) {
+            thread = new Thread(this::loop, "Monolab map");
+            thread.setDaemon(true);
+            thread.setPriority(Thread.MIN_PRIORITY);
+            thread.start();
+        }
+        if (AddonConfig.on("web-map")) {
+            web = new MapWeb(out, onTrouble);
+            web.start();
+        }
     }
 
     void stop() {
@@ -662,6 +666,7 @@ final class MapRender {
         if (raw.length < 8192) {
             return;
         }
+        @SuppressWarnings({"unchecked", "rawtypes"})
         Map<String, Object>[] chunks = stats == null ? null : new Map[1024];
         for (int index = 0; index < 1024; index++) {
             Map<String, Object> chunk;

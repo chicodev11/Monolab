@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const VERSION: &str = "32";
+const VERSION: &str = "37";
 const NAME: &str = "monolab";
 const LIVE_TICKS: u64 = 20;
 const MAP_TICKS: u64 = 1;
@@ -33,7 +33,19 @@ struct State {
     warned: AtomicBool,
     map: Mutex<Option<map::Map>>,
     map_warned: AtomicBool,
+    /// config.yml switches and when they were last read.
+    config: Mutex<(u64, HashMap<String, bool>)>,
 }
+
+const CONFIG_DEFAULTS: &str = "# Monolab add-on. Set a feature to false to turn it off.
+# The Monolab app changes these too (Monitor tab, add-on settings).
+
+# Live world map around players.
+map: true
+
+# TPS and memory once a minute, for history.
+performance-log: true
+";
 
 impl Plugin for Monolab {
     fn new() -> Self {
@@ -45,6 +57,7 @@ impl Plugin for Monolab {
                 warned: AtomicBool::new(false),
                 map: Mutex::new(None),
                 map_warned: AtomicBool::new(false),
+                config: Mutex::new((0, HashMap::new())),
             }),
         }
     }
@@ -64,6 +77,10 @@ impl Plugin for Monolab {
         let state = Arc::clone(&self.state);
         *lock(&state.folder) = PathBuf::from(context.get_data_folder());
         state.read_timezone();
+        let config = lock(&state.folder).join("config.yml");
+        if !config.exists() {
+            let _ = fs::write(&config, CONFIG_DEFAULTS);
+        }
         state.sweep();
         *lock(&state.map) = Some(map::Map::new(&lock(&state.folder)));
 
@@ -116,6 +133,9 @@ impl State {
     }
 
     fn draw(&self, server: &Server) {
+        if !self.on("map") || !self.on("live-map") {
+            return;
+        }
         let mut held = lock(&self.map);
         let Some(map) = held.as_mut() else {
             return;
@@ -128,6 +148,9 @@ impl State {
     }
 
     fn perf(&self, server: &Server) {
+        if !self.on("performance-log") {
+            return;
+        }
         self.add(json!({
             "at": now_ms(),
             "kind": "perf",
@@ -139,6 +162,19 @@ impl State {
 }
 
 impl State {
+    /// A config.yml switch (missing = on), reread at most every 5 seconds.
+    fn on(&self, key: &str) -> bool {
+        let now = now_ms();
+        let mut held = lock(&self.config);
+        if now.saturating_sub(held.0) > 5_000 {
+            held.0 = now;
+            held.1 = fs::read_to_string(lock(&self.folder).join("config.yml"))
+                .map(|text| read_switches(&text))
+                .unwrap_or_default();
+        }
+        held.1.get(key).copied().unwrap_or(true)
+    }
+
     fn add(&self, line: Value) {
         let day = self.today();
         self.sweep_if_new_day(&day);
@@ -221,6 +257,21 @@ impl State {
             }
         }
     }
+}
+
+fn read_switches(text: &str) -> HashMap<String, bool> {
+    text.lines()
+        .filter(|line| !line.starts_with([' ', '\t']))
+        .filter_map(|line| {
+            let bare = line.split('#').next()?.trim();
+            let (key, value) = bare.split_once(':')?;
+            match value.trim() {
+                "true" => Some((key.trim().to_string(), true)),
+                "false" => Some((key.trim().to_string(), false)),
+                _ => None,
+            }
+        })
+        .collect()
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {

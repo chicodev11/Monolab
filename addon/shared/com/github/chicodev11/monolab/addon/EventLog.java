@@ -29,6 +29,12 @@ final class EventLog {
     EventLog(Path folder, BiConsumer<String, Throwable> onTrouble) {
         this.folder = folder;
         this.onTrouble = onTrouble;
+        AddonConfig.load(folder);
+        try {
+            Files.createDirectories(folder.resolve("actions"));
+        } catch (IOException ignored) {
+            // Buttons from the app just won't arrive.
+        }
     }
 
     void add(String line) {
@@ -40,10 +46,16 @@ final class EventLog {
     }
 
     void setLoaded(String json) {
+        if (!AddonConfig.on("loaded-chunks")) {
+            return;
+        }
         pendingLoaded.set(json);
     }
 
     void setInventories(String json) {
+        if (!AddonConfig.on("inventories")) {
+            return;
+        }
         pendingInventories.set(json);
     }
 
@@ -51,6 +63,11 @@ final class EventLog {
         writeLive();
         writeNow(pendingLoaded, "loaded.json");
         writeNow(pendingInventories, "inventories.json");
+        MonolabApi.serveRequests(folder);
+        String api = MonolabApi.takeJson();
+        if (api != null) {
+            writeNow(new AtomicReference<>(api), "integrations.json");
+        }
         LocalDate today = LocalDate.now();
         append("events-" + today + ".jsonl");
         sweep(today);

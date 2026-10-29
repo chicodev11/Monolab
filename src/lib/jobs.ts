@@ -55,6 +55,8 @@ const LABELS: Record<string, (args: unknown[]) => Label> = {
   exportMrpackDownload: () => ({ title: tr("Exporting modpack"), icon: "archive" }),
   zipServerPaths: (args) => ({ title: tr("Compressing {0, plural, one {# item} other {# items}}", [count(args[1])]), icon: "archive" }),
   unzipServerPath: () => ({ title: tr("Extracting"), icon: "archive" }),
+  backupContents: () => ({ title: tr("Comparing backup"), icon: "backup" }),
+  restoreBackupPaths: (args) => ({ title: tr("Restoring {0, plural, one {# item} other {# items}}", [count(args[2])]), icon: "backup" }),
 };
 
 let serial = 0;

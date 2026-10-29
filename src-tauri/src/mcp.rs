@@ -880,7 +880,7 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
         }
         "list_players" => invoke(app, "list_players", with(json!({}))),
         "list_backups" => invoke(app, "list_backups", with(json!({}))),
-        "create_backup" => invoke(app, "create_backup", with(json!({ "note": text(args, "note").unwrap_or("Claude") }))),
+        "create_backup" => invoke(app, "create_backup", with(json!({ "note": text(args, "note").unwrap_or("Claude"), "worldsOnly": false }))),
         other => Err(format!("Unknown tool `{other}`.")),
     }
 }

@@ -102,6 +102,7 @@ final class EventSink {
                 .raw("hotspots", tally.hotspotsJson())
                 .raw("worlds", tally.worldsJson())
                 .raw("players", out.toString())
+                .raw("jvm", JvmStats.json())
                 .end());
     }
 
@@ -118,6 +119,9 @@ final class EventSink {
     }
 
     void perf(double mspt, int players, long chunks, long entities) {
+        if (!AddonConfig.on("performance-log")) {
+            return;
+        }
         add(new Json()
                 .put("at", System.currentTimeMillis())
                 .put("kind", "perf")

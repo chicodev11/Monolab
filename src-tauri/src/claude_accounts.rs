@@ -252,6 +252,15 @@ pub fn remove(app: &AppHandle, id: &str) -> Result<(), String> {
     write(app, &store)
 }
 
+/// Signs the account out by removing its saved sign-in; the account and its chats stay.
+pub fn logout(app: &AppHandle, id: &str) -> Result<(), String> {
+    let file = config_dir(app, id)?.join(".credentials.json");
+    if file.is_file() {
+        fs::remove_file(&file).map_err(|error| format!("Could not sign out: {error}"))?;
+    }
+    Ok(())
+}
+
 pub fn use_for(app: &AppHandle, server: &str, id: &str) -> Result<(), String> {
     let mut store = read(app);
     if id == DEFAULT {

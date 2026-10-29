@@ -509,11 +509,12 @@ export function ClaudeChat({
     if (box && stick.current) box.scrollTop = box.scrollHeight;
   }, [model]);
 
-  const send = async () => {
-    const typed = draft.trim();
+  // Prompts go to the agent in English; it still replies in Korean.
+  const send = async (text?: string) => {
+    const typed = (text ?? draft).trim();
     if ((!typed && !pictures.length && !attached.length) || !chatRef.current) return;
     const words = attached.length
-      ? `${typed}${typed ? "\n\n" : ""}${tr("Attached files (relative to the workspace):")}\n${attached.map((one) => `- ${one}`).join("\n")}`
+      ? `${typed}${typed ? "\n\n" : ""}Attached files (relative to the workspace):\n${attached.map((one) => `- ${one}`).join("\n")}`
       : typed;
     const content =
       pictures.length === 0
@@ -622,8 +623,7 @@ export function ClaudeChat({
                   key={one.title}
                   className="chat-starter"
                   onClick={() => {
-                    setDraft(tr(one.prompt));
-                    requestAnimationFrame(() => input.current?.focus());
+                    void send(one.prompt);
                   }}
                 >
                   <Icon name={one.icon} />

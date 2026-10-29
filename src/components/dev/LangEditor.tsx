@@ -44,7 +44,9 @@ function issuesOf(key: string, value: string, lang: string): string[] {
   if (extra(/^\s/) || extra(/\s$/)) out.push(tr("Starts or ends with a space."));
   if (/\S {2,}\S/.test(value)) out.push(tr("Has two spaces in a row."));
   if (lang !== "ko") return out;
-  if (/\uC2B5\uB2C8\uB2E4|\uC2B5\uB2C8\uAE4C/.test(value)) out.push(tr("Use the -yo ending, not -seumnida."));
+  if (/\uC2B5\uB2C8\uAE4C/.test(value)) out.push(tr("Ask with -kkayo, not -seumnikka."));
+  if (!/[.?!\u2026)]$/.test(value) && /(?:\uC5D0\uB9CC|\uC5D0\uC11C|\uC73C\uB85C|\uC744|\uB97C|\uC5D0\uAC8C)$/.test(value) && !key.startsWith("particle.") && !key.startsWith("suffix."))
+    out.push(tr("A label shouldn't end with a particle."));
   if (/\S\s+\uC8FC\uC138\uC694/.test(value)) out.push(tr("Write the request ending as one word (haejuseyo)."));
   if (/\uB2F9\uC2E0|\uC800\uD76C|\uC5EC\uB7EC\uBD84/.test(value)) out.push(tr("Leave out personal pronouns."));
   if (/\uC131\uACF5\uC801\uC73C\uB85C/.test(value)) out.push(tr("Drop 'successfully'."));

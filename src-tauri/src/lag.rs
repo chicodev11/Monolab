@@ -290,6 +290,7 @@ mod tests {
             hotspots: Vec::new(),
             worlds: Vec::new(),
             players: Vec::new(),
+            jvm: None,
         }
     }
 

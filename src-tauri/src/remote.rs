@@ -1959,19 +1959,26 @@ pub fn backup_vault(folder: &str) -> String {
     format!("{folder}/../.monolab-backups/{own}")
 }
 
+/// Packs the server folder, or only the folders in `only` (top-level names) when it isn't empty.
 pub async fn make_backup(
     app: &AppHandle,
     host_id: &str,
     folder: &str,
     label: &str,
+    only: &[String],
 ) -> Result<String, String> {
     let folder = folder.trim_end_matches('/');
     let vault = backup_vault(folder);
     let name = format!("{}-{label}.tar.gz", unix_secs());
+    let what = if only.is_empty() {
+        ".".to_string()
+    } else {
+        only.iter().map(|one| quote(&format!("./{one}"))).collect::<Vec<_>>().join(" ")
+    };
     let conn = connect(app, host_id).await?;
     conn.run_long(&format!(
         "mkdir -p {vault} && {{ tar -czf {vault}/{name}.part -C {here} --warning=no-file-changed --ignore-failed-read \
-         --exclude=./.monolab-trash --exclude=session.lock . ; c=$?; [ $c -le 1 ] || {{ rm -f {vault}/{name}.part; exit $c; }}; }} \
+         --exclude=./.monolab-trash --exclude=session.lock {what} ; c=$?; [ $c -le 1 ] || {{ rm -f {vault}/{name}.part; exit $c; }}; }} \
          && mv {vault}/{name}.part {vault}/{name}",
         vault = quote(&vault),
         here = quote(folder),
@@ -2016,7 +2023,20 @@ pub async fn restore_backup(
         .await?
         .ok()
         .map_err(|_| "That backup was not found.".to_string())?;
-    let safety = make_backup(app, host_id, folder, "before-restore").await?;
+    let safety = make_backup(app, host_id, folder, "before-restore", &[]).await?;
+    if crate::backups::is_worlds_only(name) {
+        let listing = conn.run_long(&format!("tar -tzf {}", quote(&archive))).await?.ok()?;
+        let mut tops: Vec<String> = listing
+            .lines()
+            .filter_map(|line| line.trim_start_matches("./").split_once('/').map(|(top, _)| top.to_string()))
+            .filter(|top| !top.is_empty() && top != "." && top != ".." && !top.contains('\\'))
+            .collect();
+        tops.sort();
+        tops.dedup();
+        for top in tops {
+            conn.run(&format!("rm -rf {}", quote(&format!("{folder}/{top}")))).await?.ok()?;
+        }
+    }
     conn.run_long(&format!(
         "tar -xzf {archive} -C {here}",
         archive = quote(&archive),
@@ -2026,6 +2046,107 @@ pub async fn restore_backup(
     .ok()
     .map_err(|error| format!("Could not extract the backup: {error}"))?;
     Ok(safety)
+}
+
+fn backup_archive(folder: &str, file_name: &str) -> Result<String, String> {
+    let name = file_name.trim();
+    if name.is_empty() || name.contains(['/', '\\']) || !name.ends_with(".tar.gz") {
+        return Err("The backup name is malformed.".into());
+    }
+    Ok(format!("{}/{name}", backup_vault(folder.trim_end_matches('/'))))
+}
+
+/// Regular files in a `tar -tzv` listing with their sizes, without the leading `./`.
+pub fn tar_files(listing: &str) -> Vec<(String, u64)> {
+    listing
+        .lines()
+        .filter(|line| line.starts_with('-'))
+        .filter_map(|line| {
+            let mut rest = line;
+            let mut fields = Vec::new();
+            for _ in 0..5 {
+                rest = rest.trim_start();
+                let end = rest.find(char::is_whitespace)?;
+                fields.push(&rest[..end]);
+                rest = &rest[end..];
+            }
+            let name = rest.trim_start().trim_start_matches("./");
+            (!name.is_empty()).then(|| Some((name.to_string(), fields[2].parse().ok()?)))?
+        })
+        .collect()
+}
+
+/// A backup's files and the server's files now, both with sizes.
+pub async fn backup_listing(
+    app: &AppHandle,
+    host_id: &str,
+    folder: &str,
+    file_name: &str,
+) -> Result<(Vec<(String, u64)>, std::collections::HashMap<String, u64>), String> {
+    let archive = quote(&backup_archive(folder, file_name)?);
+    let conn = connect(app, host_id).await?;
+    let listing = conn
+        .run_long(&format!("tar --quoting-style=literal -tzvf {archive} 2>/dev/null || tar -tzvf {archive}"))
+        .await?
+        .ok()
+        .map_err(|error| format!("Could not read the backup: {error}"))?;
+    let now = conn
+        .run_long(&format!(
+            "cd {} && find . -path ./.monolab-trash -prune -o -type f -printf '%s %P\\n'",
+            quote(folder.trim_end_matches('/'))
+        ))
+        .await?
+        .ok()?;
+    let now = now
+        .lines()
+        .filter_map(|line| {
+            let (size, name) = line.split_once(' ')?;
+            Some((name.to_string(), size.parse().ok()?))
+        })
+        .collect();
+    Ok((tar_files(&listing), now))
+}
+
+pub async fn backup_entry_text(app: &AppHandle, host_id: &str, folder: &str, file_name: &str, inside: &str) -> Result<Option<String>, String> {
+    let archive = backup_archive(folder, file_name)?;
+    let conn = connect(app, host_id).await?;
+    let out = conn
+        .run(&format!("tar -xzOf {} {}", quote(&archive), quote(&format!("./{inside}"))))
+        .await?;
+    if out.code != 0 {
+        return Err("That file isn't in the backup.".into());
+    }
+    let text = out.stdout;
+    let binary = text.len() as u64 > crate::backups::TEXT_LIMIT || text.contains('\0') || text.contains('\u{FFFD}');
+    Ok((!binary).then_some(text))
+}
+
+/// Puts back only the picked paths from a backup; the current versions go into a backup first.
+pub async fn restore_backup_paths(app: &AppHandle, host_id: &str, folder: &str, file_name: &str, picks: &[String]) -> Result<String, String> {
+    let archive = backup_archive(folder, file_name)?;
+    let folder = folder.trim_end_matches('/');
+    let vault = backup_vault(folder);
+    let conn = connect(app, host_id).await?;
+    conn.run(&format!("test -f {}", quote(&archive)))
+        .await?
+        .ok()
+        .map_err(|_| "That backup was not found.".to_string())?;
+    let name = format!("{}-before-partial-restore.tar.gz", unix_secs());
+    let list = picks.iter().map(|one| quote(&format!("./{one}"))).collect::<Vec<_>>().join(" ");
+    conn.run_long(&format!(
+        "cd {here} && mkdir -p {vault} && set -- && for p in {list}; do [ -e \"$p\" ] && set -- \"$@\" \"$p\"; done; \
+         if [ $# -gt 0 ]; then tar -czf {vault}/{name}.part -- \"$@\" && mv {vault}/{name}.part {vault}/{name}; fi",
+        here = quote(folder),
+        vault = quote(&vault),
+    ))
+    .await?
+    .ok()
+    .map_err(|error| format!("Could not back up the current files: {error}"))?;
+    conn.run_long(&format!("tar -xzf {} -C {} -- {list}", quote(&archive), quote(folder)))
+        .await?
+        .ok()
+        .map_err(|error| format!("Could not extract the backup: {error}"))?;
+    Ok(name)
 }
 
 pub async fn download_to(
@@ -2632,6 +2753,26 @@ mod tests {
     fn each_server_keeps_its_own_backups() {
         assert_eq!(backup_vault("/srv/mc/aero/"), "/srv/mc/aero/../.monolab-backups/aero");
         assert_ne!(backup_vault("/srv/mc/aero"), backup_vault("/srv/mc/lobby"));
+    }
+
+    #[test]
+    fn reads_files_and_sizes_from_a_tar_listing() {
+        let listing = [
+            "drwxr-xr-x mc/mc         0 2026-10-28 12:00 ./",
+            "-rw-r--r-- mc/mc        42 2026-10-28 12:00 ./server.properties",
+            "-rw-r--r-- mc/mc   1048576 2026-10-28 12:01 ./world/region/r.0.0.mca",
+            "-rw-r--r-- mc/mc         7 2026-10-28 12:01 ./notes/my  file.txt",
+            "lrwxrwxrwx mc/mc         0 2026-10-28 12:01 ./link -> server.properties",
+        ]
+        .join("\n");
+        assert_eq!(
+            tar_files(&listing),
+            vec![
+                ("server.properties".to_string(), 42),
+                ("world/region/r.0.0.mca".to_string(), 1_048_576),
+                ("notes/my  file.txt".to_string(), 7),
+            ]
+        );
     }
 
     #[test]

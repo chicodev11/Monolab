@@ -1,10 +1,10 @@
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const ADDON_VERSION: u32 = 32;
+pub const ADDON_VERSION: u32 = 37;
 
 #[cfg(test)]
 const GRADLE_PROPERTIES: &str = include_str!("../../gradle.properties");
@@ -341,6 +341,50 @@ pub struct LiveState {
     pub hotspots: Vec<Hotspot>,
     pub worlds: Vec<LiveWorld>,
     pub players: Vec<LivePlayer>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jvm: Option<JvmLive>,
+}
+
+/// JVM detail the add-on (34+) sends for the advanced monitor.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct JvmLive {
+    pub uptime_ms: u64,
+    pub vm: String,
+    pub gc: Vec<JvmCollector>,
+    pub pools: Vec<JvmPool>,
+    pub threads: u64,
+    pub daemon_threads: u64,
+    pub peak_threads: u64,
+    pub classes: u64,
+    pub process_cpu: Option<f64>,
+    pub ticks: Option<TickSpread>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct JvmCollector {
+    pub name: String,
+    pub count: u64,
+    pub ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct JvmPool {
+    pub name: String,
+    pub heap: bool,
+    pub used_mib: u64,
+    pub max_mib: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TickSpread {
+    pub p50: f64,
+    pub p95: f64,
+    pub max: f64,
+    pub samples: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, specta::Type)]
@@ -542,6 +586,7 @@ pub fn live_from_text(text: &str) -> Option<LiveState> {
         hotspots: read_hotspots(value.get("hotspots")),
         worlds: read_live_worlds(value.get("worlds")),
         players,
+        jvm: value.get("jvm").and_then(|found| serde_json::from_value(found.clone()).ok()),
     })
 }
 

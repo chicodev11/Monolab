@@ -1,5 +1,5 @@
-import { keepSame } from "./lib/same";
-import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { keepSame, keepSameLive } from "./lib/same";
+import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import appIcon from "./assets/app-icon.png";
 import { commands } from "./lib/ipc";
 import { panelKindName, panelsName } from "./lib/panelKind";
@@ -65,6 +65,9 @@ import type {
   LagDiagnosis,
   LagFinding,
   CustomProgram,
+  AppRelease,
+  FileView,
+  Integrations as PluginLinks,
 } from "./lib/bindings";
 import { lagLine, tpCommand, type LagAction } from "./lib/lag";
 import { enchantLevel, maxDurability } from "./lib/items";
@@ -96,6 +99,7 @@ import { RemoteImport } from "./components/panels/RemoteImport";
 import { PanelHosts } from "./components/panels/PanelHosts";
 import type { PanelView } from "./components/panels/PanelServerTools";
 import { TasksPage } from "./components/panels/TasksPage";
+import { ProxyNetwork } from "./components/panels/ProxyNetwork";
 import { PanelStartupCard } from "./components/panels/PanelStartupCard";
 import { GameLaunchCard } from "./components/panels/GameLaunchCard";
 import { addonKind, coreLabel, customProgram, findGame, gameOf, has, isCustom, isGame, kindOf, minecraftCores, portsOf, type Protocol } from "./lib/kinds";
@@ -117,6 +121,7 @@ import { CompareDialog } from "./components/dialogs/CompareDialog";
 import type { MapArea } from "./components/map/WorldMap";
 import { WorldSide } from "./components/map/WorldSide";
 import { MapShareDialog } from "./components/dialogs/MapShareDialog";
+import { lastViews } from "./components/map/views";
 import { DatapackPanel } from "./components/panels/DatapackPanel";
 import { TrimDialog } from "./components/dialogs/TrimDialog";
 import { DiskDialog } from "./components/dialogs/DiskDialog";
@@ -130,11 +135,17 @@ import { Badge, Banner, Button, Card, DropdownMenu, EmptyState, IconButton, Segm
 import { QrCode } from "./components/panels/QrCode";
 import { ConsoleLevels, ConsoleOutput, LogLines, type ConsoleLevel } from "./components/console/ConsoleOutput";
 import { ServerStats } from "./components/console/ServerStats";
+import { AdvancedMonitor } from "./components/monitor/AdvancedMonitor";
+import { AddonSettings } from "./components/monitor/AddonSettings";
+import { Integrations } from "./components/integrations/Integrations";
+import { iconKey, PluginSettings } from "./components/integrations/PluginSettings";
 import { FileRows } from "./components/files/FileRows";
 import { TextureView } from "./components/files/TextureView";
 import type { Cursor } from "./components/files/CodeEditor";
 import { languageName } from "./lib/fileLang";
+const BackupBrowser = lazy(() => import("./components/files/BackupBrowser").then((module) => ({ default: module.BackupBrowser })));
 const CodeEditor = lazy(() => import("./components/files/CodeEditor").then((module) => ({ default: module.CodeEditor })));
+const ModelView = lazy(() => import("./components/files/ModelView").then((module) => ({ default: module.ModelView })));
 const LangEditor = import.meta.env.DEV
   ? lazy(() => import("./components/dev/LangEditor").then((module) => ({ default: module.LangEditor })))
   : null;
@@ -150,6 +161,7 @@ import {
   fileSize,
   roughSize,
   isImage,
+  isViewable,
   isProxy,
   realVersion,
   relativeTime,
@@ -263,6 +275,7 @@ type Tool =
   | "addons"
   | "claude"
   | "reach"
+  | "integrations"
   | PanelView;
 type PlayerAction = "whitelist" | "operator" | "ban" | "kick";
 function sayWhatHappened(result: AddonAddResult) {
@@ -368,6 +381,7 @@ function versionSpan(list: string[]) {
 
 const REMOTE_TOOLS: string[] = [
   "overview",
+  "integrations",
   "claude",
   "console",
   "properties",
@@ -432,6 +446,12 @@ type SshJob = { kind: string; name: string; stage: string; sent: number; total: 
 const cores = minecraftCores;
 
 const isNative = (core: string) => !has(core, "java");
+const NO_GROUP = "\u0000none";
+const NEW_GROUP = "\u0000new";
+
+// Cores a server can switch between in place: same worlds and same Bukkit plugins.
+const SWITCH_CORES = ["Paper", "Purpur", "Leaf", "Folia"];
+
 const toolAllowed = (core: string, tool: Tool) => {
   if (tool === "properties") return has(core, "settings");
   if (tool === "worlds") return has(core, "worlds");
@@ -554,6 +574,7 @@ const instanceNav: {
   { id: "files", label: tr("Files"), icon: "folder" },
   { id: "worlds", label: tr("Worlds"), icon: "map" },
   { id: "addons", label: tr("Mods & plugins"), icon: "puzzle" },
+  { id: "integrations", label: tr("Integrations"), icon: "plug" },
   { id: "players", label: tr("Players"), icon: "users" },
   { id: "backups", label: tr("Backups"), icon: "backup" },
   { id: "logs", label: tr("Logs"), icon: "logs" },
@@ -568,6 +589,7 @@ const RAIL_GROUP: Partial<Record<Tool, "server" | "manage" | "status">> = {
   files: "manage",
   worlds: "manage",
   addons: "manage",
+  integrations: "manage",
   players: "manage",
   backups: "manage",
   logs: "status",
@@ -579,6 +601,7 @@ const panelNav: { id: Tool; label: string; icon: string; section?: string }[] = 
   { id: "claude", label: tr("Agent"), icon: "sparkles" },
   { id: "files", label: tr("Files"), icon: "folder" },
   { id: "addons", label: tr("Mods & plugins"), icon: "puzzle" },
+  { id: "integrations", label: tr("Integrations"), icon: "plug" },
   { id: "databases", label: tr("Databases"), icon: "database" },
   { id: "backups", label: tr("Backups"), icon: "backup" },
   { id: "network", label: tr("Network"), icon: "network" },
@@ -698,7 +721,6 @@ function App() {
   const [perfDays, setPerfDays] = useState<string[]>([]);
   const [perfDay, setPerfDay] = useState("");
   const [perfHistory, setPerfHistory] = useState<GameEvent[]>([]);
-  const [chartView, setChartView] = useState<"now" | "past">("now");
   const [logLevelView, setLogLevelView] = useState<ConsoleLevel>("all");
   const [lagReport, setLagReport] = useState<LagDiagnosis | null>(null);
   const [sparkStartedAt, setSparkStartedAt] = useState<number | null>(null);
@@ -826,6 +848,7 @@ function App() {
   const [waiting, setWaiting] = useState<WaitingAddon[]>([]);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [addonQuery, setAddonQuery] = useState("");
+  const [addonView, setAddonView] = useState<"list" | "settings">("list");
   const [addonFilter, setAddonFilter] = useState("all");
   const [addonTab, setAddonTab] = useState<"plugin" | "mod">("plugin");
   const [addonSort, setAddonSort] = useState("name");
@@ -1208,6 +1231,8 @@ function App() {
   const [mapSpawn, setMapSpawn] = useState<[number, number] | null>(null);
   const [backupList, setBackupList] = useState<BackupFile[]>([]);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [backupPick, setBackupPick] = useState<{ entries: { name: string; isDir: boolean }[]; picked: string[] } | null>(null);
+  const [backupOpen, setBackupOpen] = useState<BackupFile | null>(null);
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [theme, setThemeState] = useState<Theme>(readTheme);
   const [compact, setCompactState] = useState(readCompact);
@@ -1223,17 +1248,51 @@ function App() {
   const [itemNames, setItemNames] = useState<Record<string, string>>({});
   const [itemIcons, setItemIcons] = useState<Record<string, string>>({});
   const [enchantNames, setEnchantNames] = useState<Record<string, string>>({});
-  const [invTab, setInvTab] = useState<"bag" | "ender">("bag");
   const [live, setLive] = useState<LiveState | null>(null);
+  const [addonSettingsOpen, setAddonSettingsOpen] = useState(false);
+  const [sideClosed, setSideClosed] = useState(() => {
+    try {
+      return localStorage.getItem("monolab-console-side") === "closed";
+    } catch {
+      return false;
+    }
+  });
+  function closeSide(closed: boolean) {
+    setSideClosed(closed);
+    try {
+      localStorage.setItem("monolab-console-side", closed ? "closed" : "open");
+    } catch {
+      // Kept for this session only.
+    }
+  }
+  const [pluginLinks, setPluginLinks] = useState<PluginLinks | null>(null);
+  const [advancedMonitor, setAdvancedMonitor] = useState(() => {
+    try {
+      return localStorage.getItem("monolab-monitor-advanced") === "1";
+    } catch {
+      return false;
+    }
+  });
+  function toggleAdvancedMonitor(on: boolean) {
+    setAdvancedMonitor(on);
+    try {
+      localStorage.setItem("monolab-monitor-advanced", on ? "1" : "0");
+    } catch {
+      // Kept for this session only.
+    }
+  }
   const [automationHistory, setAutomationHistory] = useState<
     AutomationHistory[]
   >([]);
   const [upgradeHistory, setUpgradeHistory] = useState<UpgradeHistory[]>([]);
   const [upgradeVersion, setUpgradeVersion] = useState("");
+  const [upgradeCore, setUpgradeCore] = useState("");
   const [upgradeVersions, setUpgradeVersions] = useState<string[]>([]);
   const [worlds, setWorlds] = useState<World[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [fileImage, setFileImage] = useState<string | null>(null);
+  const [fileView, setFileView] = useState<FileView | null>(null);
+  const [modelShown, setModelShown] = useState(true);
   const [trashList, setTrashList] = useState<TrashFile[] | null>(null);
   const [trashBusy, setTrashBusy] = useState(false);
   const [browsePath, setBrowsePath] = useState("");
@@ -1245,7 +1304,7 @@ function App() {
   const [fileContent, setFileContent] = useState("");
   const [fileSaved, setFileSaved] = useState("");
   const [openTabs, setOpenTabs] = useState<string[]>([]);
-  const tabBuffers = useRef(new Map<string, { content: string; saved: string; image: string | null }>());
+  const tabBuffers = useRef(new Map<string, { content: string; saved: string; image: string | null; view?: FileView | null }>());
   const [editorCursor, setEditorCursor] = useState<Cursor>({ line: 1, column: 1, selected: 0, lines: 1 });
   useEffect(() => {
     if (activeFile) setOpenTabs((now) => (now.includes(activeFile) ? now : [...now, activeFile]));
@@ -1388,20 +1447,93 @@ function App() {
     if (!on) return;
     setPlaceMark({ left: on.offsetLeft, width: on.offsetWidth, ready: true });
   }, [place, instances, sshHosts, panelHosts]);
+  const [shownGroup, setShownGroup] = useState(() => {
+    try {
+      return localStorage.getItem("monolab-group-filter") ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const serverGroups = useMemo(
+    () => [...new Set(instances.map((one) => one.group).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [instances],
+  );
+  const groupShown = shownGroup && (shownGroup === NO_GROUP || serverGroups.includes(shownGroup)) ? shownGroup : "";
   const list = useMemo(
     () =>
       instances.filter(
         (item) =>
           item.name.toLowerCase().includes(filter.toLowerCase()) &&
           (!shownGame || gameOf(item.core) === shownGame) &&
+          (!groupShown || (groupShown === NO_GROUP ? !item.group : item.group === groupShown)) &&
           (place === "local"
             ? !item.remoteHost && !item.panelHost
             : place.startsWith("panel:")
               ? item.panelHost === place.slice(6)
               : item.remoteHost === place),
       ),
-    [instances, filter, place, shownGame],
+    [instances, filter, place, shownGame, groupShown],
   );
+  function showGroup(next: string) {
+    setShownGroup(next);
+    try {
+      localStorage.setItem("monolab-group-filter", next);
+    } catch {
+      // Kept for this session only.
+    }
+  }
+  async function pickGroup(instance: Instance) {
+    const choices = [
+      ...serverGroups.filter((one) => one !== instance.group).map((one) => ({ value: one, label: one })),
+      { value: NEW_GROUP, label: tr("New group…") },
+      ...(instance.group ? [{ value: NO_GROUP, label: tr("Remove from group") }] : []),
+    ];
+    const picked = await askChoice(tr("Group of {0}", [instance.name]), tr("Groups gather servers on the home screen so you can start or stop them together."), choices, choices[0].value, tr("Move"));
+    if (picked === null) return;
+    let group = picked === NO_GROUP ? "" : picked;
+    if (picked === NEW_GROUP) {
+      const named = (await askText(tr("New group"), tr("Group name"), "", tr("Create")))?.trim();
+      if (!named) return;
+      group = named;
+    }
+    await call(
+      () => commands.setServerGroup(instance.id, group),
+      group ? tr("Moved {0} to {1}.", [instance.name, group]) : tr("Took {0} out of its group.", [instance.name]),
+    );
+  }
+  async function startGroup(members: Instance[]) {
+    const waiting = members.filter((one) => one.status === "stopped" && !one.checking && !one.missing && !one.unreachable);
+    const skipped: string[] = [];
+    await call(async () => {
+      for (const one of waiting) {
+        const found = await commands.precheckInstance(one.id).catch(() => [] as Finding[]);
+        if (found.length) {
+          skipped.push(one.name);
+          continue;
+        }
+        await commands.startInstance(one.id);
+      }
+    }, tr("Started {0, plural, one {# server} other {# servers}}.", [waiting.length - skipped.length]));
+    if (skipped.length) setError(tr("{0} need a check before starting. Start them one by one.", [skipped.join(", ")]));
+  }
+  async function stopGroup(members: Instance[]) {
+    const running = members.filter((one) => one.status === "running");
+    if (!running.length) return;
+    if (!(await confirmAction(
+      tr("Stop {0, plural, one {# server} other {# servers}}?", [running.length]),
+      tr("{0} will be stopped. Players on them are disconnected.", [running.map((one) => one.name).join(", ")]),
+      tr("Stop"),
+      true,
+    ))) return;
+    await call(async () => {
+      for (const one of running) await commands.stopInstance(one.id);
+    }, tr("Stopping {0, plural, one {# server} other {# servers}}.", [running.length]));
+  }
+  async function renameGroup(group: string) {
+    const next = (await askText(tr("Rename group"), tr("Group name"), group, tr("Rename")))?.trim();
+    if (next === undefined || next === group) return;
+    if (await call(() => commands.renameServerGroup(group, next), next ? tr("Renamed the group to {0}.", [next]) : tr("Removed the group."))) showGroup(next);
+  }
   const remotePlaces = useMemo(
     () => [
       ...new Set([
@@ -1451,6 +1583,8 @@ function App() {
     const onlineNames = [...new Set(liveOnes.flatMap((one) => pings[one.id]?.names ?? []))];
     const ram = liveOnes.reduce((sum, one) => sum + (resources[one.id]?.memoryMib ?? 0), 0);
     const ramCap = liveOnes.reduce((sum, one) => sum + (has(one.core, "java") ? one.maxMemoryMib : 0), 0);
+    // Only the servers of the session tab being shown (this PC, or one SSH host / panel), never added across them.
+    const cpu = liveOnes.reduce((sum, one) => sum + (resources[one.id]?.cpuPercent ?? 0), 0);
     return list.length ? (
       <div className="monitor-grid list-summary">
         <div>
@@ -1460,6 +1594,10 @@ function App() {
         <div>
           <span>{tr("Running")}</span>
           <strong className={liveOnes.length ? "on" : ""}>{liveOnes.length}</strong>
+        </div>
+        <div>
+          <span>CPU</span>
+          <strong>{liveOnes.length ? `${Math.round(cpu)}%` : "—"}</strong>
         </div>
         <div className="player-peek-host">
           <span>{tr("Players")}</span>
@@ -1512,9 +1650,10 @@ function App() {
     body: string,
     choices: { value: string; label: string }[],
     value: string,
+    confirmLabel = tr("Download"),
   ): Promise<string | null> {
     return new Promise((resolve) =>
-      setAsk({ title, body, confirmLabel: tr("Download"), choices, value, resolve }),
+      setAsk({ title, body, confirmLabel, choices, value, resolve }),
     );
   }
   async function refreshInstances() {
@@ -1624,26 +1763,29 @@ function App() {
     }
     const snapshots = await Promise.all(
       running.map(async (instance) => {
-        const [resource, ping] = await Promise.allSettled([
+        const [resource, ping, live] = await Promise.allSettled([
           commands.getResourceSnapshot(instance.id),
           withPing && has(instance.core, "ping") ? commands.getServerPing(instance.id) : Promise.reject(new Error("skip")),
+          instance.panelHost ? Promise.reject(new Error("skip")) : commands.readLive(instance.id),
         ]);
-        return { instance, resource, ping };
+        return { instance, resource, ping, live };
       }),
     );
     const nextResources: Record<string, Resource> = {};
     for (const snapshot of snapshots) {
-      if (snapshot.resource.status === "fulfilled")
-        nextResources[snapshot.instance.id] = snapshot.resource.value;
+      if (snapshot.resource.status !== "fulfilled") continue;
+      // Java heap in use, from the add-on, like the console side panel and the Resources tab.
+      const heap = snapshot.live.status === "fulfilled" ? snapshot.live.value?.memoryMib : null;
+      nextResources[snapshot.instance.id] = heap ? { ...snapshot.resource.value, memoryMib: heap } : snapshot.resource.value;
     }
-    setResources(nextResources);
+    setResources((old) => keepSame(old, nextResources));
     if (withPing) {
       const nextPings: Record<string, Ping> = {};
       for (const snapshot of snapshots) {
         if (snapshot.ping.status === "fulfilled")
           nextPings[snapshot.instance.id] = snapshot.ping.value;
       }
-      setPings(nextPings);
+      setPings((old) => keepSame(old, nextPings));
     }
   }
   useEffect(() => {
@@ -1862,6 +2004,19 @@ function App() {
   const recentHistory = history.slice(-100);
   const monitorBusy = useRef(false);
   const monitorId = tool === "monitor" && selected?.status === "running" ? selected.id : null;
+  const linkServerId = selected?.id ?? null;
+  const linkRefresh = tool === "addons" ? 1 : tool === "integrations" ? 2 : 0;
+  useEffect(() => {
+    if (!linkServerId) return;
+    let gone = false;
+    commands
+      .pluginIntegrations(linkServerId)
+      .then((found) => !gone && setPluginLinks(found))
+      .catch(() => !gone && setPluginLinks(null));
+    return () => {
+      gone = true;
+    };
+  }, [linkServerId, linkRefresh]);
   useEffect(() => {
     if (!monitorId) return;
     if (monitorPeriod === null) return;
@@ -1875,9 +2030,9 @@ function App() {
         commands.getResourceHistory(id),
       ])
         .then(([nextResource, nextTps, nextHistory]) => {
-          setResource(nextResource);
-          setTps(nextTps);
-          setHistory(nextHistory);
+          setResource((old) => keepSame(old, nextResource));
+          setTps((old) => keepSame(old, nextTps));
+          setHistory((old) => keepSame(old, nextHistory));
         })
         .catch(() => undefined)
         .finally(() => {
@@ -2210,7 +2365,46 @@ function App() {
       setError(String(cause));
     }
   }
-  const snoozedUpdate = useRef<string | null>(null);
+  const [updateSnoozed, setUpdateSnoozed] = useState<string | null>(null);
+  const [appReleases, setAppReleases] = useState<AppRelease[] | null>(null);
+  const [pickedRelease, setPickedRelease] = useState("");
+  useEffect(() => {
+    if (onWeb || modal !== "settings" || appReleases) return;
+    commands.appReleases().then(setAppReleases).catch(() => setAppReleases([]));
+  }, [modal, appReleases]);
+  async function installAppVersion(version: string) {
+    const running = instances.filter(
+      (instance) => !instance.remoteHost && !instance.panelHost && instance.status === "running",
+    );
+    const older = compareVersions(version, appVersion) < 0;
+    const ok = await confirmAction(
+      tr("Install version {0}?", [version]),
+      [
+        older ? tr("Older versions may not read settings or data saved by a newer version. Back up important servers first.") : "",
+        running.length ? tr("{0} will be stopped before installing.", [running.map((instance) => instance.name).join(", ")]) : "",
+        tr("The update notice keeps showing. Choose Later to hide it until the app restarts."),
+      ].filter(Boolean).join(" "),
+      tr("Install"),
+    );
+    if (!ok) return;
+    setError(null);
+    setUpdateState({ stage: "downloading", version, percent: 0 });
+    const stop = await listenTo<{ received: number; total: number | null }>("app-version-download", (payload) => {
+      setUpdateState((current) => ({
+        ...current,
+        stage: "downloading",
+        percent: payload.total ? Math.round((payload.received / payload.total) * 100) : 0,
+      }));
+    });
+    try {
+      await commands.installAppVersion(version);
+    } catch (cause) {
+      setUpdateState({ stage: "idle" });
+      setError(String(cause));
+    } finally {
+      stop();
+    }
+  }
   async function checkForUpdate(quiet = false) {
     setUpdateState({ stage: "checking" });
     try {
@@ -2219,10 +2413,6 @@ function App() {
       if (!found) {
         setUpdateState({ stage: "none" });
         if (!quiet) setNotice(tr("You're on the latest version."));
-        return;
-      }
-      if (quiet && snoozedUpdate.current === found.version) {
-        setUpdateState({ stage: "none" });
         return;
       }
       setUpdateState({
@@ -2257,7 +2447,7 @@ function App() {
       let total = 0;
       let done = 0;
       setUpdateState((current) => ({ ...current, stage: "downloading", percent: 0 }));
-      await found.downloadAndInstall((event) => {
+      await found.download((event) => {
         if (event.event === "Started") {
           total = event.data.contentLength ?? 0;
         } else if (event.event === "Progress") {
@@ -2271,11 +2461,10 @@ function App() {
           setUpdateState((current) => ({ ...current, stage: "ready" }));
         }
       });
-      if (running.length) {
-        setUpdateState((current) => ({ ...current, stage: "stopping" }));
-        await commands.stopServersForUpdate();
-      }
+      if (running.length) setUpdateState((current) => ({ ...current, stage: "stopping" }));
+      await commands.stopServersForUpdate();
       setUpdateState((current) => ({ ...current, stage: "ready" }));
+      await found.install();
       const { relaunch } = await import("@tauri-apps/plugin-process");
       await relaunch();
     } catch (cause) {
@@ -2611,11 +2800,11 @@ function App() {
       setPlayerSnapshot(null);
       setPlayerTab("all");
       setAddonQuery("");
+      setAddonView("list");
       setAddonFilter("all");
       setPickedAddons([]);
       setLogQuery("");
       setLogLevelView("all");
-      setChartView("now");
       setShotView(null);
       setVersionOpen(false);
     }
@@ -2752,6 +2941,7 @@ function App() {
         setAuditEntries(nextAuditEntries);
       }
       if (next === "backups") {
+        setBackupOpen(null);
         setBackupList(
           await commands.listBackups(instance.id).catch(
             () => [] as BackupFile[],
@@ -2807,7 +2997,7 @@ function App() {
     if (next) openManage(next);
     else goHome();
   }
-  function openManage(instance: Instance) {
+  function openManage(instance: Instance, tool?: Tool) {
     setModal("none");
     setTaskDraft(null);
     setSelectedId(instance.id);
@@ -2830,7 +3020,7 @@ function App() {
     void loadConsoleLogs(instance);
     setUpgradeVersion(instance.version);
     setPage("instance");
-    void loadTool(instance.status === "running" || instance.status === "stopping" ? "console" : "overview", instance);
+    void loadTool(tool ?? (instance.status === "running" || instance.status === "stopping" ? "console" : "overview"), instance);
   }
   async function openConsole(instance: Instance) {
     setSelectedId(instance.id);
@@ -3176,6 +3366,15 @@ function App() {
       void refresh();
     }
   }
+  async function sendPlayerTo(name: string, x: number, z: number) {
+    if (!selected) return;
+    const instance = selected;
+    const y = await commands.mapSurfaceHeight(instance.id, mapLayer, x, z).catch(() => null);
+    const move = y == null ? `spreadplayers ${x + 0.5} ${z + 0.5} 0 1 false ${name}` : `tp ${name} ${x + 0.5} ${y} ${z + 0.5}`;
+    const dimension = ({ overworld: "minecraft:overworld", nether: "minecraft:the_nether", end: "minecraft:the_end" } as Record<string, string>)[mapRealm];
+    const line = dimension && !isNative(instance.core) ? `execute in ${dimension} run ${move}` : move;
+    await call(() => commands.sendConsoleCommand(instance.id, line), tr("Sent {0} to X {1} Z {2}.", [name, x, z]));
+  }
   async function sendConsoleCommand(value = command) {
     if (!selected || !value.trim()) return;
     const typed = value.trim();
@@ -3227,7 +3426,7 @@ function App() {
     if (!wants || !liveId) return;
     const read = () =>
       void commands.readLive(liveId)
-        .then(setLive)
+        .then((next) => setLive((old) => keepSameLive(old, next)))
         .catch(() => setLive(null));
     read();
     if (livePeriod === null) return;
@@ -3336,7 +3535,20 @@ function App() {
       return next;
     });
   }
-  async function makeBackup() {
+  async function openBackupPick() {
+    if (!selected) return;
+    try {
+      const page = await commands.browseServerFiles(selected.id, "", null, null);
+      const entries = page.entries
+        .filter((one) => !one.name.startsWith(".monolab"))
+        .map((one) => ({ name: one.name, isDir: one.isDir }))
+        .sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name));
+      setBackupPick({ entries, picked: [] });
+    } catch (cause) {
+      setError(String(cause));
+    }
+  }
+  async function makeBackup(worldsOnly = false, paths: string[] = []) {
     if (!selected) return;
     const instance = selected;
     if (
@@ -3352,7 +3564,8 @@ function App() {
     setBackupBusy(true);
     await call(
       async () => {
-        await commands.createBackup(instance.id, "Manual");
+        await commands.createBackup(instance.id, "Manual", worldsOnly, paths);
+        if (paths.length) setBackupPick(null);
         setBackupList(
           await commands.listBackups(instance.id),
         );
@@ -3368,7 +3581,9 @@ function App() {
     if (
       !(await confirmAction(
         tr("Restore the backup from {0}?", [date(one.createdAt)]),
-        tr("Replaces the server folder with this backup. The current state is backed up first, so you can restore it if you choose the wrong backup."),
+        one.worldsOnly
+          ? tr("Replaces only the worlds in this backup. Chunks made after it are deleted. The whole server is backed up first.")
+          : tr("Replaces the server folder with this backup. The current state is backed up first, so you can restore it if you choose the wrong backup."),
         tr("Restore"),
       ))
     ) {
@@ -3386,6 +3601,32 @@ function App() {
       tr("Restoring the backup…"),
     );
     setBackupBusy(false);
+  }
+  async function restoreBackupPaths(one: BackupFile, paths: string[]) {
+    if (!selected) return false;
+    const instance = selected;
+    if (
+      !(await confirmAction(
+        tr("Put back {0, plural, one {# item} other {# items}} from {1}?", [paths.length, date(one.createdAt)]),
+        tr("Only the chosen files and folders are replaced. Their current versions are backed up first."),
+        tr("Restore"),
+      ))
+    ) {
+      return false;
+    }
+    setBackupBusy(true);
+    let done = false;
+    await call(
+      async () => {
+        await commands.restoreBackupPaths(instance.id, one.fileName, paths);
+        setBackupList(await commands.listBackups(instance.id));
+        done = true;
+      },
+      tr("Restored the chosen files!"),
+      tr("Restoring the chosen files…"),
+    );
+    setBackupBusy(false);
+    return done;
   }
   async function deleteBackup(one: BackupFile) {
     if (!selected) return;
@@ -3506,6 +3747,7 @@ function App() {
     if (!selected) return;
     const instance = selected;
     setVersionOpen(true);
+    setUpgradeCore(instance.core);
     setUpgradeVersion(instance.version);
     setUpgradeBuilds([]);
     setUpgradeBuild("");
@@ -3514,7 +3756,17 @@ function App() {
     void commands.listCoreVersions(instance.core, false).then(setUpgradeVersions).catch(() => setUpgradeVersions([]));
     void loadUpgradeBuilds(instance.version);
   }
-  async function loadUpgradeBuilds(version: string) {
+  async function switchUpgradeCore(core: string) {
+    if (!selected) return;
+    setUpgradeCore(core);
+    setUpgradeVersions([]);
+    const list = await commands.listCoreVersions(core, upgradeSnapshots).catch(() => [] as string[]);
+    setUpgradeVersions(list);
+    const version = list.includes(upgradeVersion) ? upgradeVersion : (list[0] ?? "");
+    setUpgradeVersion(version);
+    if (version) void loadUpgradeBuilds(version, core);
+  }
+  async function loadUpgradeBuilds(version: string, core = upgradeCore || selected?.core || "") {
     if (!selected || isProxy(selected.core)) {
       setUpgradeBuilds([]);
       setUpgradeBuild("");
@@ -3522,7 +3774,7 @@ function App() {
     }
     setUpgradeBuildsBusy(true);
     try {
-      const list = await commands.listCoreBuilds(selected.core, version);
+      const list = await commands.listCoreBuilds(core, version);
       setUpgradeBuilds(list);
       const first = list.find((one) => one.stable) ?? list[0];
       setUpgradeBuild(first?.id ?? "");
@@ -3831,16 +4083,20 @@ function App() {
 
   const upgradeUnchanged =
     !!selected &&
+    (upgradeCore || selected.core) === selected.core &&
     upgradeVersion === selected.version &&
     (!upgradeBuild || upgradeBuild === selected.coreBuild);
   async function upgradeInstance(backup: boolean) {
     if (!selected || !upgradeVersion || upgradeUnchanged) return;
     const instance = selected;
     const sameVersion = upgradeVersion === instance.version;
+    const switching = !!upgradeCore && upgradeCore !== instance.core;
     const buildWord = upgradeBuild ? ` · ${tr("Build")} ${upgradeBuild}` : "";
     if (
       !(await confirmAction(
-        sameVersion
+        switching
+          ? tr("Switch {0} from {1} to {2}?", [instance.name, instance.core, `${upgradeCore} ${upgradeVersion}`])
+          : sameVersion
           ? tr("Switch to build {0}?", [upgradeBuild])
           : tr("Update {0} to {1}?", [instance.name, upgradeVersion + buildWord]),
         backup
@@ -3858,6 +4114,7 @@ function App() {
           targetVersion: upgradeVersion,
           targetBuild: upgradeBuild || null,
           skipBackup: !backup,
+          targetCore: switching ? upgradeCore : null,
         }),
       backup
         ? tr("Backed up the server and replaced the core file. Check mod and plugin compatibility before starting.")
@@ -3891,11 +4148,14 @@ function App() {
       await refresh();
     }
   }
-  async function browseTo(path: string) {
+  const [folderTrail, setFolderTrail] = useState<{ back: string[]; forward: string[] }>({ back: [], forward: [] });
+  async function browseTo(path: string, step: "go" | "back" | "forward" = "go") {
     if (!selected) return;
     try {
       setError(null);
       const page = await commands.browseServerFiles(selected.id, path, null, null);
+      const from = browsePath;
+      if (step === "go" && path !== from) setFolderTrail((trail) => ({ back: [...trail.back, from].slice(-50), forward: [] }));
       setBrowseEntries(page.entries);
       setBrowseTotal(page.total);
       setBrowsePath(path);
@@ -3925,7 +4185,7 @@ function App() {
     }
   }
   function stashActive() {
-    if (activeFile) tabBuffers.current.set(activeFile, { content: fileContent, saved: fileSaved, image: fileImage });
+    if (activeFile) tabBuffers.current.set(activeFile, { content: fileContent, saved: fileSaved, image: fileImage, view: fileView });
   }
   function showBuffer(path: string) {
     const kept = tabBuffers.current.get(path);
@@ -3934,10 +4194,12 @@ function App() {
     setFileContent(kept?.content ?? "");
     setFileSaved(kept?.saved ?? "");
     setFileImage(kept?.image ?? null);
+    setFileView(kept?.view ?? null);
   }
   function clearActive() {
     setActiveFile(null);
     setFileImage(null);
+    setFileView(null);
     setFileContent("");
     setFileSaved("");
   }
@@ -3959,6 +4221,22 @@ function App() {
   }
   async function goFolder(path: string) {
     await browseTo(path);
+  }
+  const trailServer = selected?.id ?? null;
+  useEffect(() => {
+    setFolderTrail({ back: [], forward: [] });
+  }, [trailServer]);
+  async function stepFolder(direction: "back" | "forward") {
+    const list = folderTrail[direction];
+    const target = list.at(-1);
+    if (target === undefined) return;
+    const here = browsePath;
+    setFolderTrail((trail) =>
+      direction === "back"
+        ? { back: trail.back.slice(0, -1), forward: [...trail.forward, here] }
+        : { back: [...trail.back, here], forward: trail.forward.slice(0, -1) },
+    );
+    await browseTo(target, direction);
   }
   async function closeFile() {
     if (!(await mayLeaveFile())) return;
@@ -4006,19 +4284,32 @@ function App() {
       return;
     }
     try {
-      if (isImage(path)) {
+      if (isImage(path) && !path.includes("!/")) {
         const url = await commands.readServerImage(selected.id, path);
         stashActive();
         setActiveFile(path);
         setFileImage(url);
+        setFileView(null);
         setFileContent("");
         setFileSaved("");
+        return;
+      }
+      if (isViewable(path)) {
+        const view = await commands.viewServerFile(selected.id, path);
+        const text = view.kind === "archive" || view.kind === "image" ? "" : view.text;
+        stashActive();
+        setActiveFile(path);
+        setFileImage(null);
+        setFileView(view);
+        setFileContent(text);
+        setFileSaved(text);
         return;
       }
       const text = await commands.readEditableFile(selected.id, path);
       stashActive();
       setActiveFile(path);
       setFileImage(null);
+      setFileView(null);
       setFileContent(text);
       setFileSaved(text);
     } catch (cause) {
@@ -4343,6 +4634,7 @@ function App() {
       ? tr("The server is running, so this is applied right away with a console command.") + (action === "kick" ? "" : " " + tr("The server updates its list file as well."))
       : tr("The server is stopped, so the list file is edited directly.");
     if (
+      action !== "whitelist" &&
       !(await confirmAction(
         askAbout(name, action, turningOff),
         body,
@@ -4437,7 +4729,6 @@ function App() {
       setError(null);
       const snapshot = await commands.readPlayerNbt(selected.id, player.uuid);
       setPlayerSnapshot(snapshot);
-      setInvTab("bag");
       const items = [...snapshot.inventory, ...snapshot.enderItems];
       const ids = items.map((one) => one.id);
       void loadItemNames(selected, ids);
@@ -6454,7 +6745,7 @@ function App() {
     </Card>
   );
 
-  const sidePanel = page === "instance" && (tool === "console" || (tool === "properties" && propsChanged.length > 0));
+  const sidePanel = page === "instance" && ((tool === "console" && !sideClosed) || (tool === "properties" && propsChanged.length > 0));
   const runControls = selected ? (
   <div className="wb-run">
     {!onWeb && !selected.remoteHost && !selected.panelHost && (
@@ -6558,6 +6849,11 @@ function App() {
                 placeholder={tr("Search logs")}
               />
             </label>
+            {sideClosed && (
+              <button type="button" className="wb-icon" aria-label={tr("Show status panel")} data-tip={tr("Show status panel")} onClick={() => closeSide(false)}>
+                <Icon name="panel-right" />
+              </button>
+            )}
           </div>
           <div className="wb-console-box">
           <ConsoleOutput serverId={selected.id} filter={consoleFilter} level={consoleLevel} />
@@ -6643,7 +6939,7 @@ function App() {
           </form>
           </div>
           </div>
-          {!wide && <ServerStats server={{ id: selected.id, name: selected.name, panelHost: selected.panelHost, maxMemoryMib: kindOf(selected.core).family === "minecraft" ? selected.maxMemoryMib : 0, port: selected.port, status: selected.status, uptimeSeconds: selected.uptimeSeconds }} onOpenPlayer={() => void loadTool("players")} />}
+          {!wide && <ServerStats server={{ id: selected.id, name: selected.name, panelHost: selected.panelHost, maxMemoryMib: kindOf(selected.core).family === "minecraft" ? selected.maxMemoryMib : 0, port: selected.port, status: selected.status, uptimeSeconds: selected.uptimeSeconds }} onOpenPlayer={() => void loadTool("players")} onOpenTool={(next) => void (next === "disk" ? loadTool("monitor").then(() => setDiskOpen(true)) : loadTool(next))} />}
           </div>
         </div>
       )}
@@ -7297,7 +7593,7 @@ function App() {
                   ))}
                 </div>
               )}
-          <fieldset className="props-lock" disabled={locked}>
+          <fieldset className="props-lock page-body" disabled={locked}>
             {shown.map((category) => {
               const rows = grouped.get(category) ?? [];
               const showIcon = category === "General" && !searching && properties.length > 0;
@@ -7536,6 +7832,14 @@ function App() {
             />
           </div>
           <nav className="wb-crumbs" aria-label={tr("Path")}>
+            <div className="file-steps">
+              <button type="button" className="wb-icon ghost" aria-label={tr("Back")} data-tip={tr("Back")} disabled={!folderTrail.back.length} onClick={() => void stepFolder("back")}>
+                <Icon name="arrow-left" />
+              </button>
+              <button type="button" className="wb-icon ghost" aria-label={tr("Forward")} data-tip={tr("Forward")} disabled={!folderTrail.forward.length} onClick={() => void stepFolder("forward")}>
+                <Icon name="arrow" />
+              </button>
+            </div>
             <button className={browsePath ? "" : "on"} onClick={() => void goFolder("")}>
               <Icon name="home" />
               {selected.name}
@@ -7590,7 +7894,7 @@ function App() {
                   {[...browseEntries]
                     .sort((left, right) => Number(right.isDir) - Number(left.isDir) || left.name.localeCompare(right.name))
                     .map((entry) => {
-                      const openable = entry.isDir || entry.editable || isImage(entry.name);
+                      const openable = entry.isDir || entry.editable || isImage(entry.name) || isViewable(entry.name);
                       const dirty =
                         (entry.path === activeFile && fileContent !== fileSaved) ||
                         (() => {
@@ -7651,6 +7955,7 @@ function App() {
                 <div className="ide-crumbs">
                   <button onClick={() => void goFolder("")}>{selected.name}</button>
                   {activeFile
+                    .split("!/")[0]
                     .split("/")
                     .slice(0, -1)
                     .map((piece, at, all) => (
@@ -7661,11 +7966,17 @@ function App() {
                     ))}
                   <span>
                     <Icon name="chevron" />
-                    {activeFile.split("/").pop()}
+                    {activeFile.includes("!/") ? activeFile.slice(activeFile.lastIndexOf("/", activeFile.indexOf("!/")) + 1) : activeFile.split("/").pop()}
                   </span>
-                  {locked && <span className="chip subtle">{tr("Read-only")}</span>}
+                  {(locked || fileView) && <span className="chip subtle">{tr("Read-only")}</span>}
                   <span className="ide-crumbs-gap" />
-                  {!fileImage && !locked && fileContent !== fileSaved && (
+                  {/\.bbmodel$/i.test(activeFile) && (
+                    <button className="ide-action" onClick={() => setModelShown((now) => !now)}>
+                      <Icon name={modelShown ? "file" : "box"} />
+                      {modelShown ? tr("Show code") : tr("3D view")}
+                    </button>
+                  )}
+                  {!fileImage && !fileView && !locked && fileContent !== fileSaved && (
                     <>
                       <button className="ide-action" onClick={() => setFileContent(fileSaved)}>
                         <Icon name="undo" />
@@ -7688,16 +7999,32 @@ function App() {
                 <div className="ide-body">
                   {fileImage ? (
                     <TextureView serverId={selected.id} path={activeFile} src={fileImage} />
+                  ) : modelShown && /\.bbmodel$/i.test(activeFile) ? (
+                    <Suspense fallback={null}>
+                      <ModelView source={fileContent} />
+                    </Suspense>
+                  ) : fileView?.kind === "image" ? (
+                    <div className="file-view-image"><img src={fileView.text} alt={activeFile.split("/").pop()} /></div>
+                  ) : fileView?.kind === "archive" ? (
+                    <div className="file-view-archive">
+                      {fileView.entries.map((entry) => (
+                        <button key={entry.path} onClick={() => void openFile(`${activeFile}!/${entry.path}`)}>
+                          <Icon name={isImage(entry.path) ? "image" : /\.(jar|zip)$/i.test(entry.path) ? "archive" : "file"} />
+                          <span>{entry.path}</span>
+                          <small>{fileSize(entry.size)}</small>
+                        </button>
+                      ))}
+                    </div>
                   ) : (
                     <Suspense fallback={null}>
                     <CodeEditor
                       key={activeFile}
-                      path={activeFile}
+                      path={fileView?.kind === "text" ? activeFile.replace(/\.gz$/i, "") : fileView ? `${activeFile}.view` : activeFile}
                       value={fileContent}
-                      readOnly={locked}
+                      readOnly={locked || !!fileView}
                       onChange={setFileContent}
                       onSave={() => {
-                        if (!locked) void saveFile();
+                        if (!locked && !fileView) void saveFile();
                       }}
                       onCursor={setEditorCursor}
                     />
@@ -7705,8 +8032,21 @@ function App() {
                   )}
                 </div>
                 <div className="ide-status">
-                  {fileImage ? (
+                  {fileImage || fileView?.kind === "image" ? (
                     <span>{tr("Image preview")}</span>
+                  ) : fileView ? (
+                    <span>
+                      {fileView.kind === "archive"
+                        ? tr("{0, plural, one {# file} other {# files}}", [fileView.entries.length])
+                        : fileView.note === "decompiled"
+                          ? tr("Decompiled with Vineflower. It may differ from the original source.")
+                          : fileView.kind === "nbt"
+                            ? tr("NBT data, read-only")
+                            : fileView.kind === "hex"
+                              ? tr("Not a text file, so it's shown as bytes.")
+                              : tr("Read-only")}
+                      {fileView.note === "truncated" && ` · ${tr("Only the beginning is shown.")}`}
+                    </span>
                   ) : fileContent !== fileSaved && !locked ? (
                     <>
                       <span className="ide-status-dirty">
@@ -7718,7 +8058,7 @@ function App() {
                     <span>{locked ? tr("Read-only") : tr("Saved")}</span>
                   )}
                   <span className="ide-status-gap" />
-                  {!fileImage && (
+                  {!fileImage && (!fileView || fileView.kind === "text") && !(modelShown && /\.bbmodel$/i.test(activeFile)) && (
                     <>
                       <span>
                         {tr("Ln {0}, Col {1}", [editorCursor.line, editorCursor.column])}
@@ -7925,6 +8265,8 @@ function App() {
                     ask: askMapLayer,
                   }}
                   stats={selected.panelHost ? null : fetchChunkStats}
+                  players={selected.status === "running" ? (live?.players ?? []).map((one) => one.name) : []}
+                  onSendPlayer={selected.status === "running" ? (name, x, z) => void sendPlayerTo(name, x, z) : null}
                   onDeleteArea={!selected.panelHost && ["overworld", "nether", "end"].includes(mapRealm) ? (area) => void deleteAreaChunks(area) : null}
                   onPregenArea={
                     has(selected.core, "pregen") && ["overworld", "nether", "end"].includes(mapRealm)
@@ -7948,7 +8290,16 @@ function App() {
         </div>
       )}
       {shareOpen && selected && (
-        <MapShareDialog server={selected} onClose={() => setShareOpen(false)} onNotice={setNotice} onOpen={(url) => void openExternal(url)} />
+        <MapShareDialog
+          server={selected}
+          spot={(() => {
+            const seen = lastViews.get(`${selected.id}/${mapRealm}`);
+            return seen ? [mapRealm, Math.round(seen.x), Math.round(seen.z), seen.scale.toFixed(3), 0, mapY ?? ""].join(",") : undefined;
+          })()}
+          onClose={() => setShareOpen(false)}
+          onNotice={setNotice}
+          onOpen={(url) => void openExternal(url)}
+        />
       )}
       {marksOpen && selected && (
         <div className="modal-backdrop roomy" onClick={() => setMarksOpen(false)}>
@@ -7980,6 +8331,7 @@ function App() {
             <span className="live-spacer" />
             {logTabs}
           </div>
+          <div className="page-body">
           {logView === "audit" && (
             <div className="log-view audit">
           <section className="audit-center">
@@ -7992,7 +8344,7 @@ function App() {
             </div>
             {auditEntries.length ? (
               <div className="audit-list">
-                {auditEntries.slice(0, 12).map((entry) => (
+                {auditEntries.map((entry) => (
                   <article key={entry.id}>
                     <b>{entry.category}</b>
                     <div>
@@ -8179,13 +8531,48 @@ function App() {
           </div>
             </div>
           )}
+          </div>
         </div>
       )}
-      {!toolLoading && tool === "backups" && (
+      {!toolLoading && tool === "backups" && backupOpen && (
+        <Suspense fallback={null}>
+          <BackupBrowser
+            key={backupOpen.fileName}
+            serverId={selected.id}
+            backup={backupOpen}
+            stopped={selected.status === "stopped" && !backupBusy}
+            onBack={() => setBackupOpen(null)}
+            onRestore={(paths) => restoreBackupPaths(backupOpen, paths)}
+          />
+        </Suspense>
+      )}
+      {!toolLoading && tool === "backups" && !backupOpen && (
         <div className="tool-content backup-page">
           <div className="wb-head">
             <h1>{tr("Backups")}</h1>
             <span className="live-spacer" />
+            {!selected.panelHost && has(selected.core, "worlds") && (
+              <button
+                className="button secondary wb-pill"
+                data-tip={tr("Stores only the world folders. Smaller and faster; restoring replaces only those worlds.")}
+                disabled={backupBusy}
+                onClick={() => void makeBackup(true)}
+              >
+                <Icon name="map" />
+                {tr("Back up worlds only")}
+              </button>
+            )}
+            {!selected.panelHost && (
+              <button
+                className="button secondary wb-pill"
+                data-tip={tr("Pick the folders and files to put in the backup.")}
+                disabled={backupBusy}
+                onClick={() => (backupPick ? setBackupPick(null) : void openBackupPick())}
+              >
+                <Icon name="check" />
+                {tr("Choose and back up")}
+              </button>
+            )}
             <button
               className="button primary wb-pill"
               data-tip={tr("Compresses and stores the entire server folder.")}
@@ -8196,6 +8583,46 @@ function App() {
               {backupBusy ? tr("Backing up…") : tr("Back up now")}
             </button>
           </div>
+          <div className="page-body">
+          {backupPick && (
+            <Card
+              className="backup-pick"
+              title={tr("Choose what to back up")}
+              aside={
+                <button type="button" className="wb-icon" aria-label={tr("Close")} data-tip={tr("Close")} onClick={() => setBackupPick(null)}>
+                  <Icon name="close" />
+                </button>
+              }
+            >
+              <div className="backup-pick-grid">
+                {backupPick.entries.map((one) => (
+                  <label key={one.name} className={`backup-pick-item ${backupPick.picked.includes(one.name) ? "on" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={backupPick.picked.includes(one.name)}
+                      onChange={() =>
+                        setBackupPick((was) =>
+                          was && { ...was, picked: was.picked.includes(one.name) ? was.picked.filter((name) => name !== one.name) : [...was.picked, one.name] },
+                        )
+                      }
+                    />
+                    <Icon name={one.isDir ? "folder" : "file"} />
+                    <span>{one.name}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="backup-pick-foot">
+                <button type="button" className="button ghost small" onClick={() => setBackupPick((was) => was && { ...was, picked: was.picked.length === was.entries.length ? [] : was.entries.map((one) => one.name) })}>
+                  {backupPick.picked.length === backupPick.entries.length ? tr("Deselect") : tr("Select all")}
+                </button>
+                <span className="live-spacer" />
+                <button type="button" className="button primary small" disabled={!backupPick.picked.length || backupBusy} onClick={() => void makeBackup(false, backupPick.picked)}>
+                  <Icon name="archive" />
+                  {tr("Back up {0, plural, one {# item} other {# items}}", [backupPick.picked.length])}
+                </button>
+              </div>
+            </Card>
+          )}
           <div className="monitor-grid backup-tiles">
             <div>
               <span>{tr("Backups")}</span>
@@ -8236,6 +8663,15 @@ function App() {
                   <code className="backup-size">
                     {(one.sizeMib ?? 0).toFixed(1)} MB
                   </code>
+                  {!selected.panelHost && (
+                    <button
+                      className="button secondary small"
+                      data-tip={tr("See what is inside, compare it with the server now and put back only some files.")}
+                      onClick={() => setBackupOpen(one)}
+                    >
+                      {tr("View files")}
+                    </button>
+                  )}
                   <button
                     className="button secondary small"
                     disabled={backupBusy || selected.status !== "stopped"}
@@ -8262,6 +8698,7 @@ function App() {
             <p className="muted tool-empty">
               {tr("No backups yet. Click \"Back up now\" at the top right.")}</p>
           )}
+          </div>
         </div>
       )}
       {!toolLoading && PANEL_VIEWS.includes(tool) && selected?.panelHost && (
@@ -8288,8 +8725,26 @@ function App() {
         <AgentPage key={selected.id} server={{ id: selected.id, name: selected.name }} onError={setError} />
         </Suspense>
       )}
+      {!toolLoading && tool === "integrations" && (
+        <Integrations
+          key={selected.id}
+          serverId={selected.id}
+          running={selected.status === "running"}
+          found={pluginLinks ?? { essentials: false, luckperms: "", extensions: [] }}
+          players={live?.players.map((one) => one.name) ?? []}
+          run={(command, done) => call(() => commands.sendConsoleCommand(selected.id, command), done)}
+          confirm={confirmAction}
+          askText={askText}
+          askChoice={askChoice}
+          onError={setError}
+          notify={setNotice}
+          openFile={(path) => void loadTool("files").then(() => openFile(path))}
+        />
+      )}
       {!toolLoading && tool === "monitor" && (() => {
         const mc = kindOf(selected.core).family === "minecraft";
+        // Live graphs while the server runs, the add-on's minute records once it's stopped.
+        const chartView = selected.status === "running" || perfHistory.length === 0 ? "now" : "past";
         return (
         <div className="tool-content monitor-page">
           {addon?.supported && (!addon.installed || addon.needsUpdate) && (
@@ -8341,28 +8796,38 @@ function App() {
           <div className="wb-head">
             <h1>{tr("Monitor")}</h1>
             <span className="live-spacer" />
-            {chartView === "past" && perfHistory.length > 0 && perfDays.length > 1 && (
+            {perfHistory.length > 0 && perfDays.length > 1 && selected.status !== "running" && (
               <Dropdown
                 value={perfDay}
                 onChange={(day) => void loadPerfHistory(day)}
                 options={perfDays.slice(0, 30).map((day) => ({ value: day, label: day }))}
               />
             )}
-            {perfHistory.length > 0 && (
-              <div className="wb-seg" role="tablist" aria-label={tr("Period")}>
-                {([["now", tr("Now")], ["past", tr("History")]] as const).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    role="tab"
-                    aria-selected={chartView === value}
-                    className={chartView === value ? "on" : ""}
-                    onClick={() => setChartView(value)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+            <div className="wb-seg slide" role="tablist" aria-label={tr("View")} style={{ "--at": advancedMonitor ? 1 : 0 } as CSSProperties}>
+              {([[false, tr("Basic")], [true, tr("Advanced")]] as const).map(([value, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  role="tab"
+                  aria-selected={advancedMonitor === value}
+                  className={advancedMonitor === value ? "on" : ""}
+                  onClick={() => toggleAdvancedMonitor(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {addon?.installed && (
+              <button
+                className={`wb-icon ${addonSettingsOpen ? "on" : ""}`}
+                aria-label={tr("Add-on settings")}
+                aria-pressed={addonSettingsOpen}
+                data-tip={tr("Add-on settings")}
+                onClick={() => setAddonSettingsOpen((now) => !now)}
+              >
+                <Icon name="puzzle" />
+                {addon.needsUpdate && <i className="wb-icon-dot" aria-hidden />}
+              </button>
             )}
             {!selected.panelHost && (
               <button className="wb-icon" aria-label={tr("Disk usage")} data-tip={tr("Disk usage")} onClick={() => setDiskOpen(true)}>
@@ -8387,6 +8852,8 @@ function App() {
                     : tr("TPS and player data require Monolab {0}.", [addon?.kind ?? tr("plugin")])}
             </p>
           </div>
+          <div className="page-body">
+          {selected.status === "running" && (
           <div className="monitor-grid">
             <div>
               <span>CPU</span>
@@ -8432,6 +8899,19 @@ function App() {
               </div>
             )}
           </div>
+          )}
+          {addonSettingsOpen && addon?.installed && <AddonSettings serverId={selected.id} serverName={selected.name} status={addon} onUpdate={installAddon} onError={setError} onClose={() => setAddonSettingsOpen(false)} />}
+          {advancedMonitor && selected.status !== "running" && (
+            <EmptyState icon="cpu" title={tr("Start the server to see the advanced view.")} hint={tr("Tick times, JVM details, memory areas and this PC's load appear while it runs.")} />
+          )}
+          {advancedMonitor && selected.status === "running" && (
+            <AdvancedMonitor
+              serverId={selected.id}
+              local={!selected.remoteHost && !selected.panelHost}
+              jvm={live?.jvm}
+              jvmCards={has(selected.core, "java") && !!kindOf(selected.core).addons}
+            />
+          )}
           {mc && selected.status === "running" && (
             <div className="monitor-insight">
               {lagCardView()}
@@ -8509,7 +8989,7 @@ function App() {
               </Card>
             </div>
           )}
-          {chartView === "past" && perfHistory.length > 0 ? null : selected.status !== "running" && history.length === 0 ? (
+          {(chartView === "past" && perfHistory.length > 0) || (advancedMonitor && selected.status !== "running") ? null : selected.status !== "running" && history.length === 0 ? (
             <EmptyState
               icon="cpu"
               title={mc ? tr("Start the server to see CPU, memory and TPS graphs.") : tr("Start the server to see CPU and memory graphs.")}
@@ -8552,7 +9032,7 @@ function App() {
             )}
           </div>
           )}
-          {chartView === "past" && perfHistory.length > 0 && (
+          {perfHistory.length > 0 && selected.status !== "running" && (
             <div className="perf-past">
               <div className="chart-stack">
                 <Sparkline
@@ -8588,6 +9068,7 @@ function App() {
               </div>
             </div>
           )}
+          </div>
         </div>
         );
       })()}
@@ -8608,6 +9089,7 @@ function App() {
             <span className="live-spacer" />
             <span className="reach-port" data-tip={tr("Addresses friends can use to join.")}>{proto} {span}</span>
           </div>
+          <div className="page-body">
           <div className="reach-tiles">
             {rows.map((row) => (
               <div className={`reach-tile${row.value ? "" : " off"}`} key={row.key}>
@@ -8637,6 +9119,7 @@ function App() {
               </div>
             ))}
           </div>
+          {kindOf(selected.core).proxy && !selected.panelHost && <ProxyNetwork key={selected.id} serverId={selected.id} onNotice={setNotice} />}
           {playitCard()}
           <div className="setting-card">
             <span className="setting-title">{tr("Port forwarding")}</span>
@@ -8644,6 +9127,7 @@ function App() {
               {tr("In your router, forward {0} {1} to {2}. Friends then join with your public IP.", [proto, span, lanIp || tr("this PC")])}
             </p>
             <small className="muted">{tr("Your home IP is visible to friends.")}</small>
+          </div>
           </div>
         </div>
         );
@@ -8721,6 +9205,20 @@ function App() {
               </Banner>
             )}
             <div className="version-pick">
+              {(SWITCH_CORES.includes(selected.core) || selected.core === "Vanilla") && (
+                <div className="version-field">
+                  <span className="field-label">{tr("Core")}</span>
+                  <Dropdown
+                    value={upgradeCore || selected.core}
+                    onChange={(core) => void switchUpgradeCore(core)}
+                    options={[selected.core, ...SWITCH_CORES.filter((one) => one !== selected.core)].map((core) => ({
+                      value: core,
+                      label: core === selected.core ? tr("{0} (now)", [core]) : core,
+                      hint: core === "Folia" && core !== selected.core ? tr("Many plugins don't run on Folia") : undefined,
+                    }))}
+                  />
+                </div>
+              )}
               <div className="version-field">
                 <span className="field-label">
                   {tr("Minecraft version")}
@@ -8733,7 +9231,7 @@ function App() {
                         onChange={(event) => {
                           const on = event.target.checked;
                           setUpgradeSnapshots(on);
-                          void commands.listCoreVersions(selected.core, on).then(setUpgradeVersions).catch(() => {});
+                          void commands.listCoreVersions(upgradeCore || selected.core, on).then(setUpgradeVersions).catch(() => {});
                         }}
                       />
                       <span />
@@ -8758,7 +9256,7 @@ function App() {
               {!isProxy(selected.core) && (upgradeBuildsBusy || upgradeBuilds.length > 0) && (
                 <div className="version-field">
                   <span className="field-label">
-                    {selected.core === "Fabric" ? tr("Loader version") : tr("Core build")}
+                    {(upgradeCore || selected.core) === "Fabric" ? tr("Loader version") : tr("Core build")}
                   </span>
                   <Dropdown
                     className="mono"
@@ -8990,6 +9488,7 @@ function App() {
               <Icon name="refresh" />
             </button>
           </div>
+          <div className="page-body">
           <div className="player-add">
             <input
               value={playerName}
@@ -9041,8 +9540,9 @@ function App() {
                   />
                 )}
                 <div>
-                  <strong>{playerSnapshot.live ? tr("Live player data") : tr("Saved player data")}</strong>
+                  <strong>{players.find((one) => one.uuid === playerSnapshot.uuid)?.name ?? (playerSnapshot.live ? tr("Live player data") : tr("Saved player data"))}</strong>
                   <small>
+                    {players.some((one) => one.uuid === playerSnapshot.uuid) && <>{playerSnapshot.live ? tr("Live player data") : tr("Saved player data")} · </>}
                     {playerSnapshot.dimension || tr("No dimension info")}
                     {playerSnapshot.live
                       ? <> · {tr("Refreshes every 5 seconds")}</>
@@ -9085,13 +9585,14 @@ function App() {
                 </div>
               </div>
               {(playerSnapshot.inventory.length > 0 || playerSnapshot.enderItems.length > 0) && (() => {
-                const shown = invTab === "ender" ? playerSnapshot.enderItems : playerSnapshot.inventory;
+                const shown = [...playerSnapshot.inventory, ...playerSnapshot.enderItems];
                 const editable = selected.status === "stopped" && !selected.panelHost && !playerSnapshot.live;
-                const bySlot = new Map(shown.map((one) => [one.slot, one]));
+                const bagSlots = new Map(playerSnapshot.inventory.map((one) => [one.slot, one]));
+                const enderSlots = new Map(playerSnapshot.enderItems.map((one) => [one.slot, one]));
                 const row = (from: number, count: number) =>
                   Array.from({ length: count }, (_, at) => from + at);
-                const slot = (at: number, mark?: string) => {
-                  const item = bySlot.get(at);
+                const slot = (at: number, mark?: string, ender = false) => {
+                  const item = (ender ? enderSlots : bagSlots).get(at);
                   if (!item) {
                     return (
                       <div className="inv-slot empty" key={at}>
@@ -9124,7 +9625,7 @@ function App() {
                     <div
                       className={`inv-slot${item.enchantments.length ? " enchanted" : ""}${editable ? " editable" : ""}`}
                       key={at}
-                      onClick={editable ? () => void editSavedItem(item, invTab === "ender") : undefined}
+                      onClick={editable ? () => void editSavedItem(item, ender) : undefined}
                       data-tip={lines.join("\n")}
                     >
                       {icon ? (
@@ -9133,6 +9634,10 @@ function App() {
                         <span className="inv-unknown">?</span>
                       )}
                       {item.count > 1 && <b>{item.count}</b>}
+                      {most > 0 && item.damage > 0 && (() => {
+                        const left = Math.max(0, most - item.damage) / most;
+                        return <i className={`inv-dura ${left > 0.5 ? "ok" : left > 0.2 ? "warn" : "danger"}`} style={{ "--left": left } as CSSProperties} aria-hidden />;
+                      })()}
                     </div>
                   );
                 };
@@ -9143,28 +9648,9 @@ function App() {
                   );
                 return (
                   <>
-                  <SegmentedControl
-                    className="page-tabs"
-                    value={invTab}
-                    onChange={setInvTab}
-                    options={[
-                      { value: "bag", label: tr("Inventory") },
-                      { value: "ender", label: `${tr("Ender chest")} ${playerSnapshot.enderItems.length}` },
-                    ]}
-                  />
-                  {invTab === "ender" ? (
+                  <div className="inv-pair">
                   <div className="inv-screen">
-                    <div className="inv-bag">
-                      {row(0, 27).map((at) => slot(at))}
-                    </div>
-                    {unknown.length > 0 && (
-                      <p className="inv-unknown-list">
-                        <b>?</b> {[...new Set(unknown)].join(" · ")}
-                      </p>
-                    )}
-                  </div>
-                  ) : (
-                  <div className="inv-screen">
+                    <span className="inv-title">{tr("Inventory")}</span>
                     <div className="inv-gear">
                       <div className="inv-row four">
                         {[
@@ -9174,9 +9660,7 @@ function App() {
                           [100, tr("Feet")],
                         ].map(([at, mark]) => slot(at as number, mark as string))}
                       </div>
-                      <span className="inv-label">{tr("Armor")}</span>
                       <div className="inv-row one">{slot(-106, tr("Offhand"))}</div>
-                      <span className="inv-label">{tr("Offhand")}</span>
                     </div>
                     <div className="inv-bag">
                       {row(9, 27).map((at) => slot(at))}
@@ -9184,12 +9668,18 @@ function App() {
                     <div className="inv-hotbar">
                       {row(0, 9).map((at) => slot(at))}
                     </div>
-                    {unknown.length > 0 && (
-                      <p className="inv-unknown-list">
-                        <b>?</b> {[...new Set(unknown)].join(" · ")}
-                      </p>
-                    )}
                   </div>
+                  <div className="inv-screen">
+                    <span className="inv-title">{`${tr("Ender chest")} ${playerSnapshot.enderItems.length}`}</span>
+                    <div className="inv-bag">
+                      {row(0, 27).map((at) => slot(at, undefined, true))}
+                    </div>
+                  </div>
+                  </div>
+                  {unknown.length > 0 && (
+                    <p className="inv-unknown-list">
+                      <b>?</b> {[...new Set(unknown)].join(" · ")}
+                    </p>
                   )}
                   </>
                 );
@@ -9390,10 +9880,11 @@ function App() {
               </>
             );
           })()}
+          </div>
         </div>
       )}
       {!toolLoading && tool === "addons" && (
-        <div className={`tool-content addon-page ${dropping ? "dropping" : ""}`}>
+        <div className={`tool-content addon-page ${dropping ? "dropping" : ""} ${addonView === "settings" && addonKind(selected.core) ? "settings" : ""}`}>
           {dropping && (
             <div className="drop-veil">
               <Icon name="import" />
@@ -9421,6 +9912,15 @@ function App() {
           )}
           <div className="wb-head addon-bar">
             <h1>{addonKind(selected.core) === "mod" ? tr("Mods") : tr("Plugins")}</h1>
+            {addonKind(selected.core) && (
+              <div className="wb-seg slide addon-view" role="tablist" aria-label={tr("View")} style={{ "--at": addonView === "settings" ? 1 : 0 } as CSSProperties}>
+                {([["list", addonKind(selected.core) === "mod" ? tr("Mods") : tr("Plugins")], ["settings", tr("Settings")]] as const).map(([value, label]) => (
+                  <button key={value} type="button" role="tab" aria-selected={addonView === value} className={addonView === value ? "on" : ""} onClick={() => setAddonView(value)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
             <span className="live-spacer" />
             {!addonKind(selected.core) && tabAddons.length === 0 && (
               <p className="muted addon-note">
@@ -9480,6 +9980,22 @@ function App() {
             </>
             )}
           </div>
+          {addonView === "settings" && addonKind(selected.core) && (
+            <PluginSettings
+              serverId={selected.id}
+              mods={addonKind(selected.core) === "mod"}
+              running={selected.status === "running"}
+              icons={Object.fromEntries(
+                addons.flatMap((one) => {
+                  const icon = one.icon || addonCards[one.fileName]?.iconUrl;
+                  if (!icon) return [];
+                  const file = one.fileName.replace(/(\.(jar|disabled))+$/i, "").replace(/[-_ ]+v?\d.*$/i, "");
+                  return [[iconKey(file), icon], [iconKey(addonCards[one.fileName]?.title || ""), icon], [iconKey(one.name), icon]];
+                }).filter(([key]) => key),
+              )}
+              onError={setError}
+            />
+          )}
 
           {tabAddons.length > 0 && (
           <div className="addon-filters">
@@ -10079,6 +10595,7 @@ function App() {
             return (selected.panelHost ? panelNav : instanceNav).map((item) => {
               if (!toolAllowed(selected.core, item.id)) return null;
               if (item.id === "claude" && onWeb) return null;
+              if (item.id === "integrations" && kindOf(selected.core).addons === null && !(pluginLinks?.essentials || pluginLinks?.luckperms || pluginLinks?.extensions.length)) return null;
               if (item.id === "software" && (panelHostViews.find((one) => one.id === selected.panelHost)?.kind ?? "hydrodactyl") !== "hydrodactyl") return null;
               const live = selected.status === "running" || selected.status === "stopping";
               const slot =
@@ -10245,6 +10762,19 @@ function App() {
                 placeholder={t("top.search")}
               />
             </label>
+            {serverGroups.length > 0 && (
+              <Dropdown
+                className="group-filter"
+                value={groupShown}
+                align="end"
+                options={[
+                  { value: "", label: tr("All groups") },
+                  ...serverGroups.map((one) => ({ value: one, label: one, hint: String(instances.filter((item) => item.group === one).length) })),
+                  { value: NO_GROUP, label: tr("No group") },
+                ]}
+                onChange={showGroup}
+              />
+            )}
             <GameFilter
               value={shownGame}
               counts={gameCounts}
@@ -10312,7 +10842,23 @@ function App() {
                   ))}
                 </div>
               )}
-              {summaryPills}
+              {groupShown && groupShown !== NO_GROUP && (
+                <div className="group-bar">
+                  <strong>{groupShown}</strong>
+                  <Button variant="secondary" size="sm" onClick={() => void startGroup(list)} disabled={!list.some((one) => one.status === "stopped")}>
+                    <Icon name="play" />
+                    {tr("Start all")}
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => void stopGroup(list)} disabled={!list.some((one) => one.status === "running")}>
+                    <Icon name="stop" />
+                    {tr("Stop all")}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => void renameGroup(groupShown)}>
+                    <Icon name="pencil" />
+                    {tr("Rename group")}
+                  </Button>
+                </div>
+              )}
               {!onWeb && (
                 <div className="place-actions">
                   <button
@@ -10364,6 +10910,7 @@ function App() {
             />
           ) : list.length || creating ? (
             <>
+            {summaryPills && <div className="home-summary">{summaryPills}</div>}
             {(() => {
               const card = (item: Instance) => {
                 const live = item.status === "running" || item.status === "stopping";
@@ -10399,6 +10946,7 @@ function App() {
                         </span>
                         <span className="sc-meta-text">
                           {coreLabel(item.core, item.version)} · :{item.port}
+                          {!live && item.lastRunAt ? ` · ${tr("Last run {0}", [relativeTime(item.lastRunAt)])}` : ""}
                         </span>
                         {hostChip(item)}
                       </p>
@@ -10451,6 +10999,7 @@ function App() {
                         }
                         items={[
                           { label: t("card.rename"), icon: "pencil", onSelect: () => void renameInstance(item) },
+                          { label: item.group ? tr("Group: {0}", [item.group]) : tr("Add to a group"), icon: "layers", onSelect: () => void pickGroup(item) },
                           ...(!item.panelHost && item.status === "stopped"
                             ? [{ label: t("card.duplicate"), icon: "copy", onSelect: () => void duplicateInstance(item) }]
                             : []),
@@ -10467,11 +11016,11 @@ function App() {
                     </div>
                     {live && (
                       <div className="sc-tiles">
-                        <div>
+                        <div className="sc-link" onClick={(event) => { event.stopPropagation(); openManage(item, "monitor"); }}>
                           <span>CPU</span>
                           <strong>{res ? orDash(res.cpuPercent ?? 0, (v) => `${Math.round(v)}%`) : "—"}</strong>
                         </div>
-                        <div>
+                        <div className="sc-link" onClick={(event) => { event.stopPropagation(); openManage(item, "monitor"); }}>
                           <span>{tr("Memory")}</span>
                           <strong>
                             {res ? used(res.memoryMib) : "—"}
@@ -10479,7 +11028,7 @@ function App() {
                           </strong>
                         </div>
                         {has(item.core, "ping") && (
-                          <div className="player-peek-host">
+                          <div className="player-peek-host sc-link" onClick={(event) => { event.stopPropagation(); openManage(item, "players"); }}>
                             <span>{tr("Players")}</span>
                             <strong>
                               {pings[item.id] ? (
@@ -10492,6 +11041,16 @@ function App() {
                               )}
                             </strong>
                             {pings[item.id] && <PlayerPeek names={pings[item.id].names} online={pings[item.id].online} />}
+                          </div>
+                        )}
+                        {item.uptimeSeconds != null && (
+                          <div>
+                            <span>{tr("Uptime")}</span>
+                            <strong>
+                              {item.uptimeSeconds >= 3600
+                                ? tr("{0} h {1} min", [Math.floor(item.uptimeSeconds / 3600), Math.floor((item.uptimeSeconds % 3600) / 60)])
+                                : tr("{0} min", [Math.floor(item.uptimeSeconds / 60)])}
+                            </strong>
                           </div>
                         )}
                       </div>
@@ -10604,10 +11163,15 @@ function App() {
                   </small>
                 )}
               </div>
+              {tool === "console" && (
+                <button type="button" className="wb-icon ghost" aria-label={tr("Hide status panel")} data-tip={tr("Hide status panel")} onClick={() => closeSide(true)}>
+                  <Icon name="panel-right" />
+                </button>
+              )}
             </div>
             {hostChip(selected)}
             {tool === "console" && wide && selected.status === "running" && (
-              <ServerStats bare server={{ id: selected.id, name: selected.name, panelHost: selected.panelHost, maxMemoryMib: kindOf(selected.core).family === "minecraft" ? selected.maxMemoryMib : 0, port: selected.port, status: selected.status, uptimeSeconds: selected.uptimeSeconds }} onOpenPlayer={() => void loadTool("players")} />
+              <ServerStats bare server={{ id: selected.id, name: selected.name, panelHost: selected.panelHost, maxMemoryMib: kindOf(selected.core).family === "minecraft" ? selected.maxMemoryMib : 0, port: selected.port, status: selected.status, uptimeSeconds: selected.uptimeSeconds }} onOpenPlayer={() => void loadTool("players")} onOpenTool={(next) => void (next === "disk" ? loadTool("monitor").then(() => setDiskOpen(true)) : loadTool(next))} />
             )}
             {tool === "properties" && propsChanged.length > 0 && (
               <div className="wb-changes">
@@ -11436,6 +12000,32 @@ function App() {
                       )}
                     </div>
                   </div>
+                  {!onWeb && (
+                  <div className="setting-row">
+                    <div>
+                      <strong>{tr("Install another version")}</strong>
+                      <small>{appReleases === null ? tr("Loading…") : appReleases.length ? tr("Older versions too") : tr("Could not load the version list.")}</small>
+                    </div>
+                    <div className="setting-buttons">
+                      <Dropdown
+                        value={pickedRelease}
+                        disabled={!appReleases?.length || updateState.stage === "downloading"}
+                        placeholder={tr("Version")}
+                        align="end"
+                        options={(appReleases ?? [])
+                          .filter((release) => release.version !== appVersion)
+                          .map((release) => ({ value: release.version, label: release.version, hint: release.published }))}
+                        onChange={setPickedRelease}
+                      />
+                      <button
+                        className="button secondary small"
+                        disabled={!pickedRelease || updateState.stage === "downloading"}
+                        onClick={() => void installAppVersion(pickedRelease)}
+                      >
+                        {tr("Install")}</button>
+                    </div>
+                  </div>
+                  )}
                     </div>
                   </section>
                   <section className="settings-group">
@@ -12487,7 +13077,7 @@ function App() {
             </div>
           </div>
         )}
-        {(updateState.stage === "found" ||
+        {((updateState.stage === "found" && updateSnoozed !== updateState.version) ||
           updateState.stage === "downloading" ||
           updateState.stage === "stopping" ||
           updateState.stage === "ready") && (
@@ -12512,7 +13102,7 @@ function App() {
                 <button
                   className="task-cancel"
                   data-tip={tr("Later")}
-                  onClick={() => { snoozedUpdate.current = updateState.version ?? null; setUpdateState({ stage: "none" }); }}
+                  onClick={() => setUpdateSnoozed(updateState.version ?? null)}
                 >
                   {tr("Later")}</button>
               )}

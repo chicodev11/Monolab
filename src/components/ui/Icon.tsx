@@ -1,12 +1,12 @@
 import {
   Layers, ListFilter,
-  PanelLeftClose, PanelLeftOpen, Paperclip, Archive, Monitor, ArrowUp, ArrowDown, ArrowRight, Ban, Check, ChevronDown, Clock, Cloud, Copy, Cpu, Download,
+  PanelLeftClose, PanelLeftOpen, PanelRight, Paperclip, Archive, Monitor, ArrowUp, ArrowDown, ArrowRight, Ban, Check, ChevronDown, Clock, Cloud, Copy, Cpu, Download,
   Ellipsis, FileText, Folder, House, Info, List, LogOut, Map as MapIcon, MemoryStick, Pencil,
   Pause, Play, Plug, Plus, Minus, RefreshCw, Search, Server, Settings, Shield, Square, Tag, Terminal,
   Trash2, TriangleAlert, Undo2, X, LayoutGrid, Grid3x3, type LucideIcon,
   Compass, Sparkles, Coins, Sword, Utensils, Cog, Library, WandSparkles, Gamepad2, Skull, Gauge,
   MessageCircle, Package, Truck, Wrench, Mountain, Ghost, Puzzle, Heart, User, ShieldCheck, Blocks,
-  Power, PowerOff,
+  Power, PowerOff, Box,
   Image as ImageIcon,
   Sun, Moon,
   Database, Network, Users, SlidersVertical, CalendarClock, ChartLine, CloudUpload, SquareTerminal,
@@ -17,6 +17,8 @@ import {
 
 const ICONS: Record<string, LucideIcon> = {
   map: MapIcon,
+  "panel-right": PanelRight,
+  box: Box,
   disk: HardDrive,
   sun: Sun,
   moon: Moon,

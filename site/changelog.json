@@ -1,6 +1,47 @@
 [
   {
     "kind": "app",
+    "version": "1.6.2",
+    "date": "2026-10-29",
+    "added": [
+      "Plugin and mod settings: config files are found on their own and shown as a form with switches and fields, or opened right there in the code editor.",
+      "Integrations tab for EssentialsX, LuckPerms and plugins that describe themselves with monolab.json or the Monolab add-on API.",
+      "Open more kinds of files: decompiled .class files, what's inside .jar and .zip files, NBT data, images, and a 3D view for .bbmodel models.",
+      "Browse the files inside a backup, compare them with the server, and restore only the ones you pick.",
+      "Back up worlds only.",
+      "Server groups on the home screen, with start all and stop all.",
+      "Change a server's core between Paper, Purpur, Leaf and Folia, or from Vanilla to one of them.",
+      "A Velocity proxy can connect servers on this PC, on the same SSH host, or SSH servers from a local proxy. Forwarding is set up for you.",
+      "Advanced mode in the Resources tab: tick times, memory areas, garbage collection, threads and CPU per core (add-on 34 or later).",
+      "Install another app version from Settings.",
+      "Add-on settings: turn the live map, web map, inventories and other add-on features on or off from the app.",
+      "Save the visible map as a PNG, send a player to a spot on the map, and share a map link that opens at the same place and height.",
+      "The player window shows the ender chest beside the inventory, with durability bars under damaged items.",
+      "Back and forward buttons in the Files tab.",
+      "The home screen shows total CPU use for each session.",
+      "Choose which folders and files go into a backup."
+    ],
+    "changed": [
+      "Page titles and tabs stay in place while only the content scrolls.",
+      "Chunk filters on the map no longer lag and move together with the map; the map uses less CPU.",
+      "The console side panel can be folded, and its numbers open the matching tab.",
+      "\"Later\" on the update notice hides it until the app restarts.",
+      "Adding a player to the whitelist no longer asks for confirmation.",
+      "Korean text is clearer, and error messages say what happened and what to do.",
+      "Plugin pages and the Integrations tab use the space better.",
+      "The home screen shows summary tiles on top, uptime on running servers, and when stopped servers last ran.",
+      "Plugin lists, logs, the disk dialog and server settings scroll inside their own box.",
+      "Starter prompts in the Claude agent are sent in English, which uses fewer tokens."
+    ],
+    "fixed": [
+      "Saplings, beds, shields and shelf mushrooms show proper icons in inventories.",
+      "Paper servers no longer warn about legacy material support (add-on 35).",
+      "The size column in the Files tab lines up with its header.",
+      "The chunk pre-generation install button showed a wrong word in Korean."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.6.1",
     "date": "2026-10-29",
     "added": [

@@ -17,7 +17,7 @@ final class CommandDump {
 
     static void write(
             Path folder, String key, List<String> entries, BiConsumer<String, Throwable> onTrouble) {
-        if (entries.isEmpty()) {
+        if (entries.isEmpty() || !AddonConfig.on("commands")) {
             return;
         }
         StringBuilder text = new StringBuilder(entries.size() * 96);

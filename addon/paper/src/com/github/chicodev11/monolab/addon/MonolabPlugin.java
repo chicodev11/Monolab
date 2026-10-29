@@ -37,6 +37,7 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
                 eventFolder(),
                 (message, error) -> getLogger().log(Level.WARNING, message, error));
         getServer().getPluginManager().registerEvents(this, this);
+        MonolabApi.serverThread(task -> getServer().getGlobalRegionScheduler().execute(this, task));
         flusher =
                 getServer()
                         .getAsyncScheduler()
@@ -85,13 +86,12 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
                 getServer().getWorldContainer().toPath().toAbsolutePath(),
                 eventFolder().resolve("map"),
                 (message, error) -> getLogger().log(Level.WARNING, message, error));
-        for (org.bukkit.Material material : org.bukkit.Material.values()) {
+        // The block registry, not Material.values(): touching LEGACY_* materials makes Paper load legacy support.
+        for (org.bukkit.block.BlockType type : io.papermc.paper.registry.RegistryAccess.registryAccess()
+                .getRegistry(io.papermc.paper.registry.RegistryKey.BLOCK)) {
             try {
-                if (!material.isBlock()) {
-                    continue;
-                }
-                org.bukkit.block.data.BlockData data = material.createBlockData();
-                String key = material.getKey().toString();
+                org.bukkit.block.data.BlockData data = type.createBlockData();
+                String key = type.getKey().toString();
                 map.color(key, data.getMapColor().asRGB());
                 if (data instanceof org.bukkit.block.data.Orientable orientable) {
                     for (org.bukkit.Axis axis : orientable.getAxes()) {
@@ -102,7 +102,7 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
                     }
                 }
             } catch (RuntimeException skipped) {
-                // Legacy materials with no block data.
+                // A block this server can't make data for.
             }
         }
         map.game(getServer().getMinecraftVersion());
@@ -209,6 +209,11 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
     }
 
     @EventHandler
+    public void onTickEnd(com.destroystokyo.paper.event.server.ServerTickEndEvent event) {
+        JvmStats.tick((long) (event.getTickDuration() * 1_000_000.0));
+    }
+
+    @EventHandler
     public void onLoaded(ServerLoadEvent event) {
         try {
             dumpCommands();
@@ -264,6 +269,9 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
     }
 
     private void logPerf() {
+        if (!AddonConfig.on("performance-log")) {
+            return;
+        }
         Runtime runtime = Runtime.getRuntime();
         long usedMib = (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024);
         log.add(new Json()
@@ -304,7 +312,7 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
         }
         people.append(']');
         EntityTally tally = tallyEntities();
-        if (!inventoriesBroken && liveCount % LoadedChunks.EVERY_SECONDS == 0) {
+        if (!inventoriesBroken && liveCount % LoadedChunks.EVERY_SECONDS == 0 && AddonConfig.on("inventories")) {
             try {
                 log.setInventories(inventories());
             } catch (RuntimeException | LinkageError trouble) {
@@ -332,6 +340,7 @@ public final class MonolabPlugin extends JavaPlugin implements Listener {
                 .raw("hotspots", tally.hotspotsJson())
                 .raw("worlds", tally.worldsJson())
                 .raw("players", people.toString())
+                .raw("jvm", JvmStats.json())
                 .end());
     }
 

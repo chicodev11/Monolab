@@ -33,6 +33,7 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
                 liveChunks = null;
             }
         });
+        ServerTickEvents.START_SERVER_TICK.register(server -> JvmStats.tickStart());
         ServerTickEvents.END_SERVER_TICK.register(this::onTick);
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents.CHUNK_LOAD.register((world, chunk, generated) ->
                 chunks.load(Bridge.worldIdOf(world), chunk.getPos().getMinBlockX() >> 4, chunk.getPos().getMinBlockZ() >> 4));
@@ -44,6 +45,7 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
         var folder = FabricLoader.getInstance().getConfigDir().resolve("monolab");
         sink.start(folder, LOGGER::warn);
         LOGGER.info("Starting the Monolab monitor: {}", folder);
+        MonolabApi.serverThread(server::execute);
         dumpCommands(server, folder);
         try {
             map = startMap(folder);
@@ -89,6 +91,7 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
     }
 
     private void onTick(MinecraftServer server) {
+        JvmStats.tickEnd();
         if (map != null && liveChunks != null) {
             map.live().tick(liveChunks);
         }
@@ -108,7 +111,7 @@ public final class MonolabFabric implements DedicatedServerModInitializer {
     private void snapshot(MinecraftServer server) {
         if (chunks.due()) {
             sink.loaded(chunks.json(name -> null));
-            if (!inventoriesBroken) {
+            if (!inventoriesBroken && AddonConfig.on("inventories")) {
                 try {
                     sink.inventories(inventories(server));
                 } catch (Throwable trouble) {

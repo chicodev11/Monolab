@@ -344,7 +344,7 @@ canvas.drag { cursor: grabbing; }
   }
 
   function saveHash() {
-    var v = [state.realm, Math.round(state.x), Math.round(state.z), state.scale.toFixed(3), state.night ? 1 : 0].join(",");
+    var v = [state.realm, Math.round(state.x), Math.round(state.z), state.scale.toFixed(3), state.night ? 1 : 0, state.y === null ? "" : state.y].join(",");
     try { history.replaceState(null, "", "#" + v); } catch (e) { }
   }
 
@@ -502,7 +502,8 @@ canvas.drag { cursor: grabbing; }
     var parts = decodeURIComponent(location.hash.replace("#", "")).split(",");
     if (parts.length >= 5 && realms.indexOf(parts[0]) >= 0) {
       var x = parseFloat(parts[1]), z = parseFloat(parts[2]), s = parseFloat(parts[3]);
-      if (isFinite(x) && isFinite(z) && isFinite(s)) return { realm: parts[0], x: x, z: z, scale: s, night: parts[4] === "1" };
+      var y = parts.length > 5 && parts[5] !== "" ? parseInt(parts[5], 10) : NaN;
+      if (isFinite(x) && isFinite(z) && isFinite(s)) return { realm: parts[0], x: x, z: z, scale: s, night: parts[4] === "1", y: isFinite(y) && y >= -64 && y <= 320 ? y : null };
     }
     return null;
   }
@@ -549,6 +550,7 @@ canvas.drag { cursor: grabbing; }
       var first = saved ? saved.realm : (realms.indexOf("overworld") >= 0 ? "overworld" : realms[0]);
       if (saved) { state.night = saved.night; el("night").classList.toggle("on", saved.night); }
       state.realm = first; buildRealms();
+      if (saved && saved.y !== null) state.y = saved.y;
       get("bounds?realm=" + encodeURIComponent(first)).then(function (b) {
         state.bounds = b;
         if (saved) { state.x = saved.x; state.z = saved.z; state.scale = saved.scale; }
@@ -559,7 +561,7 @@ canvas.drag { cursor: grabbing; }
       setInterval(pollChanges, 4000);
       el("hy").oninput = function () { el("hval").textContent = +this.value > heightRange()[1] ? text("auto", "Auto") : this.value; };
       el("hy").onchange = function () { setHeight(this.value); };
-      showHeight(); setInterval(askHeight, 4000);
+      showHeight(); askHeight(); setInterval(askHeight, 4000);
     }, function () { el("emptyText").textContent = text("missing"); el("empty").classList.add("on"); });
     requestAnimationFrame(frame);
   }
