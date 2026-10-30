@@ -301,14 +301,17 @@ export const commands = {
 	panelCall: (hostId: string, method: string, path: string, body: string | null) => __TAURI_INVOKE<string>("panel_call", { hostId, method, path, body }),
 	sftpList: (side: Side, path: string) => __TAURI_INVOKE<Listing>("sftp_list", { side, path }),
 	claudeInfo: (server: string) => __TAURI_INVOKE<ClaudeInfo>("claude_info", { server }),
-	claudeChatState: (server: string, engine: string) => __TAURI_INVOKE<ChatState>("claude_chat_state", { server, engine }),
-	claudeChatOpen: (server: string, fresh: boolean, mode: string, model: string, engine: string) => __TAURI_INVOKE<string>("claude_chat_open", { server, fresh, mode, model, engine }),
+	claudeChatState: (server: string, engine: string, session: string) => __TAURI_INVOKE<ChatState>("claude_chat_state", { server, engine, session }),
+	claudeChatOpen: (server: string, session: string, mode: string, model: string, engine: string) => __TAURI_INVOKE<string>("claude_chat_open", { server, session, mode, model, engine }),
 	claudeChatSend: (id: string, content: string) => __TAURI_INVOKE<null>("claude_chat_send", { id, content }),
 	claudeChatAnswer: (id: string, requestId: string, allow: boolean, input: string | null, permissions: string | null, message: string | null) => __TAURI_INVOKE<null>("claude_chat_answer", { id, requestId, allow, input, permissions, message }),
 	claudeChatInterrupt: (id: string) => __TAURI_INVOKE<null>("claude_chat_interrupt", { id }),
 	claudeChatMode: (id: string, mode: string) => __TAURI_INVOKE<null>("claude_chat_mode", { id, mode }),
 	claudeChatModel: (id: string, model: string) => __TAURI_INVOKE<null>("claude_chat_model", { id, model }),
-	claudeChatHistory: (server: string, engine: string) => __TAURI_INVOKE<string[]>("claude_chat_history", { server, engine }),
+	claudeChatHistory: (server: string, engine: string, session: string) => __TAURI_INVOKE<string[]>("claude_chat_history", { server, engine, session }),
+	claudeChatSessions: (server: string) => __TAURI_INVOKE<ChatSession[]>("claude_chat_sessions", { server }),
+	claudeChatRename: (session: string, title: string) => __TAURI_INVOKE<null>("claude_chat_rename", { session, title }),
+	claudeChatDelete: (server: string, session: string) => __TAURI_INVOKE<null>("claude_chat_delete", { server, session }),
 	claudeChatClose: (id: string) => __TAURI_INVOKE<void>("claude_chat_close", { id }),
 	claudeOpenFolder: (server: string) => __TAURI_INVOKE<null>("claude_open_folder", { server }),
 	claudeAccounts: (server: string) => __TAURI_INVOKE<ClaudeAccounts>("claude_accounts", { server }),
@@ -620,6 +623,14 @@ export type CfImportResult = {
 	overrides: number,
 	left: number,
 	listPath: string,
+};
+
+export type ChatSession = {
+	id: string,
+	title: string,
+	updated: number | null,
+	chat: string,
+	busy: boolean,
 };
 
 export type ChatState = {

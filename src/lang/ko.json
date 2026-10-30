@@ -1462,7 +1462,8 @@
     "Copy UUID": "UUID 복사",
     "UUID copied.": "UUID를 복사했어요.",
     "Players appear here when they join. You can also enter a name above to add them in advance.": "아직 플레이어가 없어요.",
-    "Enter a name above to add a player.": "위에 이름을 입력해 플레이어를 추가해주세요."
+    "Enter a name above to add a player.": "위에 이름을 입력해 플레이어를 추가해주세요.",
+    "Player name — add or find": "플레이어 이름 (추가·찾기)"
   },
   "모드·플러그인": {
     "Updated {0} to newer versions": "{0}개를 새 버전으로 업데이트했어요",
@@ -1778,7 +1779,23 @@
     "Set up the server": "서버 세팅",
     "Check security": "보안 점검",
     "Find why it stopped": "멈춘 원인 찾기",
-    "Reads and edits server files and checks logs. Asks here before changing files or running commands.": "서버 파일과 로그 작업을 도와줘요."
+    "Reads and edits server files and checks logs. Asks here before changing files or running commands.": "서버 파일과 로그 작업을 도와줘요.",
+    "Chat name": "대화 이름",
+    "Conversations": "대화 목록",
+    "Conversations show up here.": "대화가 여기에 표시돼요.",
+    "Delete this conversation?": "이 대화를 삭제할까요?",
+    "Earlier conversation summarized": "이전 대화 요약",
+    "Other": "기타",
+    "The chat got long, so Claude summarized the earlier part to keep going.": "대화가 길어져 앞부분을 자동으로 요약했어요.",
+    "This deletes the conversation history of \"{0}\". The notes in AGENTS.md stay.": "\"{0}\" 대화 기록을 삭제합니다. AGENTS.md 메모는 그대로 남습니다.",
+    "Todo list": "할 일 목록",
+    "Type your own answer": "직접 입력",
+    "Working": "작업 중",
+    "Today": "오늘",
+    "Yesterday": "어제",
+    "Previous 7 days": "지난 7일",
+    "Previous 30 days": "지난 30일",
+    "Older": "그 이전"
   },
   "웹 패널": {
     "Others on the same Wi-Fi can see this": "같은 와이파이의 다른 사람이 볼 수 있어요",

@@ -14,7 +14,10 @@ export type ChatItem =
       suggestions: unknown[];
       answer?: "allow" | "always" | "deny";
     }
-  | { kind: "note"; key: string; text: string; tone: "muted" | "danger"; login?: boolean };
+  | { kind: "note"; key: string; text: string; tone: "muted" | "danger"; login?: boolean }
+  | { kind: "summary"; key: string; text: string };
+
+export type ChatTodo = { content: string; activeForm: string; status: "pending" | "in_progress" | "completed" };
 
 export type ChatLimit = { used: number; resetsAt: number };
 export type ChatUsage = { fiveHour?: ChatLimit; sevenDay?: ChatLimit; status?: string };
@@ -25,9 +28,23 @@ export type ChatModel = {
   busy: boolean;
   model: string;
   serial: number;
+  session?: string;
+  todos?: ChatTodo[];
 };
 
 export const emptyChat: ChatModel = { items: [], busy: false, model: "", serial: 0 };
+
+// Claude Code's own wording for the summary it writes when a long chat is compacted.
+const SUMMARY_START = "This session is being continued from a previous conversation";
+
+function todosOf(input: unknown): ChatTodo[] | undefined {
+  if (!isObject(input) || !Array.isArray(input.todos)) return undefined;
+  return input.todos.filter(isObject).map((one) => ({
+    content: text(one.content),
+    activeForm: text(one.activeForm),
+    status: one.status === "completed" || one.status === "in_progress" ? one.status : "pending",
+  }));
+}
 
 type Json = Record<string, unknown>;
 
@@ -59,17 +76,25 @@ export function applyLine(model: ChatModel, line: string): ChatModel {
   const items = [...model.items];
   let serial = model.serial;
   const key = () => `c${++serial}`;
-  let { busy, model: name } = model;
+  let { busy, model: name, session, todos } = model;
   let usage = model.usage;
 
   switch (message.type) {
     case "system": {
-      if (message.subtype === "init") name = text(message.model) || name;
+      if (message.subtype === "init") {
+        name = text(message.model) || name;
+        session = text(message.session_id) || session;
+      }
       break;
     }
     case "user": {
       const body = isObject(message.message) ? message.message : {};
       const content = body.content;
+      const whole = typeof content === "string" ? content : Array.isArray(content) ? content.map((one) => (isObject(one) && one.type === "text" ? text(one.text) : "")).join("\n") : "";
+      if (message.isCompactSummary === true || whole.trimStart().startsWith(SUMMARY_START)) {
+        items.push({ kind: "summary", key: key(), text: whole.trim() });
+        break;
+      }
       if (typeof content === "string") {
         if (content.trim()) items.push({ kind: "user", key: key(), text: content, images: 0 });
         busy = true;
@@ -128,6 +153,7 @@ export function applyLine(model: ChatModel, line: string): ChatModel {
           else if (full.trim()) items.push({ kind: "assistant", key: key(), text: full, streaming: false });
         } else if (block.type === "tool_use") {
           const id = text(block.id);
+          if (block.name === "TodoWrite") todos = todosOf(block.input) ?? todos;
           if (!items.some((one) => one.kind === "tool" && one.id === id)) {
             items.push({ kind: "tool", key: key(), id, name: text(block.name), input: isObject(block.input) ? block.input : {} });
           }
@@ -186,7 +212,7 @@ export function applyLine(model: ChatModel, line: string): ChatModel {
     default:
       return model;
   }
-  return { items, busy, model: name, serial, usage };
+  return { items, busy, model: name, serial, usage, session, todos };
 }
 
 export function markAnswered(model: ChatModel, requestId: string, answer: "allow" | "always" | "deny"): ChatModel {

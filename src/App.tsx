@@ -424,6 +424,10 @@ type NavPoint = {
   browse?: boolean;
   project?: CatalogHit | null;
   panel?: Modal;
+  /** The tool's inner tab: log view, settings category, plugin list or settings, map, player list. */
+  view?: string;
+  /** What is open inside it: a crash report or a backup. */
+  item?: string;
 };
 function samePlace(a: NavPoint, b: NavPoint) {
   return (
@@ -433,7 +437,9 @@ function samePlace(a: NavPoint, b: NavPoint) {
     (a.browsePath ?? "") === (b.browsePath ?? "") &&
     (a.activeFile ?? null) === (b.activeFile ?? null) &&
     !!a.browse === !!b.browse &&
-    (a.project?.projectId ?? null) === (b.project?.projectId ?? null)
+    (a.project?.projectId ?? null) === (b.project?.projectId ?? null) &&
+    (a.view ?? "") === (b.view ?? "") &&
+    (a.item ?? "") === (b.item ?? "")
   );
 }
 type DownloadProgress = {
@@ -881,6 +887,7 @@ function App() {
   const historyRef = useRef<NavPoint[]>([]);
   const historyAt = useRef(-1);
   const travelling = useRef(false);
+  const lastPlace = useRef(new Map<string, NavPoint>());
   const [navState, setNavState] = useState({ back: false, forward: false });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; items: ContextItem[] } | null>(null);
   const contextBuilder = useRef<(target: HTMLElement) => ContextItem[]>(() => []);
@@ -3042,6 +3049,11 @@ function App() {
     void loadConsoleLogs(instance);
     setUpgradeVersion(instance.version);
     setPage("instance");
+    const remembered = tool ? undefined : lastPlace.current.get(instance.id);
+    if (remembered) {
+      void loadTool(remembered.tool, instance).then(() => restoreInside(remembered, instance));
+      return;
+    }
     void loadTool(tool ?? (instance.status === "running" || instance.status === "stopping" ? "console" : "overview"), instance);
   }
   async function openConsole(instance: Instance) {
@@ -4698,7 +4710,6 @@ function App() {
   }
   const [playerAddKind, setPlayerAddKind] = useState<"whitelist" | "operator" | "ban">("whitelist");
   const [playerTab, setPlayerTab] = useState<"online" | "all" | "whitelist" | "operator" | "ban" | "recent">("all");
-  const [playerQuery, setPlayerQuery] = useState("");
   async function addPlayerHere() {
     if (playerAddKind === "ban") {
       const ok = await confirmAction(
@@ -5899,7 +5910,9 @@ function App() {
         ? { browse: browseOpen, project: projectView?.hit ?? null }
         : {}),
       ...(modalShell[modal] === "as-panel" && modal !== "create" ? { panel: modal } : {}),
+      ...(page === "instance" ? innerPlace() : {}),
     };
+    if (point.page === "instance" && point.instanceId) lastPlace.current.set(point.instanceId, { ...point, panel: undefined });
     const current = historyRef.current[historyAt.current];
     const same = !!current && samePlace(current, point) && current.panel === point.panel;
     if (
@@ -5948,7 +5961,43 @@ function App() {
       } catch {}
     }
     syncNavState();
-  }, [page, selected, tool, browsePath, activeFile, browseOpen, projectView?.hit, modal]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, selected, tool, browsePath, activeFile, browseOpen, projectView?.hit, modal, logView, openCrash, propsTab, addonView, mapOpen, playerTab, backupOpen]);
+  function innerPlace(): Pick<NavPoint, "view" | "item"> {
+    if (tool === "logs") return { view: logView, item: openCrash ?? "" };
+    if (tool === "properties") return { view: propsTab };
+    if (tool === "addons") return { view: addonView };
+    if (tool === "worlds") return { view: mapOpen ? "map" : "" };
+    if (tool === "players") return { view: playerTab };
+    if (tool === "backups") return { item: backupOpen?.fileName ?? "" };
+    return {};
+  }
+  function applyInner(point: NavPoint, instance: Instance) {
+    if (point.tool === "logs") {
+      setLogView(point.view || "read");
+      setOpenCrash(point.item || null);
+    }
+    if (point.tool === "properties" && point.view) setPropsTab(point.view as Category);
+    if (point.tool === "addons") setAddonView(point.view === "settings" ? "settings" : "list");
+    if (point.tool === "worlds") setMapOpen(point.view === "map");
+    if (point.tool === "players" && point.view) setPlayerTab(point.view as typeof playerTab);
+    if (point.tool === "backups") {
+      if (!point.item) setBackupOpen(null);
+      else void commands.listBackups(instance.id).then((list) => setBackupOpen(list.find((one) => one.fileName === point.item) ?? null), () => {});
+    }
+  }
+  /** After loadTool: put back the folder, open file, catalog page and inner tab of a remembered place. */
+  async function restoreInside(point: NavPoint, instance: Instance) {
+    applyInner(point, instance);
+    if (point.tool === "addons") {
+      setBrowseOpen(!!point.browse);
+      if (point.project) void openProject(point.project);
+      return;
+    }
+    if (point.tool !== "files") return;
+    if (point.browsePath) await browseTo(point.browsePath);
+    if (point.activeFile) await openFile(point.activeFile);
+  }
   useEffect(() => {
     if (!onWeb) return;
     function onPop(event: PopStateEvent) {
@@ -6084,6 +6133,7 @@ function App() {
     }
     setPage("instance");
     setSelectedId(instance.id);
+    if (point.tool === tool && instance.id === selected?.id && point.tool !== "files") applyInner(point, instance);
     if (point.tool === "addons" && tool === "addons" && instance.id === selected?.id) {
       setBrowseOpen(!!point.browse);
       if (point.project) {
@@ -6116,16 +6166,12 @@ function App() {
       syncNavState();
       return;
     }
-    void loadTool(point.tool, instance).then(async () => {
-      if (point.tool === "addons") {
-        setBrowseOpen(!!point.browse);
-        if (point.project) void openProject(point.project);
-        return;
-      }
-      if (point.tool !== "files") return;
-      if (point.browsePath) await browseTo(point.browsePath);
-      if (point.activeFile) await openFile(point.activeFile);
-    });
+    if (point.tool === tool && instance.id === selected?.id) {
+      travelling.current = false;
+      syncNavState();
+      return;
+    }
+    void loadTool(point.tool, instance).then(() => restoreInside(point, instance));
     syncNavState();
   }
   useEffect(() => {
@@ -6968,10 +7014,6 @@ function App() {
       {!toolLoading && tool === "overview" && (
         <div className="tool-content overview">
           <div className="overview-scroll">
-          <div className="wb-head overview-head">
-            <h1>{tr("Overview")}</h1>
-            {selected.status === "stopped" && runControls}
-          </div>
           {selected.crashReason && (
             <Banner tone="warn">{tr("Exit reason")}: {trBack(selected.crashReason)}</Banner>
           )}
@@ -7548,34 +7590,6 @@ function App() {
         );
         return (
         <div className="tool-content props-page">
-          <div className="wb-head">
-            <div className="wb-head-title">
-              <h1>{tr("Server settings")}</h1>
-              <code>{isNative(selected.core) ? "pumpkin.toml" : "server.properties"}</code>
-            </div>
-            <span className="live-spacer" />
-          <label className="search props-search wb-search-field">
-            <Icon name="search" />
-            <input
-              value={propertyQuery}
-              onChange={(event) => setPropertyQuery(event.target.value)}
-              placeholder={tr("Find a setting — label, key or description")}
-            />
-            {searching && (
-              <button
-                type="button"
-                className="icon-button"
-                aria-label={tr("Clear search")}
-                onClick={() => setPropertyQuery("")}
-              >
-                <Icon name="close" />
-              </button>
-            )}
-          </label>
-          <button className="wb-icon props-compare" aria-label={tr("Compare with another server")} data-tip={tr("Compare with another server")} onClick={() => setCompareOpen(true)}>
-            <Icon name="sliders" />
-          </button>
-          </div>
           {running && (
             <Banner tone="info">
               {tr("The server is running. Saved settings apply on the next start.")}
@@ -7598,6 +7612,7 @@ function App() {
               entry.kind === "choice" && entry.options.length <= 4 && entry.options.join("").length <= 40;
             return (
               <>
+              <div className="props-bar">
               {properties.length > 0 && !searching && (
                 <div className="wb-chips" role="tablist" aria-label={tr("Settings categories")}>
                   {tabs.map((category) => (
@@ -7615,6 +7630,29 @@ function App() {
                   ))}
                 </div>
               )}
+              <span className="live-spacer" />
+          <label className="search props-search wb-search-field">
+            <Icon name="search" />
+            <input
+              value={propertyQuery}
+              onChange={(event) => setPropertyQuery(event.target.value)}
+              placeholder={tr("Find a setting — label, key or description")}
+            />
+            {searching && (
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={tr("Clear search")}
+                onClick={() => setPropertyQuery("")}
+              >
+                <Icon name="close" />
+              </button>
+            )}
+          </label>
+          <button className="wb-icon props-compare" aria-label={tr("Compare with another server")} data-tip={tr("Compare with another server")} onClick={() => setCompareOpen(true)}>
+            <Icon name="sliders" />
+          </button>
+              </div>
           <fieldset className="props-lock page-body" disabled={locked}>
             {shown.map((category) => {
               const rows = grouped.get(category) ?? [];
@@ -7805,54 +7843,6 @@ function App() {
           )}
           {!activeFile && (
           <>
-          <div className="wb-head">
-            <h1>{tr("Files")}</h1>
-            <span className="live-spacer" />
-            <label className="search file-search wb-search-field">
-              <Icon name="search" />
-              <input
-                value={fileQuery}
-                onChange={(event) => setFileQuery(event.target.value)}
-                placeholder={tr("Find in this folder")}
-              />
-            </label>
-            <button
-              className="wb-icon"
-              aria-label={tr("Trash")}
-              data-tip={tr("Trash — restore files or delete them permanently")}
-              onClick={() => void openTrash()}
-            >
-              <Icon name="trash" />
-            </button>
-            <button className="wb-icon" aria-label={tr("Refresh")} data-tip={tr("Refresh")} onClick={() => void browseTo(browsePath)}>
-              <Icon name="refresh" />
-            </button>
-            <DropdownMenu
-              trigger={
-                <button className="button primary wb-pill" disabled={locked}>
-                  <Icon name="plus" />
-                  {tr("Add")}
-                </button>
-              }
-              items={[
-                { label: tr("New file"), icon: "file", onSelect: () => void newFileHere() },
-                { label: tr("New folder"), icon: "folder", onSelect: () => void newFolderHere() },
-                { label: tr("Upload files"), icon: "import", onSelect: () => void addFilesHere() },
-                ...(onWeb
-                  ? []
-                  : [{ label: tr("Upload folder"), icon: "folder", onSelect: () => void addFolderHere() }]),
-                ...(onWeb || selected.remoteHost || selected.panelHost
-                  ? []
-                  : [{
-                      label: tr("Open in Explorer"),
-                      icon: "archive",
-                      onSelect: () => {
-                        void commands.openServerFolder(selected.id, browsePath || null).catch((cause) => setError(String(cause)));
-                      },
-                    }]),
-              ]}
-            />
-          </div>
           <nav className="wb-crumbs" aria-label={tr("Path")}>
             <div className="file-steps">
               <button type="button" className="wb-icon ghost" aria-label={tr("Back")} data-tip={tr("Back")} disabled={!folderTrail.back.length} onClick={() => void stepFolder("back")}>
@@ -7881,6 +7871,52 @@ function App() {
                 </Fragment>
               ))}
             <span className="wb-crumb-count">{tr("count.items", [browseTotal])}</span>
+            <span className="file-actions">
+              <label className="search file-search wb-search-field">
+                <Icon name="search" />
+                <input
+                  value={fileQuery}
+                  onChange={(event) => setFileQuery(event.target.value)}
+                  placeholder={tr("Find in this folder")}
+                />
+              </label>
+              <button
+                className="wb-icon"
+                aria-label={tr("Trash")}
+                data-tip={tr("Trash — restore files or delete them permanently")}
+                onClick={() => void openTrash()}
+              >
+                <Icon name="trash" />
+              </button>
+              <button className="wb-icon" aria-label={tr("Refresh")} data-tip={tr("Refresh")} onClick={() => void browseTo(browsePath)}>
+                <Icon name="refresh" />
+              </button>
+              <DropdownMenu
+                trigger={
+                  <button className="button primary wb-pill" disabled={locked}>
+                    <Icon name="plus" />
+                    {tr("Add")}
+                  </button>
+                }
+                items={[
+                  { label: tr("New file"), icon: "file", onSelect: () => void newFileHere() },
+                  { label: tr("New folder"), icon: "folder", onSelect: () => void newFolderHere() },
+                  { label: tr("Upload files"), icon: "import", onSelect: () => void addFilesHere() },
+                  ...(onWeb
+                    ? []
+                    : [{ label: tr("Upload folder"), icon: "folder", onSelect: () => void addFolderHere() }]),
+                  ...(onWeb || selected.remoteHost || selected.panelHost
+                    ? []
+                    : [{
+                        label: tr("Open in Explorer"),
+                        icon: "archive",
+                        onSelect: () => {
+                          void commands.openServerFolder(selected.id, browsePath || null).catch((cause) => setError(String(cause)));
+                        },
+                      }]),
+                ]}
+              />
+            </span>
           </nav>
           </>
           )}
@@ -8348,10 +8384,53 @@ function App() {
       )}
       {!toolLoading && tool === "logs" && (
         <div className="tool-content log-page">
-          <div className="wb-head">
-            <h1>{tr("Logs")}</h1>
-            <span className="live-spacer" />
+          <div className="wb-head log-head">
             {logTabs}
+            {logView === "read" && (
+            <>
+            <SegmentedControl
+              className="console-levels"
+              value={logLevelView}
+              onChange={setLogLevelView}
+              options={[
+                { value: "all", label: tr("All") },
+                { value: "error", label: tr("Errors") },
+                { value: "warn", label: tr("Warnings") },
+                { value: "info", label: tr("Info") },
+              ]}
+            />
+            <span className="live-spacer" />
+            <Dropdown
+              value={readLogFile}
+              onChange={(file) => {
+                setReadLogFile(file);
+                void refreshParsedLogs("All", file);
+              }}
+              options={
+                logFiles.length
+                  ? logFiles.map((file) => ({
+                      value: file.fileName,
+                      label: file.fileName,
+                      hint: file.compressed ? tr("Compression") : undefined,
+                    }))
+                  : [{ value: "latest.log", label: "latest.log" }]
+              }
+              placeholder={tr("Log file")}
+            />
+            <label className="search console-search">
+              <Icon name="search" />
+              <input value={logQuery} onChange={(event) => setLogQuery(event.target.value)} placeholder={tr("Search logs")} />
+            </label>
+            <button
+              className="button secondary small"
+              disabled={sharingLog}
+              data-tip={tr("Uploads {0} to mclo.gs and creates a link. IP addresses, home paths and secrets are masked.", [readLogFile])}
+              onClick={() => void shareLog(readLogFile)}
+            >
+              {sharingLog ? tr("Uploading…") : tr("Share")}
+            </button>
+            </>
+            )}
           </div>
           <div className="page-body">
           {logView === "audit" && (
@@ -8425,49 +8504,6 @@ function App() {
           )}
           {logView === "read" && (
             <div className="log-view read overview-console log-console">
-          <div className="live-head">
-            <SegmentedControl
-              className="console-levels"
-              value={logLevelView}
-              onChange={setLogLevelView}
-              options={[
-                { value: "all", label: tr("All") },
-                { value: "error", label: tr("Errors") },
-                { value: "warn", label: tr("Warnings") },
-                { value: "info", label: tr("Info") },
-              ]}
-            />
-            <span className="live-spacer" />
-            <Dropdown
-              value={readLogFile}
-              onChange={(file) => {
-                setReadLogFile(file);
-                void refreshParsedLogs("All", file);
-              }}
-              options={
-                logFiles.length
-                  ? logFiles.map((file) => ({
-                      value: file.fileName,
-                      label: file.fileName,
-                      hint: file.compressed ? tr("Compression") : undefined,
-                    }))
-                  : [{ value: "latest.log", label: "latest.log" }]
-              }
-              placeholder={tr("Log file")}
-            />
-            <label className="search console-search">
-              <Icon name="search" />
-              <input value={logQuery} onChange={(event) => setLogQuery(event.target.value)} placeholder={tr("Search logs")} />
-            </label>
-            <button
-              className="button secondary small"
-              disabled={sharingLog}
-              data-tip={tr("Uploads {0} to mclo.gs and creates a link. IP addresses, home paths and secrets are masked.", [readLogFile])}
-              onClick={() => void shareLog(readLogFile)}
-            >
-              {sharingLog ? tr("Uploading…") : tr("Share")}
-            </button>
-          </div>
           {crashReports.length > 0 && (
             <Banner
               tone="danger"
@@ -8570,41 +8606,6 @@ function App() {
       )}
       {!toolLoading && tool === "backups" && !backupOpen && (
         <div className="tool-content backup-page">
-          <div className="wb-head">
-            <h1>{tr("Backups")}</h1>
-            <span className="live-spacer" />
-            {!selected.panelHost && has(selected.core, "worlds") && (
-              <button
-                className="button secondary wb-pill"
-                data-tip={tr("Stores only the world folders. Smaller and faster; restoring replaces only those worlds.")}
-                disabled={backupBusy}
-                onClick={() => void makeBackup(true)}
-              >
-                <Icon name="map" />
-                {tr("Back up worlds only")}
-              </button>
-            )}
-            {!selected.panelHost && (
-              <button
-                className="button secondary wb-pill"
-                data-tip={tr("Pick the folders and files to put in the backup.")}
-                disabled={backupBusy}
-                onClick={() => (backupPick ? setBackupPick(null) : void openBackupPick())}
-              >
-                <Icon name="check" />
-                {tr("Choose and back up")}
-              </button>
-            )}
-            <button
-              className="button primary wb-pill"
-              data-tip={tr("Compresses and stores the entire server folder.")}
-              disabled={backupBusy}
-              onClick={() => void makeBackup()}
-            >
-              <Icon name="archive" />
-              {backupBusy ? tr("Backing up…") : tr("Back up now")}
-            </button>
-          </div>
           <div className="page-body">
           {backupPick && (
             <Card
@@ -8645,6 +8646,40 @@ function App() {
               </div>
             </Card>
           )}
+          <div className="backup-top">
+            <div className="backup-actions">
+            {!selected.panelHost && has(selected.core, "worlds") && (
+              <button
+                className="button secondary wb-pill"
+                data-tip={tr("Stores only the world folders. Smaller and faster; restoring replaces only those worlds.")}
+                disabled={backupBusy}
+                onClick={() => void makeBackup(true)}
+              >
+                <Icon name="map" />
+                {tr("Back up worlds only")}
+              </button>
+            )}
+            {!selected.panelHost && (
+              <button
+                className="button secondary wb-pill"
+                data-tip={tr("Pick the folders and files to put in the backup.")}
+                disabled={backupBusy}
+                onClick={() => (backupPick ? setBackupPick(null) : void openBackupPick())}
+              >
+                <Icon name="check" />
+                {tr("Choose and back up")}
+              </button>
+            )}
+            <button
+              className="button primary wb-pill"
+              data-tip={tr("Compresses and stores the entire server folder.")}
+              disabled={backupBusy}
+              onClick={() => void makeBackup()}
+            >
+              <Icon name="archive" />
+              {backupBusy ? tr("Backing up…") : tr("Back up now")}
+            </button>
+            </div>
           <div className="monitor-grid backup-tiles">
             <div>
               <span>{tr("Backups")}</span>
@@ -8667,6 +8702,7 @@ function App() {
                 {tr("Before upgrades")}
               </strong>
             </div>
+          </div>
           </div>
           {backupList.length ? (
             <div className="backup-list">
@@ -9114,11 +9150,6 @@ function App() {
         ];
         return (
         <div className="tool-content reach-page">
-          <div className="wb-head">
-            <h1>{tr("Network")}</h1>
-            <span className="live-spacer" />
-            <span className="reach-port" data-tip={tr("Addresses friends can use to join.")}>{proto} {span}</span>
-          </div>
           <div className="page-body">
           <div className="reach-tiles">
             {rows.map((row) => (
@@ -9152,7 +9183,7 @@ function App() {
           {kindOf(selected.core).proxy && !selected.panelHost && <ProxyNetwork key={selected.id} serverId={selected.id} onNotice={setNotice} />}
           {playitCard()}
           <div className="setting-card">
-            <span className="setting-title">{tr("Port forwarding")}</span>
+            <span className="setting-title">{tr("Port forwarding")} <span className="reach-port">{proto} {span}</span></span>
             <p className="reach-note">
               {tr("In your router, forward {0} {1} to {2}. Friends then join with your public IP.", [proto, span, lanIp || tr("this PC")])}
             </p>
@@ -9503,27 +9534,12 @@ function App() {
       )}
       {!toolLoading && tool === "players" && (
         <div className="tool-content player-page">
-          <div className="wb-head">
-            <h1>{tr("Players")}</h1>
-            <span className="live-spacer" />
-            <label className="search wb-search-field">
-              <Icon name="search" />
-              <input
-                value={playerQuery}
-                onChange={(event) => setPlayerQuery(event.target.value)}
-                placeholder={tr("Find a name")}
-              />
-            </label>
-            <button className="wb-icon" aria-label={tr("Refresh")} data-tip={tr("Refresh")} onClick={() => void loadTool("players")}>
-              <Icon name="refresh" />
-            </button>
-          </div>
           <div className="page-body">
           <div className="player-add">
             <input
               value={playerName}
               onChange={(event) => setPlayerName(event.target.value)}
-              placeholder={tr("Player name")}
+              placeholder={tr("Player name — add or find")}
               data-tip={
                 selected.status === "running"
                   ? tr("The server is running, so changes apply through a console command. Only the name is needed.")
@@ -9548,6 +9564,9 @@ function App() {
               onClick={() => void addPlayerHere()}
             >
               {playerAddKind === "ban" ? tr("Ban") : <><Icon name="plus" />{tr("Add")}</>}
+            </button>
+            <button className="wb-icon" aria-label={tr("Refresh")} data-tip={tr("Refresh")} onClick={() => void loadTool("players")}>
+              <Icon name="refresh" />
             </button>
           </div>
           {playerSnapshot && (
@@ -9727,7 +9746,7 @@ function App() {
               { id: "ban" as const, label: tr("Ban"), count: players.filter((one) => one.banned).length },
               { id: "recent" as const, label: tr("Recent"), count: playerActivity.length },
             ];
-            const needle = playerQuery.trim().toLowerCase();
+            const needle = playerName.trim().toLowerCase();
             const picked =
               playerTab === "online"
                 ? players.filter((one) => onlineNames.has(one.name))
@@ -10609,7 +10628,7 @@ function App() {
           </nav>
         )}
         <div className="wb-top-end">
-          {selected && page === "instance" && !(tool === "overview" && selected.status === "stopped") && runControls}
+          {selected && page === "instance" && runControls}
         </div>
       </header>
       <div className="wb-body">

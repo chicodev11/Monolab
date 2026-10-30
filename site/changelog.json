@@ -1,6 +1,21 @@
 [
   {
     "kind": "app",
+    "version": "1.6.5",
+    "date": "2026-10-30",
+    "added": [
+      "Agent chats: keep several conversations per server in a list on the left, start a new one, rename or delete them; chats keep working in the background while you look at another.",
+      "The agent shows its todo list above the message box, and its questions take your own answer with Other.",
+      "Switching between server tabs returns each server to where you left it, down to the plugin settings or the add-content page."
+    ],
+    "changed": [
+      "Back and forward also remember tabs inside a page: log views, settings categories, plugin settings, the map, player lists and an open backup.",
+      "Page titles are gone and their buttons moved into the rows below, so content starts higher. The player name box both adds and finds players.",
+      "When a long agent chat is summarized, the summary shows as a folded card, and the agent keeps answering in Korean."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.6.4",
     "date": "2026-10-30",
     "added": [

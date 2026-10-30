@@ -770,7 +770,11 @@
     "The content to send is invalid.": "보낼 내용이 올바르지 않습니다.",
     "Unknown": "알 수 없음",
     "Unknown permission mode.": "알 수 없는 승인 방식입니다.",
-    "Unknown model.": "알 수 없는 모델입니다."
+    "Unknown model.": "알 수 없는 모델입니다.",
+    "Unknown conversation.": "알 수 없는 대화입니다.",
+    "Could not save the chat name: {error}": "대화 이름을 저장하지 못했습니다: $1",
+    "Could not delete the conversation: {error}": "대화를 삭제하지 못했습니다: $1",
+    "Could not find the chat history.": "대화 기록을 찾지 못했습니다."
   },
   "codex_chat.rs": {
     "Codex is not installed on this computer. Install it as shown, then try again.": "이 컴퓨터에 Codex가 없어요. 안내에 따라 설치한 뒤 다시 시도해주세요.",

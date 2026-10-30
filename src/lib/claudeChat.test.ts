@@ -87,3 +87,26 @@ describe("usage", () => {
     expect(applyLine(emptyChat, line).model).toBe("claude-haiku-5-5");
   });
 });
+
+describe("summaries and todos", () => {
+  it("folds the compact summary instead of showing it as a user message", () => {
+    const line = JSON.stringify({ type: "user", isCompactSummary: true, message: { role: "user", content: "This session is being continued from a previous conversation that ran out of context." } });
+    const model = applyLine(emptyChat, line);
+    expect(model.items).toHaveLength(1);
+    expect(model.items[0].kind).toBe("summary");
+    expect(model.busy).toBe(false);
+  });
+
+  it("keeps the latest todo list and the session id", () => {
+    let model = applyLine(emptyChat, JSON.stringify({ type: "system", subtype: "init", model: "m", session_id: "abc-1" }));
+    model = applyLine(
+      model,
+      JSON.stringify({
+        type: "assistant",
+        message: { content: [{ type: "tool_use", id: "t1", name: "TodoWrite", input: { todos: [{ content: "Read", activeForm: "Reading", status: "in_progress" }, { content: "Fix", activeForm: "Fixing", status: "pending" }] } }] },
+      }),
+    );
+    expect(model.session).toBe("abc-1");
+    expect(model.todos?.map((one) => one.status)).toEqual(["in_progress", "pending"]);
+  });
+});

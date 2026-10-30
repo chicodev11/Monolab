@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { createPortal } from "react-dom";
 import { commands } from "../../lib/ipc";
-import type { ClaudeAccounts, ClaudeInfo } from "../../lib/bindings";
-import { setServerAccount } from "../../lib/claudeChatStore";
+import type { ChatSession, ClaudeAccounts, ClaudeInfo } from "../../lib/bindings";
+import { setServerAccount, useChatEntry } from "../../lib/claudeChatStore";
+import { AskDialog, type AskRequest } from "../dialogs/AskDialog";
 import { tr } from "../../lib/i18n";
 import { EmptyState, SegmentedControl } from "../primitives";
 import { ClaudeChat, type Engine } from "./ClaudeChat";
@@ -24,6 +25,122 @@ function savedEngine(server: string): Engine | null {
   } catch {
     return null;
   }
+}
+
+function dayGroup(at: number) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const today = start.getTime();
+  if (at >= today) return tr("Today");
+  if (at >= today - 86400000) return tr("Yesterday");
+  if (at >= today - 7 * 86400000) return tr("Previous 7 days");
+  if (at >= today - 30 * 86400000) return tr("Previous 30 days");
+  return tr("Older");
+}
+
+function ChatList({
+  server,
+  list,
+  current,
+  onPick,
+  onNew,
+  onChanged,
+  onError,
+}: {
+  server: string;
+  list: ChatSession[];
+  current: string;
+  onPick: (id: string) => void;
+  onNew: () => void;
+  onChanged: (deleted?: string) => void;
+  onError: (message: string) => void;
+}) {
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [ask, setAsk] = useState<AskRequest | null>(null);
+  const groups: { label: string; rows: ChatSession[] }[] = [];
+  for (const one of list) {
+    const label = dayGroup(one.updated ?? 0);
+    const last = groups[groups.length - 1];
+    if (last?.label === label) last.rows.push(one);
+    else groups.push({ label, rows: [one] });
+  }
+  const saveName = (id: string) => {
+    setRenaming(null);
+    void commands.claudeChatRename(id, name).then(() => onChanged(), (cause) => onError(String(cause)));
+  };
+  const remove = (one: ChatSession) => {
+    setAsk({
+      title: tr("Delete this conversation?"),
+      body: tr("This deletes the conversation history of \"{0}\". The notes in AGENTS.md stay.", [one.title || tr("New chat")]),
+      confirmLabel: tr("Delete"),
+      danger: true,
+      resolve: (value) => {
+        if (value === null) return;
+        void commands.claudeChatDelete(server, one.id).then(() => onChanged(one.id), (cause) => onError(String(cause)));
+      },
+    });
+  };
+  return (
+    <nav className="chat-sessions" aria-label={tr("Conversations")}>
+      <button className="chat-session-new" onClick={onNew}>
+        <Icon name="plus" />
+        {tr("New chat")}
+      </button>
+      <div className="chat-session-scroll">
+        {list.length === 0 && <p className="chat-session-empty">{tr("Conversations show up here.")}</p>}
+        {groups.map((group) => (
+          <section key={group.label}>
+            <h3>{group.label}</h3>
+            {group.rows.map((one) => {
+              const on = one.id === current;
+              return (
+                <div key={one.id} className={`chat-session ${on ? "on" : ""}`}>
+                  {renaming === one.id ? (
+                    <input
+                      autoFocus
+                      value={name}
+                      aria-label={tr("Chat name")}
+                      onChange={(event) => setName(event.target.value)}
+                      onBlur={() => saveName(one.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") saveName(one.id);
+                        if (event.key === "Escape") setRenaming(null);
+                      }}
+                    />
+                  ) : (
+                    <button className="chat-session-pick" aria-current={on || undefined} onClick={() => !on && onPick(one.id)} data-tip={one.title}>
+                      {one.busy && <span className="chat-spin" aria-label={tr("Working")} />}
+                      <span>{one.title || tr("New chat")}</span>
+                    </button>
+                  )}
+                  {on && renaming !== one.id && (
+                    <span className="chat-session-tools">
+                      <button
+                        className="wb-icon ghost"
+                        aria-label={tr("Rename")}
+                        data-tip={tr("Rename")}
+                        onClick={() => {
+                          setName(one.title);
+                          setRenaming(one.id);
+                        }}
+                      >
+                        <Icon name="pencil" />
+                      </button>
+                      <button className="wb-icon ghost danger" aria-label={tr("Delete")} data-tip={tr("Delete")} onClick={() => remove(one)}>
+                        <Icon name="trash" />
+                      </button>
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </section>
+        ))}
+      </div>
+      {ask && <AskDialog request={ask} onClose={() => setAsk(null)} />}
+    </nav>
+  );
 }
 
 function AccountManager({
@@ -181,7 +298,10 @@ function AccountManager({
 export function AgentPage({ server, onError }: { server: { id: string; name: string; minecraft: boolean }; onError: (message: string) => void }) {
   const [info, setInfo] = useState<ClaudeInfo | null>(null);
   const [engine, setEngine] = useState<Engine>(() => savedEngine(server.id) ?? "claude");
-  const [fresh, setFresh] = useState(0);
+  const [sessions, setSessions] = useState<ChatSession[] | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [pickSerial, setPickSerial] = useState(0);
+  const entry = useChatEntry(server.id);
   const [copied, setCopied] = useState(false);
   const [accounts, setAccounts] = useState<ClaudeAccounts | null>(null);
   const [managing, setManaging] = useState(false);
@@ -205,7 +325,29 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
   }, [onError, server.id]);
   useEffect(loadAccounts, [loadAccounts]);
 
+  const loadSessions = useCallback(() => {
+    void commands.claudeChatSessions(server.id).then(setSessions, () => setSessions([]));
+  }, [server.id]);
+  useEffect(loadSessions, [loadSessions, entry.model.busy, entry.model.session]);
+  const anyBusy = sessions?.some((one) => one.busy) ?? false;
+  useEffect(() => {
+    if (!anyBusy) return;
+    const timer = window.setInterval(loadSessions, 5000);
+    return () => window.clearInterval(timer);
+  }, [anyBusy, loadSessions]);
+  useEffect(() => {
+    if (picked !== null) return;
+    if (engine === "codex") setPicked("last");
+    else if (sessions) setPicked((sessions.find((one) => one.chat) ?? sessions[0])?.id ?? "");
+  }, [engine, picked, sessions]);
+  const pick = (id: string) => {
+    setPicked(id);
+    setPickSerial((was) => was + 1);
+  };
+  const currentSession = entry.chatId ? entry.model.session || picked || "" : picked || "";
+
   const pickEngine = (next: Engine) => {
+    setPicked(null);
     setEngine(next);
     setManaging(false);
     try {
@@ -311,8 +453,8 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
         >
           <Icon name="folder" />
         </button>
-        {installed && (
-          <button className="button secondary small" onClick={() => setFresh((was) => was + 1)} data-tip={tr("Starts over instead of continuing. The notes in AGENTS.md stay.")}>
+        {installed && engine === "codex" && (
+          <button className="button secondary small" onClick={() => pick("")} data-tip={tr("Starts over instead of continuing. The notes in AGENTS.md stay.")}>
             <Icon name="plus" />
             {tr("New chat")}
           </button>
@@ -401,14 +543,32 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
             </button>
           </div>
         )}
-        <ClaudeChat
-          key={`${engine}-${accounts?.current}-${signedIn}`}
-          server={server}
-          engine={engine}
-          fresh={fresh}
-          onError={onError}
-          onLogin={() => startLogin(engine, accounts?.current ?? "default")}
-        />
+        <div className={`claude-main ${engine === "claude" ? "with-list" : ""}`}>
+          {engine === "claude" && sessions && (
+            <ChatList
+              list={sessions}
+              current={currentSession}
+              onPick={pick}
+              onNew={() => pick("")}
+              onChanged={(deleted) => {
+                if (deleted && deleted === currentSession) pick("");
+                loadSessions();
+              }}
+              onError={onError}
+              server={server.id}
+            />
+          )}
+          {picked !== null && (
+            <ClaudeChat
+              key={`${engine}-${accounts?.current}-${signedIn}-${pickSerial}`}
+              server={server}
+              engine={engine}
+              session={picked}
+              onError={onError}
+              onLogin={() => startLogin(engine, accounts?.current ?? "default")}
+            />
+          )}
+        </div>
         </>
       ) : null}
     </div>

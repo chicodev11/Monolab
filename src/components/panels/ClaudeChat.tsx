@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState, type ClipboardEvent, ty
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { commands } from "../../lib/ipc";
 import { tr } from "../../lib/i18n";
-import { applyLine, emptyChat, markAnswered, settle, toolName, toolSummary, type ChatItem, type ChatModel } from "../../lib/claudeChat";
+import { applyLine, emptyChat, markAnswered, settle, toolName, toolSummary, type ChatItem, type ChatModel, type ChatTodo } from "../../lib/claudeChat";
 import { chatEntry, lastUsage, setChatEntry, startChatListener, useChatEntry } from "../../lib/claudeChatStore";
 import { Icon } from "../ui/Icon";
 import { Dropdown } from "../ui/Dropdown";
@@ -272,10 +272,12 @@ function PermissionCard({
 }) {
   const questions = item.tool === "AskUserQuestion" && Array.isArray(item.input.questions) ? (item.input.questions as Question[]) : null;
   const [picked, setPicked] = useState<Record<string, string[]>>({});
+  const [typed, setTyped] = useState<Record<string, string | undefined>>({});
   const done = Boolean(item.answer);
 
   if (questions) {
-    const ready = questions.every((one) => (picked[one.question] ?? []).length > 0);
+    const chosen = (question: string) => [...(picked[question] ?? []), ...(typed[question]?.trim() ? [typed[question]!.trim()] : [])];
+    const ready = questions.every((one) => chosen(one.question).length > 0);
     return (
       <div className={`chat-ask ${done ? "done" : ""}`}>
         {questions.map((one) => (
@@ -289,19 +291,42 @@ function PermissionCard({
                     key={option.label}
                     className={`chat-option ${on ? "on" : ""}`}
                     disabled={done}
-                    onClick={() =>
+                    onClick={() => {
                       setPicked((was) => {
                         const now = was[one.question] ?? [];
                         const next = one.multiSelect ? (on ? now.filter((label) => label !== option.label) : [...now, option.label]) : [option.label];
                         return { ...was, [one.question]: next };
-                      })
-                    }
+                      });
+                      if (!one.multiSelect) setTyped((was) => ({ ...was, [one.question]: undefined }));
+                    }}
                   >
                     <span>{option.label}</span>
                     {option.description && <small>{option.description}</small>}
                   </button>
                 );
               })}
+              {typed[one.question] === undefined ? (
+                <button
+                  className="chat-option chat-option-other"
+                  disabled={done}
+                  onClick={() => {
+                    setTyped((was) => ({ ...was, [one.question]: "" }));
+                    if (!one.multiSelect) setPicked((was) => ({ ...was, [one.question]: [] }));
+                  }}
+                >
+                  <span>{tr("Other")}</span>
+                  <small>{tr("Type your own answer")}</small>
+                </button>
+              ) : (
+                <input
+                  className="chat-option-input"
+                  autoFocus
+                  disabled={done}
+                  value={typed[one.question]}
+                  placeholder={tr("Type your own answer")}
+                  onChange={(event) => setTyped((was) => ({ ...was, [one.question]: event.target.value }))}
+                />
+              )}
             </div>
           </div>
         ))}
@@ -312,7 +337,7 @@ function PermissionCard({
               className="button primary small"
               disabled={!ready}
               onClick={() => {
-                const answers = Object.fromEntries(questions.map((one) => [one.question, (picked[one.question] ?? []).join(", ")]));
+                const answers = Object.fromEntries(questions.map((one) => [one.question, chosen(one.question).join(", ")]));
                 onAnswer("allow", { ...item.input, answers });
               }}
             >
@@ -356,16 +381,43 @@ function PermissionCard({
   );
 }
 
+function TodoPanel({ todos }: { todos: ChatTodo[] }) {
+  const [open, setOpen] = useState(true);
+  const done = todos.filter((one) => one.status === "completed").length;
+  const now = todos.find((one) => one.status === "in_progress");
+  return (
+    <div className="chat-todos">
+      <button className="chat-todos-head" aria-expanded={open} onClick={() => setOpen((was) => !was)}>
+        <Icon name="list" />
+        <strong>{now ? now.activeForm || now.content : tr("Todo list")}</strong>
+        <span className="chat-todos-count">{done}/{todos.length}</span>
+        <Icon name="chevron" />
+      </button>
+      {open && (
+        <ul>
+          {todos.map((one, index) => (
+            <li key={index} className={one.status}>
+              <span className="chat-todo-mark">{one.status === "in_progress" ? <span className="chat-spin" /> : one.status === "completed" ? <Icon name="check" /> : <i />}</span>
+              <span>{one.content}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function ClaudeChat({
   server,
   engine,
-  fresh,
+  session,
   onError,
   onLogin,
 }: {
   server: { id: string; name: string; minecraft: boolean };
   engine: Engine;
-  fresh: number;
+  /** "" starts a new chat, "last" continues the newest one, otherwise a Claude session id. */
+  session: string;
   onError: (message: string) => void;
   onLogin: () => void;
 }) {
@@ -461,16 +513,15 @@ export function ClaudeChat({
   const input = useRef<HTMLTextAreaElement | null>(null);
 
   const open = useCallback(
-    async (isFresh: boolean) => {
+    async (target: string) => {
       setOpening(true);
       try {
-        if (chatRef.current) await commands.claudeChatClose(chatRef.current);
         chatRef.current = null;
         setChatEntry(server.id, { chatId: null });
         let start = emptyChat;
-        if (!isFresh) for (const line of await commands.claudeChatHistory(server.id, engine)) start = applyLine(start, line);
+        if (target) for (const line of await commands.claudeChatHistory(server.id, engine, target === "last" ? "" : target)) start = applyLine(start, line);
         setModel(settle(start));
-        const id = await commands.claudeChatOpen(server.id, isFresh, modeRef.current, modelRef.current, engine);
+        const id = await commands.claudeChatOpen(server.id, target, modeRef.current, modelRef.current, engine);
         chatRef.current = id;
         setChatEntry(server.id, { chatId: id, ended: false });
         stick.current = true;
@@ -489,7 +540,11 @@ export function ClaudeChat({
     startChatListener();
     void (async () => {
       try {
-        const state = await commands.claudeChatState(server.id, engine);
+        if (!session) {
+          await open("");
+          return;
+        }
+        const state = await commands.claudeChatState(server.id, engine, session === "last" ? "" : session);
         if (gone) return;
         if (state.id && chatEntry(server.id).chatId === state.id) {
           chatRef.current = state.id;
@@ -498,14 +553,14 @@ export function ClaudeChat({
         }
         if (state.id) {
           let start = emptyChat;
-          for (const line of await commands.claudeChatHistory(server.id, engine)) start = applyLine(start, line);
+          for (const line of await commands.claudeChatHistory(server.id, engine, session === "last" ? "" : session)) start = applyLine(start, line);
           start = settle(start);
           for (const line of state.pending) start = applyLine(start, line);
           chatRef.current = state.id;
           setChatEntry(server.id, { chatId: state.id, model: start, ended: false });
           setOpening(false);
         } else {
-          await open(false);
+          await open(session);
         }
       } catch (cause) {
         onError(String(cause));
@@ -515,7 +570,7 @@ export function ClaudeChat({
     return () => {
       gone = true;
     };
-  }, [engine, onError, open, server.id]);
+  }, [engine, onError, open, server.id, session]);
 
   const changeMode = (next: string) => {
     const value = next as Mode;
@@ -530,13 +585,6 @@ export function ClaudeChat({
     remember(keyFor(MODEL_KEY, engine), next);
     if (chatRef.current) void commands.claudeChatModel(chatRef.current, next).catch((cause) => onError(String(cause)));
   };
-
-  const seenFresh = useRef(fresh);
-  useEffect(() => {
-    if (fresh === seenFresh.current) return;
-    seenFresh.current = fresh;
-    void open(true);
-  }, [fresh, open]);
 
   useEffect(() => {
     const box = list.current;
@@ -685,7 +733,21 @@ export function ClaudeChat({
                 </div>
               );
             case "tool":
-              return <ToolRow key={item.key} item={item} />;
+              return item.name === "TodoWrite" ? null : <ToolRow key={item.key} item={item} />;
+            case "summary":
+              return (
+                <details key={item.key} className="chat-summary">
+                  <summary>
+                    <Icon name="history" />
+                    <span>{tr("Earlier conversation summarized")}</span>
+                    <small>{tr("The chat got long, so Claude summarized the earlier part to keep going.")}</small>
+                    <Icon name="chevron" />
+                  </summary>
+                  <div className="chat-summary-body">
+                    <Markdown text={item.text} />
+                  </div>
+                </details>
+              );
             case "permission":
               return <PermissionCard key={item.key} item={item} onAnswer={(choice, changed) => void answer(item, choice, changed)} />;
             case "note":
@@ -712,10 +774,11 @@ export function ClaudeChat({
       {ended ? (
         <div className="chat-ended">
           <span>{tr("This conversation has ended. Reopen it to pick up where you left off.")}</span>
-          <button className="button primary small" onClick={() => void open(false)}>{tr("Reopen")}</button>
+          <button className="button primary small" onClick={() => void open(model.session || session || "last")}>{tr("Reopen")}</button>
         </div>
       ) : (
         <div className="chat-compose">
+          {model.todos && model.todos.some((one) => one.status !== "completed") && <TodoPanel todos={model.todos} />}
           {dropping && <div className="chat-drop">{tr("Drop here to send files to {0}", [who])}</div>}
           {(pictures.length > 0 || attached.length > 0) && (
             <div className="chat-attached">

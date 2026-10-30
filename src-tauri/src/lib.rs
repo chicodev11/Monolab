@@ -3473,22 +3473,40 @@ async fn codex_login(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command(async)]
 #[specta::specta]
-fn claude_chat_state(server: String, engine: String) -> claude_chat::ChatState {
+fn claude_chat_state(server: String, engine: String, session: String) -> claude_chat::ChatState {
     if engine == "codex" {
         codex_chat::state(&server)
     } else {
-        claude_chat::state(&server)
+        claude_chat::state(&server, &session)
     }
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-fn claude_chat_open(app: AppHandle, server: String, fresh: bool, mode: String, model: String, engine: String) -> Result<String, String> {
+fn claude_chat_sessions(app: AppHandle, server: String) -> Result<Vec<claude_chat::ChatSession>, String> {
+    claude_chat::sessions(&app, &server)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn claude_chat_rename(app: AppHandle, session: String, title: String) -> Result<(), String> {
+    claude_chat::rename(&app, &session, &title)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn claude_chat_delete(app: AppHandle, server: String, session: String) -> Result<(), String> {
+    claude_chat::delete(&app, &server, &session)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn claude_chat_open(app: AppHandle, server: String, session: String, mode: String, model: String, engine: String) -> Result<String, String> {
     if engine == "codex" {
-        codex_chat::open(&app, &server, fresh, &mode, &model)
+        codex_chat::open(&app, &server, session.is_empty(), &mode, &model)
     } else {
         codex_chat::close_server(&server);
-        claude_chat::open(&app, &server, fresh, &mode, &model)
+        claude_chat::open(&app, &server, &session, &mode, &model)
     }
 }
 
@@ -3573,11 +3591,11 @@ fn claude_chat_interrupt(app: AppHandle, id: String) -> Result<(), String> {
 
 #[tauri::command(async)]
 #[specta::specta]
-fn claude_chat_history(app: AppHandle, server: String, engine: String) -> Result<Vec<String>, String> {
+fn claude_chat_history(app: AppHandle, server: String, engine: String, session: String) -> Result<Vec<String>, String> {
     if engine == "codex" {
         codex_chat::history(&app, &server)
     } else {
-        claude_chat::history(&app, &server)
+        claude_chat::history(&app, &server, &session)
     }
 }
 
@@ -17734,6 +17752,9 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             claude_chat_mode,
             claude_chat_model,
             claude_chat_history,
+            claude_chat_sessions,
+            claude_chat_rename,
+            claude_chat_delete,
             claude_chat_close,
             claude_open_folder,
             claude_accounts,

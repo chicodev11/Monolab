@@ -9,12 +9,16 @@ use tauri::{AppHandle, Emitter};
 use crate::claude_agent;
 
 const HISTORY_LINES: usize = 600;
+/// Chats that keep running in the background per server; the oldest idle one is closed past this.
+const LIVE_CHATS: usize = 4;
 
 struct Chat {
     server: String,
+    session: String,
     stdin: ChildStdin,
     child: Child,
     alive: bool,
+    busy: bool,
     pending: Vec<(String, String)>,
 }
 
@@ -38,29 +42,56 @@ pub struct ChatState {
     pub pending: Vec<String>,
 }
 
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSession {
+    pub id: String,
+    pub title: String,
+    pub updated: f64,
+    pub chat: String,
+    pub busy: bool,
+}
+
 fn emit(app: &AppHandle, id: &str, line: String, exited: bool) {
     let _ = app.emit("claude-chat", ChatLine { id: id.to_string(), line, exited });
 }
 
-pub fn state(server: &str) -> ChatState {
+pub fn state(server: &str, session: &str) -> ChatState {
     let all = chats().lock().expect("chat poisoned");
     all.iter()
-        .find(|(_, one)| one.server == server && one.alive)
+        .filter(|(_, one)| one.server == server && one.alive && (session.is_empty() || one.session == session))
+        .max_by(|a, b| a.0.cmp(b.0))
         .map(|(id, one)| ChatState { id: id.clone(), pending: one.pending.iter().map(|(_, line)| line.clone()).collect() })
         .unwrap_or(ChatState { id: String::new(), pending: Vec::new() })
 }
 
-pub fn open(app: &AppHandle, server: &str, fresh: bool, mode: &str, model: &str) -> Result<String, String> {
+fn is_session(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.chars().all(|one| one.is_ascii_hexdigit() || one == '-')
+}
+
+/// `session`: empty starts a new chat, "last" continues the newest one, otherwise resumes that session.
+pub fn open(app: &AppHandle, server: &str, session: &str, mode: &str, model: &str) -> Result<String, String> {
     let mode = permission_mode(mode)?;
     let model = model_name(model)?;
+    let session = session.trim();
+    let named = is_session(session);
+    if !session.is_empty() && session != "last" && !named {
+        return Err("Unknown conversation.".into());
+    }
+    if named {
+        let all = chats().lock().expect("chat poisoned");
+        if let Some((id, _)) = all.iter().find(|(_, one)| one.server == server && one.alive && one.session == session) {
+            return Ok(id.clone());
+        }
+    }
     let claude = claude_agent::find_claude(app)
         .ok_or("Claude Code isn't installed on this computer. Install it as shown, then try again.")?;
     let instance = crate::instance_by_id(app, server)?;
     let dir = claude_agent::workspace(app, server)?;
     let config = claude_agent::mcp_config(app, server)?;
-    let resume = !fresh && claude_agent::has_history(app, &dir);
+    let resume = session == "last" && claude_agent::has_history(app, &dir);
 
-    close_server(server);
+    make_room(server);
 
     let is_cmd = claude.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("cmd"));
     let mut command = if is_cmd {
@@ -86,7 +117,9 @@ pub fn open(app: &AppHandle, server: &str, fresh: bool, mode: &str, model: &str)
     if !model.is_empty() {
         command.arg("--model").arg(model);
     }
-    if resume {
+    if named {
+        command.arg("--resume").arg(session);
+    } else if resume {
         command.arg("--continue");
     }
     command.args(claude_agent::DENIED_DELETES);
@@ -118,7 +151,15 @@ pub fn open(app: &AppHandle, server: &str, fresh: bool, mode: &str, model: &str)
     );
     chats().lock().expect("chat poisoned").insert(
         id.clone(),
-        Chat { server: server.to_string(), stdin, child, alive: true, pending: Vec::new() },
+        Chat {
+            server: server.to_string(),
+            session: if named { session.to_string() } else { String::new() },
+            stdin,
+            child,
+            alive: true,
+            busy: false,
+            pending: Vec::new(),
+        },
     );
 
     if let Some(stderr) = stderr {
@@ -139,9 +180,26 @@ pub fn open(app: &AppHandle, server: &str, fresh: bool, mode: &str, model: &str)
     let app = app.clone();
     let key = id.clone();
     std::thread::spawn(move || {
+        let mut known = named;
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
             if line.trim().is_empty() {
                 continue;
+            }
+            let finished = line.starts_with("{\"type\":\"result\"");
+            if finished || (!known && line.contains("\"session_id\"")) {
+                let found = serde_json::from_str::<serde_json::Value>(&line)
+                    .ok()
+                    .and_then(|value| value.get("session_id").and_then(|one| one.as_str()).map(str::to_string))
+                    .filter(|one| is_session(one));
+                if let Some(one) = chats().lock().expect("chat poisoned").get_mut(&key) {
+                    if let Some(found) = found.filter(|_| !known) {
+                        one.session = found;
+                        known = true;
+                    }
+                    if finished {
+                        one.busy = false;
+                    }
+                }
             }
             if let Some(request) = permission_request(&line) {
                 if let Some(one) = chats().lock().expect("chat poisoned").get_mut(&key) {
@@ -191,6 +249,9 @@ pub fn send(app: &AppHandle, id: &str, content: &str) -> Result<(), String> {
     }
     let message = serde_json::json!({ "type": "user", "message": { "role": "user", "content": content } });
     write_line(id, &message)?;
+    if let Some(one) = chats().lock().expect("chat poisoned").get_mut(id) {
+        one.busy = true;
+    }
     emit(app, id, message.to_string(), false);
     Ok(())
 }
@@ -296,9 +357,169 @@ pub fn interrupt(id: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn history(app: &AppHandle, server: &str) -> Result<Vec<String>, String> {
+fn make_room(server: &str) {
+    let mut live: Vec<(String, bool)> = chats()
+        .lock()
+        .expect("chat poisoned")
+        .iter()
+        .filter(|(_, one)| one.server == server)
+        .map(|(id, one)| (id.clone(), one.busy && one.alive))
+        .collect();
+    live.sort();
+    while live.len() >= LIVE_CHATS {
+        let at = live.iter().position(|(_, busy)| !busy).unwrap_or(0);
+        close(&live.remove(at).0);
+    }
+}
+
+fn titles_file(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+    Ok(app.path().app_data_dir().map_err(|error| error.to_string())?.join("claude-chat-titles.json"))
+}
+
+fn titles(app: &AppHandle) -> HashMap<String, String> {
+    titles_file(app).ok().and_then(|file| crate::store::read(&file).ok().flatten()).unwrap_or_default()
+}
+
+/// The first thing the user typed, as the chat's name.
+fn first_words(path: &std::path::Path) -> String {
+    static SEEN: OnceLock<Mutex<HashMap<std::path::PathBuf, String>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(one) = seen.lock().expect("titles poisoned").get(path) {
+        return one.clone();
+    }
+    let Ok(file) = std::fs::File::open(path) else { return String::new() };
+    let mut found = String::new();
+    for line in BufReader::new(file).lines().map_while(Result::ok).take(400) {
+        if !line.contains("\"type\":\"user\"") {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+        let flag = |key: &str| value.get(key).and_then(|one| one.as_bool()).unwrap_or(false);
+        if value.get("type").and_then(|one| one.as_str()) != Some("user") || flag("isMeta") || flag("isSidechain") || flag("isCompactSummary") {
+            continue;
+        }
+        let content = value.get("message").and_then(|one| one.get("content"));
+        let text = match content {
+            Some(serde_json::Value::String(text)) => text.clone(),
+            Some(serde_json::Value::Array(blocks)) => blocks
+                .iter()
+                .filter(|block| block.get("type").and_then(|one| one.as_str()) == Some("text"))
+                .filter_map(|block| block.get("text").and_then(|one| one.as_str()))
+                .collect::<Vec<_>>()
+                .join(" "),
+            _ => String::new(),
+        };
+        let text = text.split("Attached files (relative").next().unwrap_or("").trim().to_string();
+        if text.is_empty() || text.starts_with('<') || text.starts_with("This session is being continued") {
+            continue;
+        }
+        let line = text.lines().next().unwrap_or("").trim();
+        found = line.chars().take(80).collect();
+        break;
+    }
+    if !found.is_empty() {
+        seen.lock().expect("titles poisoned").insert(path.to_path_buf(), found.clone());
+    }
+    found
+}
+
+pub fn sessions(app: &AppHandle, server: &str) -> Result<Vec<ChatSession>, String> {
     let dir = claude_agent::workspace(app, server)?;
     let Some(place) = claude_agent::history_dir(app, &dir) else { return Ok(Vec::new()) };
+    let names = titles(app);
+    let live: HashMap<String, (String, bool)> = chats()
+        .lock()
+        .expect("chat poisoned")
+        .iter()
+        .filter(|(_, one)| one.server == server && one.alive && !one.session.is_empty())
+        .map(|(id, one)| (one.session.clone(), (id.clone(), one.busy)))
+        .collect();
+    let mut list: Vec<ChatSession> = std::fs::read_dir(place)
+        .map(|entries| entries.flatten().collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path.extension().is_none_or(|ext| ext != "jsonl") {
+                return None;
+            }
+            let id = path.file_stem()?.to_string_lossy().into_owned();
+            if !is_session(&id) {
+                return None;
+            }
+            let updated = entry
+                .metadata()
+                .and_then(|meta| meta.modified())
+                .ok()
+                .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|at| at.as_millis() as f64)
+                .unwrap_or(0.0);
+            let title = names.get(&id).cloned().unwrap_or_else(|| first_words(&path));
+            let (chat, busy) = live.get(&id).cloned().unwrap_or_default();
+            if title.is_empty() && chat.is_empty() {
+                return None;
+            }
+            Some(ChatSession { id, title, updated, chat, busy })
+        })
+        .collect();
+    list.sort_by(|a, b| b.updated.total_cmp(&a.updated));
+    Ok(list)
+}
+
+pub fn rename(app: &AppHandle, session: &str, title: &str) -> Result<(), String> {
+    if !is_session(session) {
+        return Err("Unknown conversation.".into());
+    }
+    let file = titles_file(app)?;
+    let mut names = titles(app);
+    let title: String = title.trim().chars().take(100).collect();
+    if title.is_empty() {
+        names.remove(session);
+    } else {
+        names.insert(session.to_string(), title);
+    }
+    let text = serde_json::to_string_pretty(&names).map_err(|error| error.to_string())?;
+    crate::store::write(&file, &text).map_err(|error| format!("Could not save the chat name: {error}"))
+}
+
+pub fn delete(app: &AppHandle, server: &str, session: &str) -> Result<(), String> {
+    if !is_session(session) {
+        return Err("Unknown conversation.".into());
+    }
+    let ids: Vec<String> = chats()
+        .lock()
+        .expect("chat poisoned")
+        .iter()
+        .filter(|(_, one)| one.server == server && one.session == session)
+        .map(|(id, _)| id.clone())
+        .collect();
+    for id in ids {
+        close(&id);
+    }
+    let dir = claude_agent::workspace(app, server)?;
+    let place = claude_agent::history_dir(app, &dir).ok_or("Could not find the chat history.")?;
+    let file = place.join(format!("{session}.jsonl"));
+    if file.exists() {
+        std::fs::remove_file(&file).map_err(|error| format!("Could not delete the conversation: {error}"))?;
+    }
+    let extra = place.join(session);
+    if extra.is_dir() {
+        let _ = std::fs::remove_dir_all(extra);
+    }
+    if titles(app).contains_key(session) {
+        rename(app, session, "")?;
+    }
+    Ok(())
+}
+
+pub fn history(app: &AppHandle, server: &str, session: &str) -> Result<Vec<String>, String> {
+    let dir = claude_agent::workspace(app, server)?;
+    let Some(place) = claude_agent::history_dir(app, &dir) else { return Ok(Vec::new()) };
+    if is_session(session) {
+        let text = std::fs::read_to_string(place.join(format!("{session}.jsonl"))).unwrap_or_default();
+        return Ok(conversation_lines(&text));
+    }
     let newest = std::fs::read_dir(place)
         .map(|entries| {
             entries
@@ -361,6 +582,14 @@ pub fn close_all() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checks_session_ids() {
+        assert!(is_session("0b5d2f1c-6a0e-4c7e-9a49-3f1b2c0d9e88"));
+        assert!(!is_session(""));
+        assert!(!is_session("last"));
+        assert!(!is_session("../x"));
+    }
 
     #[test]
     fn spots_a_permission_request() {
