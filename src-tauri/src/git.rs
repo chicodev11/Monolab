@@ -319,6 +319,29 @@ pub async fn diff(app: &AppHandle, instance: &ServerInstance, path: &str, hash: 
     Ok(GitDiff { before, after, binary: false })
 }
 
+/// A unified diff of one file: the working copy against the last commit, or what a commit changed.
+pub async fn patch(app: &AppHandle, instance: &ServerInstance, path: &str, hash: &str) -> Result<String, String> {
+    const LIMIT: usize = 20_000;
+    let path = checked_paths(&[path.to_string()])?.remove(0);
+    let text = if hash.is_empty() {
+        git(app, instance, &["diff", "HEAD", "--", &path], false).await?.ok()?
+    } else {
+        git(app, instance, &["show", "--format=", checked_hash(hash)?, "--", &path], false).await?.ok()?
+    };
+    if text.trim().is_empty() {
+        return Ok("No changes in this file (a new untracked file has no diff until it is added).".into());
+    }
+    if text.len() > LIMIT {
+        let mut cut = LIMIT;
+        while !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        return Ok(format!("{}
+… (diff cut at {LIMIT} characters)", &text[..cut]));
+    }
+    Ok(text)
+}
+
 pub async fn commit(app: &AppHandle, instance: &ServerInstance, paths: &[String], message: &str) -> Result<String, String> {
     let paths = checked_paths(paths)?;
     let message = message.trim();

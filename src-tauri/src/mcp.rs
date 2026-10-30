@@ -427,6 +427,11 @@ const TOOLS: &[Tool] = &[
     Tool { name: "list_players", description: "Whitelist, ops, bans and known players of a server.", args: &[SERVER], read_only: true, destructive: false },
     Tool { name: "list_backups", description: "Backups of a server.", args: &[SERVER], read_only: true, destructive: false },
     Tool { name: "create_backup", description: "Make a backup of the whole server folder now. Good idea before risky changes.", args: &[SERVER, ("note", "string", "Short label (optional).", false)], read_only: false, destructive: false },
+    Tool { name: "git_status", description: "Git state of the server folder: whether it is a repository, branch, upstream, commits ahead/behind and changed files. Works for local and SSH servers.", args: &[SERVER], read_only: true, destructive: false },
+    Tool { name: "git_diff", description: "Unified diff of one file: the current file against the last commit, or what the given commit changed in it.", args: &[SERVER, ("path", "string", "File path relative to the server folder.", true), ("commit", "string", "Commit hash from git_log (optional).", false)], read_only: true, destructive: false },
+    Tool { name: "git_log", description: "Recent commits (hash, author, time, subject), newest first.", args: &[SERVER], read_only: true, destructive: false },
+    Tool { name: "git_commit", description: "Commit the given files with a message (they are staged first). Only commit what the user agreed to; never push.", args: &[SERVER, ("paths", "array", "File paths relative to the server folder, from git_status.", true), ("message", "string", "Commit message.", true)], read_only: false, destructive: false },
+    Tool { name: "git_restore", description: "Put tracked files back to the last commit. Their current versions are backed up first, so this can be undone from Backups.", args: &[SERVER, ("paths", "array", "File paths relative to the server folder.", true)], read_only: false, destructive: true },
 ];
 
 /// A locked agent gets no `list_servers` and no `server` argument: every tool schema is sent with every turn.
@@ -881,6 +886,27 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
         "list_players" => invoke(app, "list_players", with(json!({}))),
         "list_backups" => invoke(app, "list_backups", with(json!({}))),
         "create_backup" => invoke(app, "create_backup", with(json!({ "note": text(args, "note").unwrap_or("Claude"), "worldsOnly": false }))),
+        "git_status" | "git_diff" | "git_log" | "git_commit" | "git_restore" => {
+            let instance = crate::instance_by_id(app, &id)?;
+            let paths: Vec<String> = args
+                .get("paths")
+                .and_then(Value::as_array)
+                .map(|list| list.iter().filter_map(Value::as_str).map(String::from).collect())
+                .unwrap_or_default();
+            tauri::async_runtime::block_on(async {
+                match name {
+                    "git_status" => crate::git::status(app, &instance).await.and_then(|one| serde_json::to_value(one).map_err(|error| error.to_string())),
+                    "git_diff" => crate::git::patch(app, &instance, need(args, "path")?, text(args, "commit").unwrap_or("")).await.map(Value::String),
+                    "git_log" => crate::git::log(app, &instance).await.and_then(|one| serde_json::to_value(one).map_err(|error| error.to_string())),
+                    "git_commit" => crate::git_commit(app.clone(), id.clone(), paths, need(args, "message")?.to_string())
+                        .await
+                        .map(|hash| Value::String(format!("Committed as {hash}."))),
+                    _ => crate::git_restore(app.clone(), id.clone(), paths)
+                        .await
+                        .map(|backup| Value::String(if backup.is_empty() { "Restored.".into() } else { format!("Restored. The previous versions are in backup {backup}.") })),
+                }
+            })
+        }
         other => Err(format!("Unknown tool `{other}`.")),
     }
 }

@@ -22,7 +22,14 @@ function remember(key: string, value: string) {
     localStorage.setItem(key, value);
   } catch {}
 }
-const STARTERS: { icon: "puzzle" | "alert" | "gauge" | "sliders"; title: string; prompt: string }[] = [
+type Starter = { icon: "puzzle" | "alert" | "gauge" | "sliders" | "wrench" | "shield"; title: string; prompt: string };
+// Prompts stay English for the agent; titles are translated on screen.
+const MINECRAFT_STARTERS: Starter[] = [
+  {
+    icon: "wrench",
+    title: "Set up the server",
+    prompt: "Help me set up this Minecraft server. Ask what kind of server I want (survival, minigames, creative, modded, with friends or public), then suggest plugins or mods and server.properties settings, explain each one, and install and change them only after I agree.",
+  },
   {
     icon: "puzzle",
     title: "Make a plugin",
@@ -42,6 +49,33 @@ const STARTERS: { icon: "puzzle" | "alert" | "gauge" | "sliders"; title: string;
     icon: "sliders",
     title: "Tune the settings",
     prompt: "Review server.properties, the start options and the installed mods for this server and suggest settings that make it run better. Explain each change before making it.",
+  },
+  {
+    icon: "shield",
+    title: "Check security",
+    prompt: "Check this server's security: online-mode, whitelist, operators, exposed ports, RCON and query, and plugin permissions. List what is risky and how to fix it, and change nothing until I agree.",
+  },
+];
+const GAME_STARTERS: Starter[] = [
+  {
+    icon: "wrench",
+    title: "Set up the server",
+    prompt: "Help me set up this game server. Read its config files, ask how I want to play (players, difficulty, world, password), then explain the settings to change and change them only after I agree.",
+  },
+  {
+    icon: "alert",
+    title: "Find why it stopped",
+    prompt: "Read the recent logs and console output for this server, find why it crashed or stopped and tell me how to fix it. Don't change anything until I agree.",
+  },
+  {
+    icon: "sliders",
+    title: "Tune the settings",
+    prompt: "Review this server's config files and start options and suggest changes that make it run better. Explain each change before making it.",
+  },
+  {
+    icon: "shield",
+    title: "Check security",
+    prompt: "Check this server's security: passwords, admin lists, exposed ports and remote console settings. List what is risky and how to fix it, and change nothing until I agree.",
   },
 ];
 
@@ -329,7 +363,7 @@ export function ClaudeChat({
   onError,
   onLogin,
 }: {
-  server: { id: string; name: string };
+  server: { id: string; name: string; minecraft: boolean };
   engine: Engine;
   fresh: number;
   onError: (message: string) => void;
@@ -616,9 +650,9 @@ export function ClaudeChat({
           <div className="chat-hello">
             <Icon name="sparkles" />
             <strong>{tr("Chat with the {0} agent", [server.name])}</strong>
-            <p className="muted">{engine === "codex" ? tr("It can read and edit server files, check logs and build plugins for you. It works without asking, within the scope you pick below.") : tr("Reads and edits server files, checks logs and creates plugins. Asks here before changing files or running commands.")}</p>
+            <p className="muted">{engine === "codex" ? tr("It can read and edit server files, check logs and build plugins for you. It works without asking, within the scope you pick below.") : server.minecraft ? tr("Reads and edits server files, checks logs and creates plugins. Asks here before changing files or running commands.") : tr("Reads and edits server files and checks logs. Asks here before changing files or running commands.")}</p>
             <div className="chat-starters">
-              {STARTERS.map((one) => (
+              {(server.minecraft ? MINECRAFT_STARTERS : GAME_STARTERS).map((one) => (
                 <button
                   key={one.title}
                   className="chat-starter"

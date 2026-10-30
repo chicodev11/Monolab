@@ -178,7 +178,7 @@ function AccountManager({
   );
 }
 
-export function AgentPage({ server, onError }: { server: { id: string; name: string }; onError: (message: string) => void }) {
+export function AgentPage({ server, onError }: { server: { id: string; name: string; minecraft: boolean }; onError: (message: string) => void }) {
   const [info, setInfo] = useState<ClaudeInfo | null>(null);
   const [engine, setEngine] = useState<Engine>(() => savedEngine(server.id) ?? "claude");
   const [fresh, setFresh] = useState(0);

@@ -8744,7 +8744,7 @@ function App() {
       )}
       {!toolLoading && tool === "claude" && !onWeb && (
         <Suspense fallback={null}>
-        <AgentPage key={selected.id} server={{ id: selected.id, name: selected.name }} onError={setError} />
+        <AgentPage key={selected.id} server={{ id: selected.id, name: selected.name, minecraft: kindOf(selected.core).family === "minecraft" }} onError={setError} />
         </Suspense>
       )}
       {!toolLoading && tool === "integrations" && (

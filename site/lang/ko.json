@@ -200,5 +200,7 @@
   "Backups leave out the .git folder unless you turn it on in Settings.": "백업은 .git 폴더를 빼요. 설정에서 넣을 수 있어요.",
   "Number settings show their unit inside the same box.": "숫자 설정 칸 안에 단위가 같이 보여요.",
   "Clearer Korean error messages.": "한국어 오류 문구를 더 분명하게 다듬었어요.",
-  "Server downloads that stall (new Purpur builds can be slow at first) continue from where they stopped instead of starting over.": "서버 파일 다운로드가 멈추면(새 Purpur 빌드는 처음에 느릴 수 있어요) 처음부터 다시 받지 않고 멈춘 곳부터 이어 받아요."
+  "Server downloads that stall (new Purpur builds can be slow at first) continue from where they stopped instead of starting over.": "서버 파일 다운로드가 멈추면(새 Purpur 빌드는 처음에 느릴 수 있어요) 처음부터 다시 받지 않고 멈춘 곳부터 이어 받아요.",
+  "The Claude agent can use git too: see changes, read diffs and history, commit and restore files, on local and SSH servers.": "Claude 에이전트도 git을 써요: 로컬·SSH 서버에서 변경 사항·비교·기록을 보고, 파일을 커밋하거나 되돌려요.",
+  "The agent offers server setup and a security check, with different starter buttons for Minecraft and other game servers.": "에이전트에 서버 세팅·보안 점검 시작 버튼이 생겼고, 마인크래프트와 다른 게임 서버에 맞는 버튼이 따로 나와요."
 }

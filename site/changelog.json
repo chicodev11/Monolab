@@ -1,11 +1,13 @@
 [
   {
     "kind": "app",
-    "version": "1.6.3",
+    "version": "1.6.4",
     "date": "2026-10-30",
     "added": [
       "Git tab: for servers kept in git, see changed files line by line, commit the ones you pick, browse history, restore a file and pull or push. Start git sets up a repository with a .gitignore that leaves out worlds, logs and jar files.",
-      "Edit text files right in the SFTP window, on either side, and save them back."
+      "Edit text files right in the SFTP window, on either side, and save them back.",
+      "The Claude agent can use git too: see changes, read diffs and history, commit and restore files, on local and SSH servers.",
+      "The agent offers server setup and a security check, with different starter buttons for Minecraft and other game servers."
     ],
     "changed": [
       "Backups leave out the .git folder unless you turn it on in Settings.",

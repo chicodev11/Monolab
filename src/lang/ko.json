@@ -1774,7 +1774,11 @@
     "In use": "사용 중",
     "Not signed in": "로그인 안 됨",
     "Sign out": "로그아웃",
-    "Default account": "기본 계정"
+    "Default account": "기본 계정",
+    "Set up the server": "서버 세팅",
+    "Check security": "보안 점검",
+    "Find why it stopped": "멈춘 원인 찾기",
+    "Reads and edits server files and checks logs. Asks here before changing files or running commands.": "서버 파일과 로그 작업을 도와줘요."
   },
   "웹 패널": {
     "Others on the same Wi-Fi can see this": "같은 와이파이의 다른 사람이 볼 수 있어요",
