@@ -11425,3 +11425,14 @@ textarea:focus-visible { outline: none; box-shadow: none; border-color: var(--ac
 .integ-layout > .integ-nav { margin: 0; }
 .claude-main > .chat-sessions { margin: 0; }
 .instance-body .wb-crumbs { margin: 0; }
+
+/* Server settings: the restart note sits in the chip row */
+.props-note { display: inline-flex; align-items: center; gap: 6px; height: 36px; color: var(--text-3); font-size: 12.5px; white-space: nowrap; }
+.props-note svg { width: 14px; height: 14px; flex: none; }
+
+/* Agent: folding the conversation list */
+.chat-session-top { display: flex; align-items: center; gap: 4px; }
+.chat-session-top .chat-session-new { flex: 1; min-width: 0; }
+.claude-main.with-list.list-folded { grid-template-columns: 44px minmax(0, 1fr); }
+.chat-sessions.folded { align-items: center; gap: 4px; padding: 4px; }
+@media (max-width: 860px) { .claude-main.with-list.list-folded { grid-template-columns: minmax(0, 1fr); } .chat-sessions.folded { flex-direction: row; } }

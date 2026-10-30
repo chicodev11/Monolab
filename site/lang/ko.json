@@ -208,5 +208,9 @@
   "Switching between server tabs returns each server to where you left it, down to the plugin settings or the add-content page.": "서버 탭을 오가면 각 서버가 마지막에 보던 자리(플러그인 설정·콘텐츠 추가 화면까지)로 돌아가요.",
   "Back and forward also remember tabs inside a page: log views, settings categories, plugin settings, the map, player lists and an open backup.": "뒤로·앞으로가 화면 안의 탭(로그 보기·설정 카테고리·플러그인 설정·지도·플레이어 목록·연 백업)까지 기억해요.",
   "Page titles are gone and their buttons moved into the rows below, so content starts higher. The player name box both adds and finds players.": "페이지 제목을 없애고 버튼을 아래 줄로 옮겨 내용이 더 위에서 시작해요. 플레이어 이름 칸 하나로 추가와 찾기를 같이 해요.",
-  "When a long agent chat is summarized, the summary shows as a folded card, and the agent keeps answering in Korean.": "긴 에이전트 대화가 요약되면 접힌 카드로 보이고, 요약 뒤에도 한국어로 답해요."
+  "When a long agent chat is summarized, the summary shows as a folded card, and the agent keeps answering in Korean.": "긴 에이전트 대화가 요약되면 접힌 카드로 보이고, 요약 뒤에도 한국어로 답해요.",
+  "New servers take the next free port (25566, 25567…) when 25565 is already used by another server or program.": "새 서버를 만들 때 25565를 이미 다른 서버나 프로그램이 쓰고 있으면 25566, 25567… 순서로 비어 있는 포트를 골라요.",
+  "The agent's conversation list can be folded away.": "에이전트 대화 목록을 접을 수 있어요.",
+  "The port setting is now called Connection port, and the query and RCON ports say they are not for joining. A port clash on start says where to change it.": "포트 설정 이름을 '접속 포트'로 바꾸고, 쿼리·RCON 포트에는 접속용이 아니라고 적었어요. 시작할 때 포트가 겹치면 어디서 바꾸는지 알려줘요.",
+  "The 'applies on the next start' note in server settings is a small line next to the search box.": "서버 설정의 '다음 시작부터 적용' 안내가 검색칸 옆 작은 줄로 바뀌었어요."
 }

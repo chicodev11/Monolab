@@ -1,6 +1,19 @@
 [
   {
     "kind": "app",
+    "version": "1.6.6",
+    "date": "2026-10-31",
+    "added": [
+      "New servers take the next free port (25566, 25567…) when 25565 is already used by another server or program.",
+      "The agent's conversation list can be folded away."
+    ],
+    "changed": [
+      "The port setting is now called Connection port, and the query and RCON ports say they are not for joining. A port clash on start says where to change it.",
+      "The 'applies on the next start' note in server settings is a small line next to the search box."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.6.5",
     "date": "2026-10-30",
     "added": [

@@ -7590,11 +7590,6 @@ function App() {
         );
         return (
         <div className="tool-content props-page">
-          {running && (
-            <Banner tone="info">
-              {tr("The server is running. Saved settings apply on the next start.")}
-            </Banner>
-          )}
           {properties.length === 0 && (
             <p className="muted tool-empty">
               {isNative(selected.core)
@@ -7631,6 +7626,12 @@ function App() {
                 </div>
               )}
               <span className="live-spacer" />
+              {running && (
+                <span className="props-note" data-tip={tr("The server is running. Saved settings apply on the next start.")}>
+                  <Icon name="info" />
+                  {tr("Applies on the next start.")}
+                </span>
+              )}
           <label className="search props-search wb-search-field">
             <Icon name="search" />
             <input

@@ -46,10 +46,14 @@ function ChatList({
   onNew,
   onChanged,
   onError,
+  folded,
+  onFold,
 }: {
   server: string;
   list: ChatSession[];
   current: string;
+  folded: boolean;
+  onFold: (folded: boolean) => void;
   onPick: (id: string) => void;
   onNew: () => void;
   onChanged: (deleted?: string) => void;
@@ -81,12 +85,29 @@ function ChatList({
       },
     });
   };
+  if (folded) {
+    return (
+      <nav className="chat-sessions folded" aria-label={tr("Conversations")}>
+        <button className="wb-icon ghost" aria-label={tr("Show conversations")} data-tip={tr("Show conversations")} onClick={() => onFold(false)}>
+          <Icon name="panel-open" />
+        </button>
+        <button className="wb-icon ghost" aria-label={tr("New chat")} data-tip={tr("New chat")} onClick={onNew}>
+          <Icon name="plus" />
+        </button>
+      </nav>
+    );
+  }
   return (
     <nav className="chat-sessions" aria-label={tr("Conversations")}>
-      <button className="chat-session-new" onClick={onNew}>
-        <Icon name="plus" />
-        {tr("New chat")}
-      </button>
+      <div className="chat-session-top">
+        <button className="chat-session-new" onClick={onNew}>
+          <Icon name="plus" />
+          {tr("New chat")}
+        </button>
+        <button className="wb-icon ghost" aria-label={tr("Hide conversations")} data-tip={tr("Hide conversations")} onClick={() => onFold(true)}>
+          <Icon name="panel-close" />
+        </button>
+      </div>
       <div className="chat-session-scroll">
         {list.length === 0 && <p className="chat-session-empty">{tr("Conversations show up here.")}</p>}
         {groups.map((group) => (
@@ -301,6 +322,21 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
   const [sessions, setSessions] = useState<ChatSession[] | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [pickSerial, setPickSerial] = useState(0);
+  const [listFolded, setListFolded] = useState(() => {
+    try {
+      return localStorage.getItem("monolab-chat-list-folded") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const foldList = (next: boolean) => {
+    setListFolded(next);
+    try {
+      localStorage.setItem("monolab-chat-list-folded", next ? "1" : "0");
+    } catch {
+      /* keep it for this session only */
+    }
+  };
   const entry = useChatEntry(server.id);
   const [copied, setCopied] = useState(false);
   const [accounts, setAccounts] = useState<ClaudeAccounts | null>(null);
@@ -543,7 +579,7 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
             </button>
           </div>
         )}
-        <div className={`claude-main ${engine === "claude" ? "with-list" : ""}`}>
+        <div className={`claude-main ${engine === "claude" ? "with-list" : ""} ${listFolded ? "list-folded" : ""}`}>
           {engine === "claude" && sessions && (
             <ChatList
               list={sessions}
@@ -556,6 +592,8 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
               }}
               onError={onError}
               server={server.id}
+              folded={listFolded}
+              onFold={foldList}
             />
           )}
           {picked !== null && (

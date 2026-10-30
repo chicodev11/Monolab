@@ -5035,7 +5035,7 @@ fn update_script_memory(
 }
 
 fn ensure_port_available(port: u16) -> Result<(), String> {
-    TcpListener::bind(("0.0.0.0", port)).map(drop).map_err(|_| format!("Port {port} is already in use by another program or server. Change server-port in server.properties or stop that server first."))
+    TcpListener::bind(("0.0.0.0", port)).map(drop).map_err(|_| format!("Port {port} is already in use by another program or server. Change Connection port under Server settings → General, or stop that server first."))
 }
 
 fn level_name_of(instance: &ServerInstance) -> String {
@@ -5865,6 +5865,34 @@ async fn duplicate_instance(
     Ok(instance_view(made, &state))
 }
 
+/// A new local server's port: 25565 unless another local server or program has it, then one up at a time.
+fn new_server_port(instances: &[ServerInstance], from: u16) -> u16 {
+    let mut port = from;
+    while port < u16::MAX
+        && (instances.iter().any(|instance| !is_far(instance) && instance.port == port)
+            || TcpListener::bind(("0.0.0.0", port)).is_err())
+    {
+        port += 1;
+    }
+    port
+}
+
+/// Writes a picked port into a new server folder before its first start (only when it is not the default).
+fn claim_new_server_port(app: &AppHandle, folder: &Path, core: &str, default_port: u16) -> u16 {
+    if kinds::is_proxy(core) || pumpkin::is_pumpkin(core) || games::is_non_minecraft(core) {
+        return default_port;
+    }
+    let port = new_server_port(&load_instances(app).unwrap_or_default(), default_port);
+    if port != default_port {
+        let properties = folder.join("server.properties");
+        let current = fs::read_to_string(&properties).unwrap_or_default();
+        if fs::write(&properties, with_port(&current, port)).is_err() {
+            return default_port;
+        }
+    }
+    port
+}
+
 fn next_free_port(instances: &[ServerInstance], from: u16) -> u16 {
     let mut port = from.saturating_add(1).max(1024);
     while instances.iter().any(|instance| instance.port == port) {
@@ -6225,6 +6253,7 @@ fn create_instance(
     } else {
         25565
     };
+    let default_port = claim_new_server_port(&app, &folder, &input.core, default_port);
     let instance = ServerInstance {
         id: instance_id(),
         name,
@@ -6318,7 +6347,7 @@ fn create_instance_from_jar(
         max_memory_mib: default_memory_mib(),
         min_memory_mib: default_memory_mib(),
         jvm_args: String::new(),
-        port: if core == "Velocity" { 25577 } else { 25565 },
+        port: claim_new_server_port(&app, &folder, &core, if core == "Velocity" { 25577 } else { 25565 }),
         sort_order: 0,
         group: String::new(),
         start_with_app: false,
@@ -18451,6 +18480,44 @@ mod tests {
         assert_eq!(instances[2].core, "Fabric");
         assert!(!resniff_unknown_cores(&mut instances));
         let _ = std::fs::remove_dir_all(&here);
+    }
+
+    #[test]
+    fn new_server_port_skips_ports_of_local_servers() {
+        let make = |port: u16, remote: &str| super::ServerInstance {
+            id: String::new(),
+            name: String::new(),
+            path: String::new(),
+            core: "Paper".into(),
+            version: String::new(),
+            launch_mode: super::default_launch_mode(),
+            server_jar: None,
+            java_path: "java".into(),
+            max_memory_mib: 4096,
+            min_memory_mib: 4096,
+            jvm_args: String::new(),
+            port,
+            sort_order: 0,
+            group: String::new(),
+            start_with_app: false,
+            crash_restart: false,
+            core_build: String::new(),
+            created_at: 0,
+            last_run_at: 0,
+            custom_command: String::new(),
+            start_script: String::new(),
+            start_script_hash: String::new(),
+            remote_host: remote.into(),
+            linked: false,
+            panel_host: String::new(),
+            panel_server: String::new(),
+            panel_daemon: String::new(),
+        };
+        let held = std::net::TcpListener::bind(("0.0.0.0", 47213)).unwrap();
+        let instances = vec![make(47210, ""), make(47211, ""), make(47212, "host-a")];
+        assert_eq!(super::new_server_port(&instances, 47210), 47212);
+        assert_eq!(super::new_server_port(&instances, 47213), 47214);
+        drop(held);
     }
 
     #[test]

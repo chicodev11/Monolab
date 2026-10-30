@@ -15,7 +15,7 @@ type Row = readonly [key: string, category: Category, label: string, description
 
 const ROWS: readonly Row[] = [
   ["motd", "General", "Server description (MOTD)", "The line shown below the server name in the server list. Supports color codes (§)."],
-  ["server-port", "General", "Port", "The port friends use to connect. Changing it also changes the connection address."],
+  ["server-port", "General", "Connection port", "The port friends use to connect. Changing it also changes the connection address."],
   ["max-players", "General", "Max players", "The maximum number of players who can be online at once."],
   ["level-name", "General", "World folder name", "The world folder name inside the server folder. Changing it creates a new world."],
   ["enable-status", "General", "Show in server list", "When off, the server list shows no player count or description."],
@@ -59,10 +59,10 @@ const ROWS: readonly Row[] = [
   ["command-spam-threshold-seconds", "Players & security", "Command spam window (s)", "Running too many commands within this window counts as spam."],
   ["server-ip", "Network", "Server IP", "The address to listen on if the computer has several. Usually left empty."],
   ["enable-rcon", "Network", "Enable RCON", "Allows console commands from outside the app. Useful for servers the app didn't start."],
-  ["rcon.port", "Network", "RCON port", "Port RCON listens on."],
+  ["rcon.port", "Network", "RCON port", "Only for remote console tools, not for joining. The connection port is under General."],
   ["rcon.password", "Network", "RCON password", "The RCON password. RCON stays off if this is empty."],
   ["enable-query", "Network", "Enable query", "Opens the query protocol that reports server status."],
-  ["query.port", "Network", "Query port", "Port the query protocol listens on."],
+  ["query.port", "Network", "Query port", "Only for status tools, not for joining. The connection port is under General."],
   ["network-compression-threshold", "Network", "Network compression threshold", "Compresses packets larger than this size in bytes. -1 disables compression."],
   ["rate-limit", "Network", "Rate limit", "The number of packets each player can send per second. 0 means no limit."],
   ["use-native-transport", "Network", "Use native transport", "Uses the faster native networking on Linux."],
