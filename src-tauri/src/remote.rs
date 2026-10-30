@@ -1978,11 +1978,12 @@ pub async fn make_backup(
     let conn = connect(app, host_id).await?;
     conn.run_long(&format!(
         "mkdir -p {vault} && {{ tar -czf {vault}/{name}.part -C {here} --warning=no-file-changed --ignore-failed-read \
-         --exclude=./.monolab-trash --exclude=session.lock {what} ; c=$?; [ $c -le 1 ] || {{ rm -f {vault}/{name}.part; exit $c; }}; }} \
+         --exclude=./.monolab-trash --exclude=session.lock{git} {what} ; c=$?; [ $c -le 1 ] || {{ rm -f {vault}/{name}.part; exit $c; }}; }} \
          && mv {vault}/{name}.part {vault}/{name}",
         vault = quote(&vault),
         here = quote(folder),
-        name = name
+        name = name,
+        git = if crate::backups::skip_git() { " --exclude=./.git" } else { "" }
     ))
     .await?
     .ok()?;

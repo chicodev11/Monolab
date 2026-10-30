@@ -194,5 +194,11 @@
   "Choose which folders and files go into a backup.": "백업에 넣을 폴더와 파일을 골라서 백업해요.",
   "The home screen shows summary tiles on top, uptime on running servers, and when stopped servers last ran.": "홈 화면 위에 요약 칸을 두고, 실행 중인 서버에는 가동 시간을, 꺼진 서버에는 마지막 실행 시각을 보여줘요.",
   "Plugin lists, logs, the disk dialog and server settings scroll inside their own box.": "플러그인 목록·로그·디스크 창·서버 설정이 각자 박스 안에서 스크롤돼요.",
-  "Starter prompts in the Claude agent are sent in English, which uses fewer tokens.": "Claude 에이전트의 시작 프롬프트를 영어로 보내 토큰을 덜 써요."
+  "Starter prompts in the Claude agent are sent in English, which uses fewer tokens.": "Claude 에이전트의 시작 프롬프트를 영어로 보내 토큰을 덜 써요.",
+  "Git tab: for servers kept in git, see changed files line by line, commit the ones you pick, browse history, restore a file and pull or push. Start git sets up a repository with a .gitignore that leaves out worlds, logs and jar files.": "Git 탭: git으로 관리하는 서버에서 바뀐 파일을 줄 단위로 보고, 고른 파일만 커밋하고, 기록을 보고, 파일을 되돌리고, 당겨오기·올리기를 해요. \"Git 시작\"은 월드·로그·jar를 빼는 .gitignore와 함께 저장소를 만들어요.",
+  "Edit text files right in the SFTP window, on either side, and save them back.": "SFTP 창에서 양쪽 어느 파일이든 텍스트 파일을 바로 편집하고 저장해요.",
+  "Backups leave out the .git folder unless you turn it on in Settings.": "백업은 .git 폴더를 빼요. 설정에서 넣을 수 있어요.",
+  "Number settings show their unit inside the same box.": "숫자 설정 칸 안에 단위가 같이 보여요.",
+  "Clearer Korean error messages.": "한국어 오류 문구를 더 분명하게 다듬었어요.",
+  "Server downloads that stall (new Purpur builds can be slow at first) continue from where they stopped instead of starting over.": "서버 파일 다운로드가 멈추면(새 Purpur 빌드는 처음에 느릴 수 있어요) 처음부터 다시 받지 않고 멈춘 곳부터 이어 받아요."
 }

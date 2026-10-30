@@ -327,6 +327,19 @@ export const commands = {
 	sftpMakeDir: (side: Side, dir: string, name: string) => __TAURI_INVOKE<null>("sftp_make_dir", { side, dir, name }),
 	sftpRename: (side: Side, dir: string, from: string, to: string) => __TAURI_INVOKE<null>("sftp_rename", { side, dir, from, to }),
 	sftpDelete: (side: Side, dir: string, names: string[]) => __TAURI_INVOKE<null>("sftp_delete", { side, dir, names }),
+	sftpReadText: (side: Side, dir: string, name: string) => __TAURI_INVOKE<string>("sftp_read_text", { side, dir, name }),
+	gitStatus: (id: string) => __TAURI_INVOKE<GitStatus>("git_status", { id }),
+	gitPresent: (id: string) => __TAURI_INVOKE<boolean>("git_present", { id }),
+	gitInstalled: (id: string) => __TAURI_INVOKE<boolean>("git_installed", { id }),
+	gitInit: (id: string) => __TAURI_INVOKE<null>("git_init", { id }),
+	gitLog: (id: string) => __TAURI_INVOKE<GitCommit[]>("git_log", { id }),
+	gitCommitFiles: (id: string, hash: string) => __TAURI_INVOKE<GitFile[]>("git_commit_files", { id, hash }),
+	gitDiff: (id: string, path: string, hash: string) => __TAURI_INVOKE<GitDiff>("git_diff", { id, path, hash }),
+	gitCommit: (id: string, paths: string[], message: string) => __TAURI_INVOKE<string>("git_commit", { id, paths, message }),
+	gitRestore: (id: string, paths: string[]) => __TAURI_INVOKE<string>("git_restore", { id, paths }),
+	gitSync: (id: string, push: boolean) => __TAURI_INVOKE<string>("git_sync", { id, push }),
+	gitAddIgnore: (id: string) => __TAURI_INVOKE<null>("git_add_ignore", { id }),
+	sftpWriteText: (side: Side, dir: string, name: string, text: string) => __TAURI_INVOKE<null>("sftp_write_text", { side, dir, name, text }),
 	sftpTransfer: (job: string, from: Side, fromDir: string, names: string[], to: Side, toDir: string) => __TAURI_INVOKE<TransferResult>("sftp_transfer", { job, from, fromDir, names, to, toDir }),
 	sftpCancel: (job: string) => __TAURI_INVOKE<void>("sftp_cancel", { job }),
 	panelStartup: (id: string) => __TAURI_INVOKE<PanelStartup>("panel_startup", { id }),
@@ -483,6 +496,7 @@ export type AppSettings = {
 	consoleLineLimit?: number,
 	backupRoot?: string,
 	backupWorldsOnly?: boolean,
+	backupIncludeGit?: boolean,
 	webPanel?: boolean,
 	webPanelPort?: number,
 	webTunnel?: boolean,
@@ -950,6 +964,38 @@ export type GameEvent_Serialize = {
 export type GameRule = {
 	name: string,
 	value: string,
+};
+
+export type GitCommit = {
+	hash: string,
+	short: string,
+	author: string,
+	at: number,
+	subject: string,
+};
+
+export type GitDiff = {
+	before: string,
+	after: string,
+	binary: boolean,
+};
+
+export type GitFile = {
+	path: string,
+	/**  Changed, Added, Deleted, Renamed, Untracked or Conflict. */
+	state: string,
+	/**  The old path of a renamed file. */
+	from: string,
+};
+
+export type GitStatus = {
+	repo: boolean,
+	branch: string,
+	upstream: string,
+	ahead: number,
+	behind: number,
+	files: GitFile[],
+	hasIgnore: boolean,
 };
 
 export type Handed = {

@@ -5,6 +5,7 @@ mod extensions;
 mod liveinv;
 mod markdown;
 mod backups;
+mod git;
 mod catalog;
 mod cfpack;
 mod claude_chat;
@@ -1002,6 +1003,8 @@ struct AppSettings {
     #[serde(default)]
     backup_worlds_only: bool,
     #[serde(default)]
+    backup_include_git: bool,
+    #[serde(default)]
     web_panel: bool,
     #[serde(default = "default_web_port")]
     web_panel_port: u16,
@@ -1029,6 +1032,7 @@ impl Default for AppSettings {
             console_line_limit: 2000,
             backup_root: String::new(),
             backup_worlds_only: false,
+            backup_include_git: false,
             web_panel: false,
             web_panel_port: default_web_port(),
             web_tunnel: false,
@@ -1062,6 +1066,7 @@ pub(crate) fn read_app_settings(app: &AppHandle) -> AppSettings {
     if settings.web_panel_port == OLD_WEB_PORT {
         settings.web_panel_port = default_web_port();
     }
+    backups::INCLUDE_GIT.store(settings.backup_include_git, std::sync::atomic::Ordering::Relaxed);
     settings
 }
 
@@ -3606,6 +3611,130 @@ async fn sftp_rename(app: AppHandle, side: sftp::Side, dir: String, from: String
 
 #[tauri::command(async)]
 #[specta::specta]
+async fn git_status(app: AppHandle, id: String) -> Result<git::GitStatus, String> {
+    let instance = instance_by_id(&app, &id)?;
+    git::status(&app, &instance).await
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn git_present(app: AppHandle, id: String) -> Result<bool, String> {
+    let instance = instance_by_id(&app, &id)?;
+    git::present(&app, &instance).await
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn git_installed(app: AppHandle, id: String) -> Result<bool, String> {
+    let instance = instance_by_id(&app, &id)?;
+    Ok(git::installed(&app, &instance).await)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn git_init(app: AppHandle, id: String) -> Result<(), String> {
+    let instance = instance_by_id(&app, &id)?;
+    git::init(&app, &instance).await?;
+    record_audit(&app, &id, "Server", "Git init", "");
+    Ok(())
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn git_log(app: AppHandle, id: String) -> Result<Vec<git::GitCommit>, String> {
+    let instance = instance_by_id(&app, &id)?;
+    git::log(&app, &instance).await
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn git_commit_files(app: AppHandle, id: String, hash: String) -> Result<Vec<git::GitFile>, String> {
+    let instance = instance_by_id(&app, &id)?;
+    git::commit_files(&app, &instance, &hash).await
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn git_diff(app: AppHandle, id: String, path: String, hash: String) -> Result<git::GitDiff, String> {
+    let instance = instance_by_id(&app, &id)?;
+    git::diff(&app, &instance, &path, &hash).await
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn git_commit(app: AppHandle, id: String, paths: Vec<String>, message: String) -> Result<String, String> {
+    let instance = instance_by_id(&app, &id)?;
+    let made = git::commit(&app, &instance, &paths, &message).await?;
+    record_audit(&app, &id, "Server", "Git commit", &format!("{made} {}", message.trim()));
+    Ok(made)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn git_restore(app: AppHandle, id: String, paths: Vec<String>) -> Result<String, String> {
+    let instance = instance_by_id(&app, &id)?;
+    let picks = backups::clean_picks(&paths)?;
+    // The current versions are backed up first, so a restore can itself be undone.
+    let safety = if instance.remote_host.is_empty() {
+        let root = PathBuf::from(&instance.path);
+        let existing: Vec<String> = picks.iter().filter(|one| root.join(one).exists()).cloned().collect();
+        if existing.is_empty() {
+            String::new()
+        } else {
+            let vault = backup_folder(&app, &instance)?;
+            off_runtime(|| backups::create_picked(&root, "Before git restore", &vault, &existing))?.file_name
+        }
+    } else {
+        remote_backup(&app, &instance, "before-git-restore", false, &picks).await?
+    };
+    git::restore(&app, &instance, &picks).await?;
+    record_audit(&app, &id, "Server", "Git restore", &picks.join(", "));
+    Ok(safety)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn git_sync(app: AppHandle, id: String, push: bool) -> Result<String, String> {
+    let instance = instance_by_id(&app, &id)?;
+    let said = git::sync(&app, &instance, push).await?;
+    record_audit(&app, &id, "Server", if push { "Git push" } else { "Git pull" }, "");
+    Ok(said)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn git_add_ignore(app: AppHandle, id: String) -> Result<(), String> {
+    let instance = instance_by_id(&app, &id)?;
+    if !instance.panel_host.is_empty() {
+        return Err("Git isn't available for panel servers.".into());
+    }
+    if instance.remote_host.is_empty() {
+        let path = PathBuf::from(&instance.path).join(".gitignore");
+        if path.exists() {
+            return Err("This server already has a .gitignore file.".into());
+        }
+        return std::fs::write(&path, git::DEFAULT_IGNORE).map_err(|error| format!("Could not create .gitignore: {error}"));
+    }
+    if remote::read_text(&app, &instance.remote_host, &instance.path, ".gitignore").await.is_ok() {
+        return Err("This server already has a .gitignore file.".into());
+    }
+    remote::write_text(&app, &instance.remote_host, &instance.path, ".gitignore", git::DEFAULT_IGNORE).await
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn sftp_read_text(app: AppHandle, side: sftp::Side, dir: String, name: String) -> Result<String, String> {
+    sftp::read_text(&app, &side, &dir, &name).await
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+async fn sftp_write_text(app: AppHandle, side: sftp::Side, dir: String, name: String, text: String) -> Result<(), String> {
+    sftp::write_text(&app, &side, &dir, &name, &text).await
+}
+
+#[tauri::command(async)]
+#[specta::specta]
 async fn sftp_delete(app: AppHandle, side: sftp::Side, dir: String, names: Vec<String>) -> Result<(), String> {
     sftp::delete(&app, &side, &dir, &names).await
 }
@@ -4703,37 +4832,67 @@ pub(crate) fn download_server_file(
     operation_id: &str,
 ) -> Result<(), String> {
     net::check_download_url(&source.url)?;
-    let mut response = client
-        .get(&source.url)
-        .send()
-        .map_err(|error| format!("The download request failed: {error}"))?
-        .error_for_status()
-        .map_err(|error| format!("The download server did not provide the file: {error}"))?;
-    let total = response.content_length();
     let temporary = destination.with_extension("part");
     let mut file = fs::File::create(&temporary)
         .map_err(|error| format!("Could not create the download file: {error}"))?;
     let mut buffer = [0_u8; 64 * 1024];
     let mut received = 0_u64;
+    let mut total: Option<u64> = None;
+    // Some download servers (new Purpur builds before their CDN caches them) stall part way;
+    // a stalled read is retried from the byte it stopped at instead of starting over.
+    let mut attempt = 0;
     loop {
-        if download_cancelled(app, operation_id) {
-            let _ = fs::remove_file(&temporary);
-            let _ = app.emit(
-                "server-download",
-                serde_json::json!({ "stage": "cancelled", "core": core, "version": version }),
-            );
-            return Err("Download cancelled.".into());
+        attempt += 1;
+        let mut request = client.get(&source.url).timeout(Duration::from_secs(20));
+        if received > 0 {
+            request = request.header(reqwest::header::RANGE, format!("bytes={received}-"));
         }
-        let read = response
-            .read(&mut buffer)
-            .map_err(|error| format!("Problem while downloading: {error}"))?;
-        if read == 0 {
-            break;
+        let response = request.send().and_then(|one| one.error_for_status());
+        let mut response = match response {
+            Ok(one) => one,
+            Err(_) if attempt < 8 && received > 0 => {
+                std::thread::sleep(Duration::from_secs(2));
+                continue;
+            }
+            Err(error) => return Err(format!("The download server did not provide the file: {error}")),
+        };
+        if received > 0 && response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+            // The server ignored the range, so the whole file comes again.
+            file = fs::File::create(&temporary).map_err(|error| format!("Could not create the download file: {error}"))?;
+            received = 0;
         }
-        file.write_all(&buffer[..read])
-            .map_err(|error| format!("Could not save the file: {error}"))?;
-        received += read as u64;
-        let _ = app.emit("server-download", serde_json::json!({ "stage": "downloading", "core": core, "version": version, "received": received, "total": total }));
+        if total.is_none() {
+            total = response.content_length().map(|left| left + received);
+        }
+        let stalled = loop {
+            if download_cancelled(app, operation_id) {
+                drop(file);
+                let _ = fs::remove_file(&temporary);
+                let _ = app.emit(
+                    "server-download",
+                    serde_json::json!({ "stage": "cancelled", "core": core, "version": version }),
+                );
+                return Err("Download cancelled.".into());
+            }
+            let read = match response.read(&mut buffer) {
+                Ok(read) => read,
+                Err(error) => break Some(error),
+            };
+            if read == 0 {
+                break None;
+            }
+            file.write_all(&buffer[..read])
+                .map_err(|error| format!("Could not save the file: {error}"))?;
+            received += read as u64;
+            let _ = app.emit("server-download", serde_json::json!({ "stage": "downloading", "core": core, "version": version, "received": received, "total": total }));
+        };
+        let short = total.is_some_and(|whole| received < whole);
+        match stalled {
+            None if !short => break,
+            Some(error) if attempt >= 8 => return Err(format!("Problem while downloading: {error}")),
+            None if attempt >= 8 => return Err("The download ended before the whole file arrived.".into()),
+            _ => std::thread::sleep(Duration::from_secs(1)),
+        }
     }
     file.flush().map_err(|error| error.to_string())?;
     drop(file);
@@ -17593,6 +17752,19 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             sftp_make_dir,
             sftp_rename,
             sftp_delete,
+            sftp_read_text,
+            git_status,
+            git_present,
+            git_installed,
+            git_init,
+            git_log,
+            git_commit_files,
+            git_diff,
+            git_commit,
+            git_restore,
+            git_sync,
+            git_add_ignore,
+            sftp_write_text,
             sftp_transfer,
             sftp_cancel,
             panel_startup,

@@ -138,6 +138,7 @@ import { ServerStats } from "./components/console/ServerStats";
 import { AdvancedMonitor } from "./components/monitor/AdvancedMonitor";
 import { AddonSettings } from "./components/monitor/AddonSettings";
 import { Integrations } from "./components/integrations/Integrations";
+import { GitPage } from "./components/git/GitPage";
 import { iconKey, PluginSettings } from "./components/integrations/PluginSettings";
 import { FileRows } from "./components/files/FileRows";
 import { TextureView } from "./components/files/TextureView";
@@ -276,6 +277,7 @@ type Tool =
   | "claude"
   | "reach"
   | "integrations"
+  | "git"
   | PanelView;
 type PlayerAction = "whitelist" | "operator" | "ban" | "kick";
 function sayWhatHappened(result: AddonAddResult) {
@@ -382,6 +384,7 @@ function versionSpan(list: string[]) {
 const REMOTE_TOOLS: string[] = [
   "overview",
   "integrations",
+  "git",
   "claude",
   "console",
   "properties",
@@ -575,6 +578,7 @@ const instanceNav: {
   { id: "worlds", label: tr("Worlds"), icon: "map" },
   { id: "addons", label: tr("Mods & plugins"), icon: "puzzle" },
   { id: "integrations", label: tr("Integrations"), icon: "plug" },
+  { id: "git", label: "Git", icon: "git" },
   { id: "players", label: tr("Players"), icon: "users" },
   { id: "backups", label: tr("Backups"), icon: "backup" },
   { id: "logs", label: tr("Logs"), icon: "logs" },
@@ -590,6 +594,7 @@ const RAIL_GROUP: Partial<Record<Tool, "server" | "manage" | "status">> = {
   worlds: "manage",
   addons: "manage",
   integrations: "manage",
+  git: "manage",
   players: "manage",
   backups: "manage",
   logs: "status",
@@ -950,6 +955,7 @@ function App() {
     consoleLineLimit: 2000,
     backupRoot: "",
     backupWorldsOnly: false,
+    backupIncludeGit: false,
     webPanel: false,
     webPanelPort: 25566,
     webTunnel: false,
@@ -1266,6 +1272,7 @@ function App() {
     }
   }
   const [pluginLinks, setPluginLinks] = useState<PluginLinks | null>(null);
+  const [gitRepo, setGitRepo] = useState(false);
   const [advancedMonitor, setAdvancedMonitor] = useState(() => {
     try {
       return localStorage.getItem("monolab-monitor-advanced") === "1";
@@ -2006,6 +2013,21 @@ function App() {
   const monitorId = tool === "monitor" && selected?.status === "running" ? selected.id : null;
   const linkServerId = selected?.id ?? null;
   const linkRefresh = tool === "addons" ? 1 : tool === "integrations" ? 2 : 0;
+  useEffect(() => {
+    if (!linkServerId || selected?.panelHost) {
+      setGitRepo(false);
+      return;
+    }
+    let gone = false;
+    // The tab shows for repositories, and wherever git is installed so a repository can be started there.
+    void Promise.all([commands.gitPresent(linkServerId).catch(() => false), commands.gitInstalled(linkServerId).catch(() => false)]).then(
+      ([repo, installed]) => !gone && setGitRepo(repo || installed),
+    );
+    return () => {
+      gone = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkServerId, tool === "files"]);
   useEffect(() => {
     if (!linkServerId) return;
     let gone = false;
@@ -8741,6 +8763,14 @@ function App() {
           openFile={(path) => void loadTool("files").then(() => openFile(path))}
         />
       )}
+      {!toolLoading && tool === "git" && (
+        <div className="tool-content git-tool">
+          <div className="wb-head">
+            <h1>Git</h1>
+          </div>
+          <GitPage key={selected.id} serverId={selected.id} onError={setError} onNotice={setNotice} confirm={confirmAction} />
+        </div>
+      )}
       {!toolLoading && tool === "monitor" && (() => {
         const mc = kindOf(selected.core).family === "minecraft";
         // Live graphs while the server runs, the add-on's minute records once it's stopped.
@@ -10595,6 +10625,7 @@ function App() {
             return (selected.panelHost ? panelNav : instanceNav).map((item) => {
               if (!toolAllowed(selected.core, item.id)) return null;
               if (item.id === "claude" && onWeb) return null;
+              if (item.id === "git" && !gitRepo) return null;
               if (item.id === "integrations" && kindOf(selected.core).addons === null && !(pluginLinks?.essentials || pluginLinks?.luckperms || pluginLinks?.extensions.length)) return null;
               if (item.id === "software" && (panelHostViews.find((one) => one.id === selected.panelHost)?.kind ?? "hydrodactyl") !== "hydrodactyl") return null;
               const live = selected.status === "running" || selected.status === "stopping";
@@ -11894,6 +11925,20 @@ function App() {
                         onChange={(event) =>
                           void updateSettings({ backupWorldsOnly: event.target.checked })
                         }
+                      />
+                      <span />
+                    </label>
+                  </div>
+                  <div className="setting-row">
+                    <div>
+                      <strong>{tr("Include git history in backups")}</strong>
+                      <small>{tr("The .git folder of servers kept in git. Off keeps backups small.")}</small>
+                    </div>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={!!settings.backupIncludeGit}
+                        onChange={(event) => void updateSettings({ backupIncludeGit: event.target.checked })}
                       />
                       <span />
                     </label>

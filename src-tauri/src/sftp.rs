@@ -214,6 +214,53 @@ pub async fn rename(app: &AppHandle, side: &Side, dir: &str, from: &str, to: &st
     }
 }
 
+const TEXT_LIMIT: u64 = 4 * 1024 * 1024;
+
+/// A text file on either side, for the SFTP editor; binary and very large files are refused.
+pub async fn read_text(app: &AppHandle, side: &Side, dir: &str, name: &str) -> Result<String, String> {
+    let name = plain_name(name)?;
+    let text = match side {
+        Side::Local => {
+            let path = PathBuf::from(join(dir, &name, true));
+            let size = std::fs::metadata(&path).map_err(|error| format!("Cannot open {name}: {error}"))?.len();
+            if size > TEXT_LIMIT {
+                return Err("This file is too large to edit here (over 4 MB).".into());
+            }
+            let bytes = std::fs::read(&path).map_err(|error| format!("Cannot open {name}: {error}"))?;
+            String::from_utf8_lossy(&bytes).into_owned()
+        }
+        Side::Ssh { host_id } => {
+            let bytes = crate::remote::read_bytes(app, host_id, dir, &name, TEXT_LIMIT + 1).await?;
+            if bytes.len() as u64 > TEXT_LIMIT {
+                return Err("This file is too large to edit here (over 4 MB).".into());
+            }
+            String::from_utf8_lossy(&bytes).into_owned()
+        }
+        Side::Panel { instance_id } => {
+            let (api, target) = panel_side(app, instance_id)?;
+            let dir = dir.trim_matches('/');
+            api.read_text(&target, &if dir.is_empty() { name.clone() } else { format!("{dir}/{name}") }).await?
+        }
+    };
+    if crate::looks_binary(&text) {
+        return Err("This isn't a text file, so it can't be edited.".into());
+    }
+    Ok(text)
+}
+
+pub async fn write_text(app: &AppHandle, side: &Side, dir: &str, name: &str, text: &str) -> Result<(), String> {
+    let name = plain_name(name)?;
+    match side {
+        Side::Local => std::fs::write(join(dir, &name, true), text).map_err(|error| format!("Cannot save {name}: {error}")),
+        Side::Ssh { host_id } => crate::remote::write_text(app, host_id, dir, &name, text).await,
+        Side::Panel { instance_id } => {
+            let (api, target) = panel_side(app, instance_id)?;
+            let dir = dir.trim_matches('/');
+            api.write_text(&target, &if dir.is_empty() { name.clone() } else { format!("{dir}/{name}") }, text).await
+        }
+    }
+}
+
 pub async fn delete(app: &AppHandle, side: &Side, dir: &str, names: &[String]) -> Result<(), String> {
     let names: Vec<String> = names.iter().map(|one| plain_name(one)).collect::<Result<_, _>>()?;
     match side {

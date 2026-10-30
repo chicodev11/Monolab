@@ -7,6 +7,7 @@ import { tr } from "../../lib/i18n";
 import { commands } from "../../lib/ipc";
 import { Icon } from "../ui/Icon";
 import { Button, EmptyState, IconButton, Select } from "../primitives";
+import { SftpEditor, type SftpFile } from "./SftpEditor";
 
 type Progress = {
   job: string;
@@ -147,6 +148,7 @@ export function SftpPage({
   }, [left, remote]);
 
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [editing, setEditing] = useState<SftpFile | null>(null);
   const jobsRef = useRef<Job[]>([]);
   jobsRef.current = jobs;
   const leftRef = useRef<PaneHandle | null>(null);
@@ -331,13 +333,15 @@ export function SftpPage({
 
   return (
     <div className="sftp-page">
-      <div className="sftp-panes">
+      {editing && <SftpEditor key={`${sideKey(editing.side)}/${editing.dir}/${editing.name}`} file={editing} onClose={() => setEditing(null)} onError={onError} onNotice={onNotice} confirm={confirm} />}
+      <div className="sftp-panes" hidden={!!editing}>
         <Pane
           key={`left-${left.value}`}
           ref={leftRef}
           title={<Select value={left.value} options={places.map((one) => ({ value: one.value, label: one.label }))} onChange={(value: string) => setLeftKey(value)} />}
           side={left.side}
           paneKey="left"
+          onEdit={(dir, name) => setEditing({ side: left.side, dir, name, place: left.short })}
           highlight={over === "left"}
           sendTo={remote.short}
           onSend={() => transferFrom(true)}
@@ -359,6 +363,7 @@ export function SftpPage({
           }
           side={remote.side}
           paneKey="right"
+          onEdit={(dir, name) => setEditing({ side: remote.side, dir, name, place: remote.short })}
           highlight={over === "right"}
           sendTo={left.short}
           onSend={() => transferFrom(false)}
@@ -441,10 +446,11 @@ const Pane = forwardRef<
     sendTo: string;
     onSend: () => void;
     onDragOut: (drag: Drag) => void;
+    onEdit: (dir: string, name: string) => void;
     onError: (message: string) => void;
     onNotice: (message: string) => void;
   } & Ask
->(function Pane({ title, side, paneKey, highlight, sendTo, onSend, onDragOut, onError, onNotice, confirm, ask }, ref) {
+>(function Pane({ title, side, paneKey, highlight, sendTo, onSend, onDragOut, onEdit, onError, onNotice, confirm, ask }, ref) {
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -534,7 +540,10 @@ const Pane = forwardRef<
     lastPick.current = index;
   };
   const enter = (row: FileRow) => {
-    if (!row.directory) return;
+    if (!row.directory) {
+      onEdit(dir, row.name);
+      return;
+    }
     const sep = side.kind === "local" ? "\\" : "/";
     const next = side.kind === "local" && !dir ? row.name : dir ? `${dir.replace(/[\\/]+$/, "")}${sep}${row.name}` : row.name;
     void open(next);

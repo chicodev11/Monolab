@@ -281,7 +281,7 @@
     "Something is already at {back}. Move it out of the way first.": "$1 위치에 이미 파일이나 폴더가 있습니다. 먼저 다른 위치로 이동해주세요.",
     "Could not restore: {error}": "되돌릴 수 없어요: $1",
     "Restore from trash": "휴지통에서 복원",
-    "Could not delete: {error}": "지울 수 없어요: $1",
+    "Could not delete: {error}": "삭제하지 못했습니다: $1",
     "Delete from trash": "휴지통에서 삭제",
     "{one} is not a folder.": "$1은(는) 폴더가 아닙니다.",
     "Add folder": "폴더 추가",
@@ -319,7 +319,8 @@
     "Could not read the file: {error}": "파일을 읽을 수 없어요: $1",
     "Download file (panel)": "파일 다운로드 (패널)",
     "Download file (SSH)": "파일 다운로드 (SSH)",
-    "survival": "생존"
+    "survival": "생존",
+    "The download ended before the whole file arrived.": "파일을 끝까지 받지 못하고 다운로드가 끝났습니다. 다시 시도해주세요."
   },
   "lib.rs · 모드·플러그인": {
     "Could not create the trash folder: {error}": "휴지통 폴더를 만들 수 없어요: $1",
@@ -731,9 +732,9 @@
     "Default account": "기본 계정",
     "Account names must be 1–40 characters.": "계정 이름은 1~40자로 입력해주세요.",
     "That account wasn't found.": "그 계정을 찾을 수 없습니다.",
-    "The default account can't be deleted.": "기본 계정은 지울 수 없습니다.",
+    "The default account can't be deleted.": "기본 계정은 삭제할 수 없습니다.",
     "Could not detach the conversation history link: {error}": "대화 기록 연결을 해제할 수 없어요: $1",
-    "Could not delete the account folder: {error}": "계정 폴더를 지울 수 없어요: $1",
+    "Could not delete the account folder: {error}": "계정 폴더를 삭제하지 못했습니다: $1",
     "Claude Code isn't installed on this computer. Install it as shown, then try again.": "이 컴퓨터에 Claude Code가 없어요. 안내에 따라 설치한 뒤 다시 시도해주세요.",
     "Command": "명령",
     "Another account is still signing in. Finish that one first.": "다른 계정이 로그인하는 중이에요. 그쪽을 먼저 마치거나 취소해주세요.",
@@ -996,7 +997,7 @@
     "Cannot find that registered panel.": "등록된 패널을 찾을 수 없습니다.",
     "Enter the panel address.": "패널 주소를 입력해주세요.",
     "The panel address is malformed: {given}": "패널 주소가 형식이 맞지 않아요: $1",
-    "Panels outside your network require https. The API key travels in every request header, so plain http would leak it to the internet. (Home addresses like 192.168.… may use http.)": "외부 네트워크의 패널은 https로만 연결할 수 있어요. API 키가 매 요청의 헤더에 포함돼 http로 연결하면 인터넷에 그대로 노출돼요. (192.168.… 같은 내부 주소는 http도 사용할 수 있어요.)",
+    "Panels outside your network require https. The API key travels in every request header, so plain http would leak it to the internet. (Home addresses like 192.168.… may use http.)": "외부 네트워크의 패널은 https로만 연결됩니다. API 키가 매 요청 헤더에 담기므로 http로 연결하면 인터넷에 그대로 노출됩니다. (192.168.… 같은 내부 주소는 http도 됩니다.)",
     "Admins need an Application API key.": "관리자는 Application API 키가 있어야 해요.",
     "Users need an account API key.": "사용자는 계정 API 키가 있어야 해요.",
     "Enter the account API key.": "계정 API 키를 입력해주세요.",
@@ -1100,7 +1101,7 @@
     "The web panel port cannot be opened through playit. Only the Minecraft port can.": "웹 패널 포트는 playit으로 열 수 없습니다. 마인크래프트 포트만 열 수 있습니다.",
     "playit did not return an agent id. Please try again in a moment.": "playit이 에이전트 번호를 주지 않았습니다. 잠시 뒤에 다시 시도해주세요.",
     "This playit link is read-only. Press 'Unlink playit' and link again.": "이 playit 연결은 읽기 전용이에요. 'playit 연결 끊기'를 누른 뒤 다시 연결해주세요.",
-    "Could not delete the secret key: {error}": "비밀 키를 지울 수 없어요: $1"
+    "Could not delete the secret key: {error}": "비밀 키를 삭제하지 못했습니다: $1"
   },
   "properties.rs": {
     "{key} must be true or false.": "$1에는 true 또는 false만 입력할 수 있어요.",
@@ -1209,7 +1210,7 @@
     "Cannot create the folder: {error}": "폴더를 만들 수 없어요: $1",
     "{to} already exists.": "$1이(가) 이미 있습니다.",
     "Cannot rename: {error}": "이름을 바꿀 수 없어요: $1",
-    "Cannot delete {name}: {error}": "$1을(를) 지울 수 없어요: $2",
+    "Cannot delete {name}: {error}": "$1을(를) 삭제하지 못했습니다: $2",
     "Cannot delete from here. Delete from a deeper folder.": "이 위치에서는 삭제할 수 없습니다. 하위 폴더에서 삭제해주세요.",
     "Too many files (over 50,000). Move the folder in parts.": "파일이 너무 많아요(5만 개 넘음). 폴더를 나눠 옮겨주세요.",
     "Could not find {name}.": "$1을(를) 찾지 못했습니다.",
@@ -1217,7 +1218,11 @@
     "Both sides are local. Pick an SSH or panel server on one side.": "둘 다 로컬이에요. 한쪽에서 SSH나 패널 서버를 골라주세요.",
     "Could not create a temporary folder: {error}": "임시 폴더를 만들 수 없어요: $1",
     "Something with the same name is already there.": "받는 쪽에 같은 이름이 있어요.",
-    "Open a local folder to receive into first.": "받을 로컬 폴더를 먼저 열어주세요."
+    "Open a local folder to receive into first.": "받을 로컬 폴더를 먼저 열어주세요.",
+    "Cannot open {name}: {error}": "$1을(를) 열지 못했습니다: $2",
+    "Cannot save {name}: {error}": "$1을(를) 저장하지 못했습니다: $2",
+    "This file is too large to edit here (over 4 MB).": "파일이 너무 커서 여기서 편집할 수 없습니다(4MB 초과).",
+    "This isn't a text file, so it can't be edited.": "텍스트 파일이 아니라서 편집할 수 없습니다."
   },
   "tasks.rs": {
     "Enter a task name.": "작업 이름을 적어주세요.",
@@ -1312,7 +1317,7 @@
     "The plugin didn't answer in 15 seconds. Check that the server is running with add-on 37 or later.": "플러그인이 15초 안에 응답하지 않았습니다. 서버가 켜져 있고 애드온이 37 이상인지 확인해주세요."
   },
   "viewer.rs": {
-    "Could not decompress the file: {error}": "압축을 풀지 못했어요: $1",
+    "Could not decompress the file: {error}": "압축 해제하지 못했습니다: $1",
     "This file is too large to open in the app.": "파일이 너무 커서 앱에서 열 수 없습니다.",
     "Could not run Java: {error}": "Java를 실행하지 못했어요: $1",
     "Could not decompile the class file. {detail}": "class 파일을 디컴파일하지 못했습니다. $1"
@@ -1334,5 +1339,18 @@
     "This setting is no longer in monolab.json.": "이 설정이 monolab.json에서 사라졌어요.",
     "{} was not found.": "$1을(를) 찾지 못했습니다.",
     "Enter a number.": "숫자를 입력해주세요."
+  },
+  "git.rs": {
+    "Git failed: {why}": "Git 명령이 실패했습니다: $1",
+    "Git failed: {}": "Git 명령이 실패했습니다: $1",
+    "Git isn't available for panel servers.": "패널 서버에서는 Git을 쓸 수 없습니다.",
+    "Git isn't installed on this computer. Install Git for Windows, then try again.": "이 컴퓨터에 Git이 설치되어 있지 않습니다. Git for Windows를 설치한 뒤 다시 시도해주세요.",
+    "Git isn't installed on the SSH server.": "SSH 서버에 Git이 설치되어 있지 않습니다.",
+    "That commit wasn't found.": "그 커밋을 찾지 못했습니다.",
+    "Choose at least one file.": "파일을 하나 이상 골라주세요.",
+    "Write a commit message.": "커밋 메시지를 적어주세요.",
+    "This server already has a .gitignore file.": "이 서버에는 이미 .gitignore 파일이 있습니다.",
+    "Could not create .gitignore: {error}": ".gitignore를 만들지 못했습니다: $1",
+    "This server is already a git repository.": "이 서버는 이미 git 저장소입니다."
   }
 }

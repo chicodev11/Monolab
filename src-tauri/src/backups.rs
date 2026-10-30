@@ -12,6 +12,13 @@ pub const FOLDER: &str = ".monolab-backups";
 
 const SKIP: [&str; 2] = [FOLDER, ".monolab-trash"];
 
+/// Off unless the user asks for git history in backups (app setting, refreshed whenever settings are read).
+pub static INCLUDE_GIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn skip_git() -> bool {
+    !INCLUDE_GIT.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 #[derive(Clone, Debug, Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct BackupFile {
@@ -152,7 +159,7 @@ fn pack<W: Write + Seek>(
     for entry in entries.flatten() {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
-        if SKIP.contains(&name.as_str()) {
+        if SKIP.contains(&name.as_str()) || (here == root && name == ".git" && skip_git()) {
             continue;
         }
         if here == root {
@@ -361,7 +368,7 @@ fn walk(root: &Path, here: &Path, out: &mut std::collections::HashMap<String, u6
     let Ok(entries) = fs::read_dir(here) else { return };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if here == root && SKIP.contains(&name.as_str()) {
+        if here == root && (SKIP.contains(&name.as_str()) || (name == ".git" && skip_git())) {
             continue;
         }
         let path = entry.path();

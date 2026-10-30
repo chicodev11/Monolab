@@ -1,6 +1,23 @@
 [
   {
     "kind": "app",
+    "version": "1.6.3",
+    "date": "2026-10-30",
+    "added": [
+      "Git tab: for servers kept in git, see changed files line by line, commit the ones you pick, browse history, restore a file and pull or push. Start git sets up a repository with a .gitignore that leaves out worlds, logs and jar files.",
+      "Edit text files right in the SFTP window, on either side, and save them back."
+    ],
+    "changed": [
+      "Backups leave out the .git folder unless you turn it on in Settings.",
+      "Number settings show their unit inside the same box.",
+      "Clearer Korean error messages."
+    ],
+    "fixed": [
+      "Server downloads that stall (new Purpur builds can be slow at first) continue from where they stopped instead of starting over."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.6.2",
     "date": "2026-10-29",
     "added": [
