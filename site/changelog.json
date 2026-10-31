@@ -1,6 +1,22 @@
 [
   {
     "kind": "app",
+    "version": "1.6.7",
+    "date": "2026-10-31",
+    "added": [
+      "Skills for the agent: write, turn off, delete or copy step lists the agent follows when a task fits, or have it make one from the current chat. Codex sees them too.",
+      "A Memo tab for each server with a to-do list and notes.",
+      "The file editor shows a colour swatch next to colour codes (#hex, &a, §c, <gold>).",
+      "When a long agent chat gets an unrelated request, it moves to a new chat by itself, which uses less."
+    ],
+    "changed": [
+      "Leaving the editor with unsaved files asks whether to save them. Unsaved edits also stay when you refresh or come back to the Files tab.",
+      "Agent chats leave out tools they never use, so every step costs a little less.",
+      "Stopping the agent stops the spinners in the chat list, tool rows and to-do list."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.6.6",
     "date": "2026-10-31",
     "added": [

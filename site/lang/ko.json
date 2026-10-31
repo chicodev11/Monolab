@@ -212,5 +212,12 @@
   "New servers take the next free port (25566, 25567…) when 25565 is already used by another server or program.": "새 서버를 만들 때 25565를 이미 다른 서버나 프로그램이 쓰고 있으면 25566, 25567… 순서로 비어 있는 포트를 골라요.",
   "The agent's conversation list can be folded away.": "에이전트 대화 목록을 접을 수 있어요.",
   "The port setting is now called Connection port, and the query and RCON ports say they are not for joining. A port clash on start says where to change it.": "포트 설정 이름을 '접속 포트'로 바꾸고, 쿼리·RCON 포트에는 접속용이 아니라고 적었어요. 시작할 때 포트가 겹치면 어디서 바꾸는지 알려줘요.",
-  "The 'applies on the next start' note in server settings is a small line next to the search box.": "서버 설정의 '다음 시작부터 적용' 안내가 검색칸 옆 작은 줄로 바뀌었어요."
+  "The 'applies on the next start' note in server settings is a small line next to the search box.": "서버 설정의 '다음 시작부터 적용' 안내가 검색칸 옆 작은 줄로 바뀌었어요.",
+  "Skills for the agent: write, turn off, delete or copy step lists the agent follows when a task fits, or have it make one from the current chat. Codex sees them too.": "에이전트 스킬: 맞는 작업이 오면 에이전트가 따르는 순서를 만들고·끄고·삭제하고·다른 서버로 복사할 수 있어요. 지금 대화에서 바로 만들게 할 수도 있고, Codex도 같이 써요.",
+  "A Memo tab for each server with a to-do list and notes.": "서버마다 할 일 목록과 노트가 있는 메모 탭이 생겼어요.",
+  "The file editor shows a colour swatch next to colour codes (#hex, &a, §c, <gold>).": "파일 편집기에서 색 코드(#hex, &a, §c, <gold>) 옆에 색 미리보기가 보여요.",
+  "When a long agent chat gets an unrelated request, it moves to a new chat by itself, which uses less.": "긴 에이전트 대화에 상관없는 부탁이 오면 알아서 새 대화로 옮겨 사용량을 줄여요.",
+  "Leaving the editor with unsaved files asks whether to save them. Unsaved edits also stay when you refresh or come back to the Files tab.": "저장하지 않은 파일이 있는 채로 편집기를 떠나면 저장할지 물어봐요. 새로고침하거나 파일 탭에 다시 와도 고치던 내용이 남아 있어요.",
+  "Agent chats leave out tools they never use, so every step costs a little less.": "에이전트 대화에서 쓰지 않는 도구를 빼서 한 단계마다 사용량이 조금 줄었어요.",
+  "Stopping the agent stops the spinners in the chat list, tool rows and to-do list.": "에이전트를 중지하면 대화 목록·도구 줄·할 일 목록의 돌아가는 표시도 멈춰요."
 }
