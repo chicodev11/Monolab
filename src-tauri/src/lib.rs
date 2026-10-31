@@ -11,6 +11,7 @@ mod cfpack;
 mod claude_chat;
 mod claude_accounts;
 mod claude_agent;
+mod skills;
 mod codex_chat;
 mod cores;
 mod hashes;
@@ -1477,6 +1478,26 @@ fn list_runs(app: AppHandle, id: String) -> Result<Vec<runlog::RunEntry>, String
     Ok(runlog::list(&instance_data_dir(&app, &id)?))
 }
 
+/// The user's notes and todos for one server, as JSON text (empty when there are none yet).
+#[tauri::command(async)]
+#[specta::specta]
+fn server_memo(app: AppHandle, id: String) -> Result<String, String> {
+    instance_by_id(&app, &id)?;
+    let file = instance_data_dir(&app, &id)?.join("memo.json");
+    Ok(store::read::<serde_json::Value>(&file)?.map(|one| one.to_string()).unwrap_or_default())
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn set_server_memo(app: AppHandle, id: String, memo: String) -> Result<(), String> {
+    instance_by_id(&app, &id)?;
+    if memo.len() > 2 * 1024 * 1024 || serde_json::from_str::<serde_json::Value>(&memo).map(|one| !one.is_object()).unwrap_or(true) {
+        return Err("Could not save the memo. It is too large or damaged.".into());
+    }
+    let file = instance_data_dir(&app, &id)?.join("memo.json");
+    store::write(&file, &memo).map_err(|error| format!("Could not save the memo: {error}"))
+}
+
 fn instance_data_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
     let safe: String = id
         .chars()
@@ -2388,6 +2409,8 @@ pub(crate) fn web_invoke(
         "list_trash_instances" => ok(list_trash_instances(app.clone())?),
         "read_live" => ok(tauri::async_runtime::block_on(read_live(app.clone(), arg(body, "id")?))?),
         "list_runs" => ok(list_runs(app.clone(), arg(body, "id")?)?),
+        "server_memo" => ok(server_memo(app.clone(), arg(body, "id")?)?),
+        "set_server_memo" => ok(set_server_memo(app.clone(), arg(body, "id")?, arg(body, "memo")?)?),
         "map_surface_height" => ok(map_surface_height(app.state(), arg(body, "id")?, arg(body, "realm")?, arg(body, "x")?, arg(body, "z")?)),
         "disk_usage" => ok(tauri::async_runtime::block_on(disk_usage(app.clone(), arg(body, "id")?))?),
         "chunk_stats" => ok(tauri::async_runtime::block_on(chunk_stats(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?, arg(body, "metric")?, arg(body, "rx")?, arg(body, "rz")?))?),
@@ -3479,6 +3502,36 @@ fn claude_chat_state(server: String, engine: String, session: String) -> claude_
     } else {
         claude_chat::state(&server, &session)
     }
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn agent_skills(app: AppHandle, server: String) -> Result<Vec<skills::AgentSkill>, String> {
+    skills::list(&app, &server)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn save_agent_skill(app: AppHandle, server: String, old: String, name: String, description: String, body: String) -> Result<(), String> {
+    skills::save(&app, &server, &old, &name, &description, &body)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn set_agent_skill_enabled(app: AppHandle, server: String, name: String, enabled: bool) -> Result<(), String> {
+    skills::set_enabled(&app, &server, &name, enabled)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn delete_agent_skill(app: AppHandle, server: String, name: String) -> Result<(), String> {
+    skills::delete(&app, &server, &name)
+}
+
+#[tauri::command(async)]
+#[specta::specta]
+fn copy_agent_skill(app: AppHandle, server: String, name: String, to: String) -> Result<(), String> {
+    skills::copy(&app, &server, &name, &to)
 }
 
 #[tauri::command(async)]
@@ -17703,6 +17756,8 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             map_web_probe,
             chunk_stats,
             list_runs,
+            server_memo,
+            set_server_memo,
             trim_chunks,
             diagnose_lag,
             get_server_ping,
@@ -17782,6 +17837,11 @@ fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             claude_chat_model,
             claude_chat_history,
             claude_chat_sessions,
+            agent_skills,
+            save_agent_skill,
+            set_agent_skill_enabled,
+            delete_agent_skill,
+            copy_agent_skill,
             claude_chat_rename,
             claude_chat_delete,
             claude_chat_close,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyLine, emptyChat, markAnswered, settle, toolName, toolSummary, type ChatModel } from "./claudeChat";
+import { applyLine, emptyChat, markAnswered, settle, toolName, toolSummary, topicToMove, type ChatModel } from "./claudeChat";
 
 const run = (lines: unknown[], start: ChatModel = emptyChat) =>
   lines.reduce<ChatModel>((model, line) => applyLine(model, typeof line === "string" ? line : JSON.stringify(line)), start);
@@ -108,5 +108,20 @@ describe("summaries and todos", () => {
     );
     expect(model.session).toBe("abc-1");
     expect(model.todos?.map((one) => one.status)).toEqual(["in_progress", "pending"]);
+  });
+});
+
+describe("topicToMove", () => {
+  const turn = (ask: string, reply: string) => [
+    { type: "user", message: { role: "user", content: ask } },
+    { type: "assistant", message: { content: [{ type: "text", text: reply }] } },
+    { type: "result", subtype: "success" },
+  ];
+  it("moves the last message when the reply is only the marker", () => {
+    expect(topicToMove(run([...turn("build a plugin", "done"), ...turn("change the motd", "[new-chat]")]))?.text).toBe("change the motd");
+  });
+  it("leaves the first message and normal replies alone", () => {
+    expect(topicToMove(run(turn("hi", "[new-chat]")))).toBeNull();
+    expect(topicToMove(run([...turn("a", "b"), ...turn("c", "d")]))).toBeNull();
   });
 });

@@ -6,6 +6,8 @@ export type AskRequest = {
   body?: string;
   confirmLabel: string;
   cancelLabel?: string;
+  /** A third button; it resolves to "alt". */
+  altLabel?: string;
   danger?: boolean;
   input?: { label: string; value: string; placeholder?: string };
   choices?: { value: string; label: string }[];
@@ -107,6 +109,18 @@ export function AskDialog({
           >
             {request.cancelLabel ?? tr("Cancel")}
           </button>
+          {request.altLabel && (
+            <button
+              type="button"
+              className="button ghost"
+              onClick={() => {
+                request.resolve("alt");
+                onClose();
+              }}
+            >
+              {request.altLabel}
+            </button>
+          )}
           <button
             type="submit"
             className={`button ${request.danger ? "danger" : "primary"}`}

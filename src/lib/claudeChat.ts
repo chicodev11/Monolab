@@ -32,6 +32,22 @@ export type ChatModel = {
   todos?: ChatTodo[];
 };
 
+/** What the agent answers, alone, when the newest message is a separate task; the app then moves it to a fresh chat. */
+export const NEW_CHAT = "[new-chat]";
+
+/** The text-only message to move to a fresh chat, when the finished reply asks for one. */
+export function topicToMove(model: ChatModel): { key: string; text: string } | null {
+  if (model.busy) return null;
+  let at = model.items.length - 1;
+  while (at >= 0 && model.items[at].kind !== "assistant") at -= 1;
+  const reply = model.items[at];
+  if (reply?.kind !== "assistant" || reply.text.trim() !== NEW_CHAT) return null;
+  const asked = model.items.slice(0, at).filter((one) => one.kind === "user");
+  const last = asked.at(-1);
+  if (asked.length < 2 || last?.kind !== "user" || last.images || !last.text.trim()) return null;
+  return { key: reply.key, text: last.text };
+}
+
 export const emptyChat: ChatModel = { items: [], busy: false, model: "", serial: 0 };
 
 // Claude Code's own wording for the summary it writes when a long chat is compacted.

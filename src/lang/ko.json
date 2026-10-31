@@ -364,6 +364,13 @@
     "Last run {0}": "마지막 실행 {0}"
   },
   "개요": {
+    "Memo": "메모",
+    "To-do": "할 일",
+    "Add a to-do": "할 일 추가",
+    "Nothing to do yet.": "아직 할 일이 없어요.",
+    "Delete completed": "완료 항목 삭제",
+    "Notes": "노트",
+    "Anything to remember about this server": "이 서버에 대해 기억해 둘 내용",
     "Choose the Java version to install": "설치할 Java 버전을 선택해주세요",
     "Downloaded from Adoptium to the Monolab folder, without a system-wide installation.": "Adoptium에서 앱 폴더로 받아요.",
     "Downloaded Java {0} and assigned it to this server.": "Java {0}을(를) 받아 이 서버에 연결했어요.",
@@ -806,6 +813,9 @@
     "Log level": "로그 수준"
   },
   "파일": {
+    "Save changes?": "변경 사항을 저장할까요?",
+    "{0} has unsaved changes.": "{0}에 저장하지 않은 변경 사항이 있어요.",
+    "Don't save": "저장 안 함",
     "Leave without saving?": "저장하지 않고 나갈까요?",
     "Your changes to {0} will be lost.": "{0}에서 고친 내용이 사라집니다.",
     "Exit": "나가기",
@@ -1694,6 +1704,21 @@
     "Fields": "항목"
   },
   "에이전트": {
+    "Skills": "스킬",
+    "New skill": "새 스킬",
+    "Make from chat": "대화에서 만들기",
+    "The agent writes down what you did in the current chat as a skill.": "지금 대화에서 한 작업을 에이전트가 스킬로 정리",
+    "No skills yet.": "아직 스킬이 없어요.",
+    "Steps the agent follows when a task fits, like how to build a plugin or update the server safely.": "플러그인 빌드나 안전한 서버 업데이트처럼, 맞는 작업이 오면 에이전트가 따르는 순서예요.",
+    "When to use it, in one line": "언제 쓰는지 한 줄로",
+    "Content": "내용",
+    "Copy to another server": "다른 서버로 복사",
+    "Delete skill?": "스킬을 삭제할까요?",
+    "The agent stops using {0}.": "에이전트가 더 이상 {0}을(를) 쓰지 않습니다.",
+    "Copied to {0}.": "{0}에 복사했어요.",
+    "Turn what we did in this chat into a reusable skill: write .claude/skills/<short-name>/SKILL.md with name and description front matter and the steps in the body.": "이 대화에서 한 작업을 다시 쓸 수 있는 스킬로 만들어주세요. .claude/skills/<짧은-이름>/SKILL.md에 name·description 머리말과 단계별 내용을 적어주세요.",
+    "Moved to a new chat.": "새 대화로 옮김",
+    "This looked like a new topic, so it continues in a new chat.": "이전 대화와 다른 주제라 새 대화에서 이어가요.",
     "Claude accounts": "Claude 계정",
     "Choose an account for this server. Each account only needs to sign in once. Switching accounts on the same server keeps the conversation going.": "이 서버에서 쓸 계정",
     "Signed in": "로그인됨",

@@ -225,6 +225,9 @@ export const commands = {
 	mapWebProbe: (host: string, port: number) => __TAURI_INVOKE<boolean>("map_web_probe", { host, port }),
 	chunkStats: (id: string, realm: string, metric: string, rx: number, rz: number) => __TAURI_INVOKE<(number | null)[] | null>("chunk_stats", { id, realm, metric, rx, rz }),
 	listRuns: (id: string) => __TAURI_INVOKE<RunEntry[]>("list_runs", { id }),
+	/**  The user's notes and todos for one server, as JSON text (empty when there are none yet). */
+	serverMemo: (id: string) => __TAURI_INVOKE<string>("server_memo", { id }),
+	setServerMemo: (id: string, memo: string) => __TAURI_INVOKE<null>("set_server_memo", { id, memo }),
 	trimChunks: (id: string, realm: string, maxMinutes: number, keepRadius: number, apply: boolean, area: number[] | null) => __TAURI_INVOKE<TrimReport>("trim_chunks", { id, realm, maxMinutes, keepRadius, apply, area }),
 	diagnoseLag: (id: string) => __TAURI_INVOKE<LagDiagnosis>("diagnose_lag", { id }),
 	getServerPing: (id: string) => __TAURI_INVOKE<PingSnapshot>("get_server_ping", { id }),
@@ -310,6 +313,11 @@ export const commands = {
 	claudeChatModel: (id: string, model: string) => __TAURI_INVOKE<null>("claude_chat_model", { id, model }),
 	claudeChatHistory: (server: string, engine: string, session: string) => __TAURI_INVOKE<string[]>("claude_chat_history", { server, engine, session }),
 	claudeChatSessions: (server: string) => __TAURI_INVOKE<ChatSession[]>("claude_chat_sessions", { server }),
+	agentSkills: (server: string) => __TAURI_INVOKE<AgentSkill[]>("agent_skills", { server }),
+	saveAgentSkill: (server: string, old: string, name: string, description: string, body: string) => __TAURI_INVOKE<null>("save_agent_skill", { server, old, name, description, body }),
+	setAgentSkillEnabled: (server: string, name: string, enabled: boolean) => __TAURI_INVOKE<null>("set_agent_skill_enabled", { server, name, enabled }),
+	deleteAgentSkill: (server: string, name: string) => __TAURI_INVOKE<null>("delete_agent_skill", { server, name }),
+	copyAgentSkill: (server: string, name: string, to: string) => __TAURI_INVOKE<null>("copy_agent_skill", { server, name, to }),
 	claudeChatRename: (session: string, title: string) => __TAURI_INVOKE<null>("claude_chat_rename", { session, title }),
 	claudeChatDelete: (server: string, session: string) => __TAURI_INVOKE<null>("claude_chat_delete", { server, session }),
 	claudeChatClose: (id: string) => __TAURI_INVOKE<void>("claude_chat_close", { id }),
@@ -483,6 +491,15 @@ export type AddonVersion = {
 	changelogHtml: string | null,
 	published: string,
 	downloads: number,
+};
+
+/**  A Claude Code skill in a server's agent workspace: `.claude/skills/<name>/SKILL.md` (turned off: `.claude/skills-off`). */
+export type AgentSkill = {
+	name: string,
+	description: string,
+	body: string,
+	enabled: boolean,
+	updated: number | null,
 };
 
 export type AppRelease = {

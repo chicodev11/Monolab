@@ -211,9 +211,12 @@ pub(crate) fn mcp_config(app: &AppHandle, server: &str) -> Result<PathBuf, Strin
     Ok(file)
 }
 
-/// Shell deletes go through delete_file instead.
-pub(crate) const DENIED_DELETES: [&str; 6] =
-    ["--disallowedTools", "Bash(rm:*)", "Bash(rmdir:*)", "Bash(del:*)", "Bash(rd:*)", "NotebookEdit"];
+/// Shell deletes go through delete_file instead; the rest are host tools an app chat never uses, and every listed tool is re-sent on each call.
+pub(crate) const DENIED_TOOLS: [&str; 21] = [
+    "--disallowedTools", "Bash(rm:*)", "Bash(rmdir:*)", "Bash(del:*)", "Bash(rd:*)", "NotebookEdit", "Task", "Agent", "Workflow", "CronCreate",
+    "CronDelete", "CronList", "Monitor", "PushNotification", "ScheduleWakeup", "SendMessage", "ListAgents", "DesignSync", "EnterWorktree",
+    "ExitWorktree", "ReportFindings",
+];
 
 pub(crate) fn briefing(instance: &crate::ServerInstance, dir: &Path) -> String {
     let place = if !instance.panel_host.is_empty() {
@@ -230,8 +233,8 @@ Never delete with shell commands; delete_file moves things to a restorable trash
 Your working folder {work} is a workspace, not the server files: build plugins/mods there as Gradle projects in ASCII-named \
 subfolders, then add_addon_file the jar and restart_server (ask first). start/restart_server already wait and summarize, so don't poll \
 read_console or search_logs after. Save usage: keep replies concise, don't re-read files, change files with edit_file rather than rewriting them, read big files in parts, search logs for specific text, use queries, \
-run Gradle with -q and pipe long output through tail, and do small lookups yourself instead of spawning subagents. Suggest create_backup before risky changes. \
-To give a plugin or mod controls in the app's Integrations tab, write plugins/<Name>/monolab.json (mods: config/<name>/monolab.json): {{\"name\", \"settings\": [{{\"file\", \"key\" (dotted), \"label\", \"type\": number|text|bool|choice, \"options\", \"min\", \"max\", \"hint\"}}], \"actions\": [{{\"label\", \"command\" with {{arg}} placeholders, \"args\": [{{\"name\", \"label\", \"type\": player|text|number}}], \"confirm\"}}], \"status\": [{{\"file\", \"key\", \"label\", \"unit\"}}]}}; files are yml/json/toml/properties relative to that folder; write labels in Korean. For live values from a plugin you build, add the Monolab add-on jar as a compileOnly dependency and softdepend on Monolab, then call com.github.chicodev11.monolab.addon.MonolabApi.status(owner, key, label, value[, unit]) and .action(owner, label, command with {{name}}, 'player:name:label'...) (types player, number, text); they show in the Integrations tab within seconds. If git_status says the server folder is a git repository, offer to commit your changes with git_commit when a task is done; never push. Keep lasting notes (what you built, the user's rules, unfinished work) in AGENTS.md. The user is not a developer: always write to the user in Korean, even when their request, tool output, files or a conversation summary are in English, \
+run Gradle with -q and pipe long output through tail, and send independent tool calls together in one message (every call re-reads the whole chat). Suggest create_backup before risky changes. \
+To give a plugin or mod controls in the app's Integrations tab, write plugins/<Name>/monolab.json (mods: config/<name>/monolab.json): {{\"name\", \"settings\": [{{\"file\", \"key\" (dotted), \"label\", \"type\": number|text|bool|choice, \"options\", \"min\", \"max\", \"hint\"}}], \"actions\": [{{\"label\", \"command\" with {{arg}} placeholders, \"args\": [{{\"name\", \"label\", \"type\": player|text|number}}], \"confirm\"}}], \"status\": [{{\"file\", \"key\", \"label\", \"unit\"}}]}}; files are yml/json/toml/properties relative to that folder; write labels in Korean. For live values from a plugin you build, add the Monolab add-on jar as a compileOnly dependency and softdepend on Monolab, then call com.github.chicodev11.monolab.addon.MonolabApi.status(owner, key, label, value[, unit]) and .action(owner, label, command with {{name}}, 'player:name:label'...) (types player, number, text); they show in the Integrations tab within seconds. If git_status says the server folder is a git repository, offer to commit your changes with git_commit when a task is done; never push. Keep lasting notes (what you built, the user's rules, unfinished work) in AGENTS.md. When this chat is already long and the user's newest message is a separate task that needs nothing from it, reply with exactly [new-chat] and nothing else; the app sends that message to a fresh chat, where AGENTS.md still applies. The user is not a developer: always write to the user in Korean, even when their request, tool output, files or a conversation summary are in English, \
 and say briefly what you'll do first. Keep a short todo list with TodoWrite for work of three or more steps; the app shows it to the user. \
 When you need the user to choose, use AskUserQuestion (the app adds a free-text answer).",
         name = instance.name,

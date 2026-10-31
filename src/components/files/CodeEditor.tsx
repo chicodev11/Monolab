@@ -30,6 +30,7 @@ import {
   rectangularSelection,
 } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
+import { colourSwatches } from "../../lib/editorColors";
 import { languageKind, languageName } from "../../lib/fileLang";
 
 export function languageOf(path: string): { name: string; extension: Extension | null } {
@@ -165,6 +166,7 @@ export function CodeEditor({
           indentWithTab,
         ]),
         look,
+        colourSwatches,
         locking.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
         breaks.current.of(lineBreakOf(value)),
         ...(language ? [language] : []),

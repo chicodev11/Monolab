@@ -11436,3 +11436,48 @@ textarea:focus-visible { outline: none; box-shadow: none; border-color: var(--ac
 .claude-main.with-list.list-folded { grid-template-columns: 44px minmax(0, 1fr); }
 .chat-sessions.folded { align-items: center; gap: 4px; padding: 4px; }
 @media (max-width: 860px) { .claude-main.with-list.list-folded { grid-template-columns: minmax(0, 1fr); } .chat-sessions.folded { flex-direction: row; } }
+
+/* Memo tab: to-dos and notes for one server */
+.memo-state { color: var(--text-3); font-size: 12.5px; }
+.memo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 10px; align-items: start; }
+.memo-count { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--raise); color: var(--text-2); font-size: 12px; font-weight: 600; }
+.memo-add { display: flex; gap: 8px; margin-bottom: 10px; }
+.memo-add input { flex: 1; min-width: 0; }
+.memo-add .button { flex: none; }
+.memo-todos { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.memo-todos li { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 4px 0 8px; border-radius: var(--r-sm); }
+.memo-todos li:hover { background: var(--raise); }
+.memo-todos li > input { flex: 1; min-width: 0; height: 30px; }
+.memo-text { flex: 1; min-width: 0; color: var(--text); font-size: 13.5px; overflow-wrap: anywhere; }
+.memo-todos li.done .memo-text { color: var(--text-3); text-decoration: line-through; }
+.memo-check { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 18px; height: 18px; padding: 0; border: 1.5px solid var(--line-strong); border-radius: 5px; background: transparent; color: var(--bg); cursor: pointer; }
+.memo-check[aria-checked="true"] { border-color: var(--text-2); background: var(--text-2); }
+.memo-check svg { width: 12px; height: 12px; }
+.memo-empty { margin: 4px 8px; font-size: 13px; }
+.memo-done { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
+.memo-done summary { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 8px; color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; }
+.memo-done > .button { margin: 6px 0 0 4px; }
+.memo-notes { width: 100%; min-height: 320px; resize: vertical; font-size: 13.5px; line-height: 1.6; }
+
+/* Agent: skills panel */
+.claude-main[hidden] { display: none; }
+.skills-page { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 12px; flex: 1 1 0; min-height: 0; }
+.skills-list { display: flex; flex-direction: column; gap: 6px; min-height: 0; margin: 0; padding: 8px; border: 1px solid var(--line-soft); border-radius: var(--r-lg); background: var(--panel); }
+.skills-list > .button { justify-content: flex-start; }
+.skills-scroll { display: flex; flex-direction: column; gap: 2px; min-height: 0; margin-top: 4px; overflow-y: auto; }
+.skills-item { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; }
+.skills-item:hover { background: var(--raise); color: var(--text); }
+.skills-item.on { background: var(--raise); color: var(--text); font-weight: 600; }
+.skills-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--code); font-size: 13px; }
+.skills-item small { flex: none; color: var(--text-3); font-size: 12px; }
+.skills-edit { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.skills-form { display: flex; flex-direction: column; gap: 12px; flex: 1 1 0; min-height: 0; }
+.skills-row { display: flex; align-items: flex-end; gap: 16px; }
+.skills-row .field { flex: 1; min-width: 0; }
+.skills-row .field input { font-family: var(--code); }
+.skills-toggle { display: flex; align-items: center; gap: 8px; height: 40px; color: var(--text-2); font-size: 13px; }
+.skills-body { display: flex; flex-direction: column; flex: 1 1 0; min-height: 200px; }
+.skills-body textarea { flex: 1; min-height: 200px; resize: none; font-family: var(--code); font-size: 13px; line-height: 1.6; }
+.skills-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.skills-said { font-size: 12.5px; }
+@media (max-width: 860px) { .skills-page { grid-template-columns: minmax(0, 1fr); } .skills-list { max-height: 220px; } }

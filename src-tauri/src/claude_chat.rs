@@ -122,7 +122,7 @@ pub fn open(app: &AppHandle, server: &str, session: &str, mode: &str, model: &st
     } else if resume {
         command.arg("--continue");
     }
-    command.args(claude_agent::DENIED_DELETES);
+    command.args(claude_agent::DENIED_TOOLS);
     command.arg("--mcp-config").arg(&config).arg("--strict-mcp-config");
     command.arg("--append-system-prompt").arg(claude_agent::briefing(&instance, &dir));
     command.current_dir(&dir);
@@ -185,10 +185,11 @@ pub fn open(app: &AppHandle, server: &str, session: &str, mode: &str, model: &st
             if line.trim().is_empty() {
                 continue;
             }
-            let finished = line.starts_with("{\"type\":\"result\"");
-            if finished || (!known && line.contains("\"session_id\"")) {
-                let found = serde_json::from_str::<serde_json::Value>(&line)
-                    .ok()
+            let maybe_result = line.contains("\"type\":\"result\"");
+            if maybe_result || (!known && line.contains("\"session_id\"")) {
+                let value = serde_json::from_str::<serde_json::Value>(&line).ok();
+                let finished = value.as_ref().is_some_and(|value| value.get("type").and_then(|one| one.as_str()) == Some("result"));
+                let found = value
                     .and_then(|value| value.get("session_id").and_then(|one| one.as_str()).map(str::to_string))
                     .filter(|one| is_session(one));
                 if let Some(one) = chats().lock().expect("chat poisoned").get_mut(&key) {
@@ -353,6 +354,7 @@ pub fn interrupt(id: &str) -> Result<(), String> {
     write_line(id, &line)?;
     if let Some(one) = chats().lock().expect("chat poisoned").get_mut(id) {
         one.pending.clear();
+        one.busy = false;
     }
     Ok(())
 }

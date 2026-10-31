@@ -8,6 +8,7 @@ import { AskDialog, type AskRequest } from "../dialogs/AskDialog";
 import { tr } from "../../lib/i18n";
 import { EmptyState, SegmentedControl } from "../primitives";
 import { ClaudeChat, type Engine } from "./ClaudeChat";
+import { SkillsPanel } from "./SkillsPanel";
 import { Icon } from "../ui/Icon";
 
 type Login = { engine: Engine; account: string; url: string };
@@ -316,7 +317,17 @@ function AccountManager({
   );
 }
 
-export function AgentPage({ server, onError }: { server: { id: string; name: string; minecraft: boolean }; onError: (message: string) => void }) {
+export function AgentPage({
+  server,
+  onError,
+  confirm,
+}: {
+  server: { id: string; name: string; minecraft: boolean };
+  onError: (message: string) => void;
+  confirm: (title: string, body: string, label: string, danger?: boolean) => Promise<boolean>;
+}) {
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [seed, setSeed] = useState<{ serial: number; text: string } | null>(null);
   const [info, setInfo] = useState<ClaudeInfo | null>(null);
   const [engine, setEngine] = useState<Engine>(() => savedEngine(server.id) ?? "claude");
   const [sessions, setSessions] = useState<ChatSession[] | null>(null);
@@ -481,6 +492,11 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
             <Icon name="users" />
           </button>
         )}
+        {installed && (
+          <button className={`icon-button ${skillsOpen ? "on" : ""}`} aria-label={tr("Skills")} data-tip={tr("Skills")} aria-pressed={skillsOpen} onClick={() => setSkillsOpen((was) => !was)}>
+            <Icon name="library" />
+          </button>
+        )}
         <button
           className="icon-button"
           aria-label={tr("Open workspace")}
@@ -579,7 +595,18 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
             </button>
           </div>
         )}
-        <div className={`claude-main ${engine === "claude" ? "with-list" : ""} ${listFolded ? "list-folded" : ""}`}>
+        {skillsOpen && (
+          <SkillsPanel
+            server={server.id}
+            onError={onError}
+            confirm={confirm}
+            onAskAgent={(text) => {
+              setSkillsOpen(false);
+              setSeed((was) => ({ serial: (was?.serial ?? 0) + 1, text }));
+            }}
+          />
+        )}
+        <div className={`claude-main ${engine === "claude" ? "with-list" : ""} ${listFolded ? "list-folded" : ""}`} hidden={skillsOpen}>
           {engine === "claude" && sessions && (
             <ChatList
               list={sessions}
@@ -602,6 +629,7 @@ export function AgentPage({ server, onError }: { server: { id: string; name: str
               server={server}
               engine={engine}
               session={picked}
+              seed={seed}
               onError={onError}
               onLogin={() => startLogin(engine, accounts?.current ?? "default")}
             />

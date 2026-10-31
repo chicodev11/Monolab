@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState, type ClipboardEvent, ty
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { commands } from "../../lib/ipc";
 import { tr } from "../../lib/i18n";
-import { applyLine, emptyChat, markAnswered, settle, toolName, toolSummary, type ChatItem, type ChatModel, type ChatTodo } from "../../lib/claudeChat";
+import { applyLine, emptyChat, markAnswered, NEW_CHAT, settle, toolName, toolSummary, topicToMove, type ChatItem, type ChatModel, type ChatTodo } from "../../lib/claudeChat";
 import { chatEntry, lastUsage, setChatEntry, startChatListener, useChatEntry } from "../../lib/claudeChatStore";
 import { Icon } from "../ui/Icon";
 import { Dropdown } from "../ui/Dropdown";
@@ -240,13 +240,13 @@ function MarkdownBody({ text }: { text: string }) {
 // Streaming changes one message at a time; the others keep their props and skip re-parsing.
 const Markdown = memo(MarkdownBody);
 
-function ToolRowBody({ item }: { item: Extract<ChatItem, { kind: "tool" }> }) {
+function ToolRowBody({ item, live }: { item: Extract<ChatItem, { kind: "tool" }>; live: boolean }) {
   const summary = toolSummary(item.name, item.input);
-  const state = item.result === undefined ? "run" : item.failed ? "bad" : "ok";
+  const state = item.result === undefined ? (live ? "run" : "cut") : item.failed ? "bad" : "ok";
   return (
     <details className={`chat-tool ${state}`}>
       <summary>
-        <span className="chat-tool-mark">{state === "run" ? <span className="chat-spin" /> : <Icon name={state === "bad" ? "alert" : "check"} />}</span>
+        <span className="chat-tool-mark">{state === "run" ? <span className="chat-spin" /> : <Icon name={state === "bad" ? "alert" : state === "cut" ? "stop" : "check"} />}</span>
         <strong>{toolName(item.name)}</strong>
         {summary && <span className="chat-tool-what">{summary}</span>}
         <Icon name="chevron" />
@@ -381,7 +381,7 @@ function PermissionCard({
   );
 }
 
-function TodoPanel({ todos }: { todos: ChatTodo[] }) {
+function TodoPanel({ todos, live }: { todos: ChatTodo[]; live: boolean }) {
   const [open, setOpen] = useState(true);
   const done = todos.filter((one) => one.status === "completed").length;
   const now = todos.find((one) => one.status === "in_progress");
@@ -397,7 +397,7 @@ function TodoPanel({ todos }: { todos: ChatTodo[] }) {
         <ul>
           {todos.map((one, index) => (
             <li key={index} className={one.status}>
-              <span className="chat-todo-mark">{one.status === "in_progress" ? <span className="chat-spin" /> : one.status === "completed" ? <Icon name="check" /> : <i />}</span>
+              <span className="chat-todo-mark">{one.status === "in_progress" ? (live ? <span className="chat-spin" /> : <Icon name="pause" />) : one.status === "completed" ? <Icon name="check" /> : <i />}</span>
               <span>{one.content}</span>
             </li>
           ))}
@@ -411,6 +411,7 @@ export function ClaudeChat({
   server,
   engine,
   session,
+  seed,
   onError,
   onLogin,
 }: {
@@ -418,6 +419,8 @@ export function ClaudeChat({
   engine: Engine;
   /** "" starts a new chat, "last" continues the newest one, otherwise a Claude session id. */
   session: string;
+  /** Text to put in the message box, e.g. from the skills panel. */
+  seed?: { serial: number; text: string } | null;
   onError: (message: string) => void;
   onLogin: () => void;
 }) {
@@ -616,6 +619,29 @@ export function ClaudeChat({
     }
   };
 
+  // Only a reply that finishes while this chat is open moves a message; old ones in the history stay put.
+  const wasBusy = useRef(model.busy);
+  useEffect(() => {
+    const finished = wasBusy.current && !model.busy;
+    wasBusy.current = model.busy;
+    const move = finished ? topicToMove(model) : null;
+    if (!move) return;
+    void (async () => {
+      await open("");
+      if (!chatRef.current) return;
+      setModel((was) => ({ ...was, items: [...was.items, { kind: "note", key: `moved-${move.key}`, text: tr("This looked like a new topic, so it continues in a new chat."), tone: "muted" }] }));
+      await commands.claudeChatSend(chatRef.current, JSON.stringify(move.text)).catch((cause) => onError(String(cause)));
+    })();
+  }, [model, onError, open, setModel]);
+
+  const seeded = useRef(seed?.serial ?? 0);
+  useEffect(() => {
+    if (!seed || seed.serial === seeded.current) return;
+    seeded.current = seed.serial;
+    setDraft(seed.text);
+    input.current?.focus();
+  }, [seed]);
+
   const answer = async (item: Extract<ChatItem, { kind: "permission" }>, choice: "allow" | "always" | "deny", changed?: Record<string, unknown>) => {
     if (!chatRef.current) return;
     try {
@@ -729,11 +755,11 @@ export function ClaudeChat({
             case "assistant":
               return (
                 <div key={item.key} className={`chat-assistant ${item.streaming ? "streaming" : ""}`}>
-                  <Markdown text={item.text} />
+                  {item.text.trim() === NEW_CHAT ? <p className="muted">{tr("Moved to a new chat.")}</p> : <Markdown text={item.text} />}
                 </div>
               );
             case "tool":
-              return item.name === "TodoWrite" ? null : <ToolRow key={item.key} item={item} />;
+              return item.name === "TodoWrite" ? null : <ToolRow key={item.key} item={item} live={model.busy} />;
             case "summary":
               return (
                 <details key={item.key} className="chat-summary">
@@ -778,7 +804,7 @@ export function ClaudeChat({
         </div>
       ) : (
         <div className="chat-compose">
-          {model.todos && model.todos.some((one) => one.status !== "completed") && <TodoPanel todos={model.todos} />}
+          {model.todos && model.todos.some((one) => one.status !== "completed") && <TodoPanel todos={model.todos} live={model.busy} />}
           {dropping && <div className="chat-drop">{tr("Drop here to send files to {0}", [who])}</div>}
           {(pictures.length > 0 || attached.length > 0) && (
             <div className="chat-attached">

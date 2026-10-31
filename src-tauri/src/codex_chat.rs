@@ -347,7 +347,7 @@ pub fn send(app: &AppHandle, id: &str, content: &str) -> Result<(), String> {
     command.arg("-c").arg(format!("mcp_servers.monolab.url={}", toml_string(&format!("{url}?server={server}"))));
     command.arg("-c").arg(format!("mcp_servers.monolab.bearer_token_env_var={}", toml_string(TOKEN_VAR)));
     command.arg("-c").arg("mcp_servers.monolab.default_tools_approval_mode=\"approve\"");
-    command.arg("-c").arg(format!("developer_instructions={}", toml_string(&claude_agent::briefing(&instance, &dir))));
+    command.arg("-c").arg(format!("developer_instructions={}", toml_string(&(claude_agent::briefing(&instance, &dir) + &crate::skills::summary(app, &server)))));
     for image in &images {
         command.arg("-i").arg(image);
     }

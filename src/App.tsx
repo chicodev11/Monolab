@@ -138,6 +138,7 @@ import { ServerStats } from "./components/console/ServerStats";
 import { AdvancedMonitor } from "./components/monitor/AdvancedMonitor";
 import { AddonSettings } from "./components/monitor/AddonSettings";
 import { Integrations } from "./components/integrations/Integrations";
+import { MemoPage } from "./components/servers/MemoPage";
 import { GitPage } from "./components/git/GitPage";
 import { iconKey, PluginSettings } from "./components/integrations/PluginSettings";
 import { FileRows } from "./components/files/FileRows";
@@ -278,6 +279,7 @@ type Tool =
   | "reach"
   | "integrations"
   | "git"
+  | "memo"
   | PanelView;
 type PlayerAction = "whitelist" | "operator" | "ban" | "kick";
 function sayWhatHappened(result: AddonAddResult) {
@@ -383,6 +385,7 @@ function versionSpan(list: string[]) {
 
 const REMOTE_TOOLS: string[] = [
   "overview",
+  "memo",
   "integrations",
   "git",
   "claude",
@@ -579,6 +582,7 @@ const instanceNav: {
 }[] = [
   { id: "overview", label: tr("Overview"), icon: "dashboard" },
   { id: "claude", label: tr("Agent"), icon: "sparkles" },
+  { id: "memo", label: tr("Memo"), icon: "list" },
   { id: "properties", label: tr("Server settings"), icon: "file-cog" },
   { id: "files", label: tr("Files"), icon: "folder" },
   { id: "worlds", label: tr("Worlds"), icon: "map" },
@@ -595,6 +599,7 @@ const RAIL_GROUP: Partial<Record<Tool, "server" | "manage" | "status">> = {
   overview: "server",
   console: "server",
   claude: "server",
+  memo: "server",
   properties: "manage",
   files: "manage",
   worlds: "manage",
@@ -610,6 +615,7 @@ const RAIL_GROUP: Partial<Record<Tool, "server" | "manage" | "status">> = {
 const panelNav: { id: Tool; label: string; icon: string; section?: string }[] = [
   { id: "overview", label: tr("Console"), icon: "terminal" },
   { id: "claude", label: tr("Agent"), icon: "sparkles" },
+  { id: "memo", label: tr("Memo"), icon: "list" },
   { id: "files", label: tr("Files"), icon: "folder" },
   { id: "addons", label: tr("Mods & plugins"), icon: "puzzle" },
   { id: "integrations", label: tr("Integrations"), icon: "plug" },
@@ -694,6 +700,10 @@ function App() {
     let unlisten: (() => void) | undefined;
     void import("@tauri-apps/api/window").then(({ getCurrentWindow }) =>
       getCurrentWindow().onCloseRequested(async (event) => {
+        if (!(await leaveEditorRef.current())) {
+          event.preventDefault();
+          return;
+        }
         const alive = instancesRef.current.filter(
           (instance) =>
             !instance.remoteHost &&
@@ -1319,6 +1329,11 @@ function App() {
   const [fileSaved, setFileSaved] = useState("");
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const tabBuffers = useRef(new Map<string, { content: string; saved: string; image: string | null; view?: FileView | null }>());
+  // The open file as of the last render, for handlers created by an older render.
+  const editorNow = useRef({ path: null as string | null, content: "", saved: "" });
+  editorNow.current = { path: activeFile, content: fileContent, saved: fileSaved };
+  const filesOwner = useRef<string | null>(null);
+  const leaveEditorRef = useRef<() => Promise<boolean>>(async () => true);
   const [editorCursor, setEditorCursor] = useState<Cursor>({ line: 1, column: 1, selected: 0, lines: 1 });
   useEffect(() => {
     if (activeFile) setOpenTabs((now) => (now.includes(activeFile) ? now : [...now, activeFile]));
@@ -2815,6 +2830,7 @@ function App() {
   async function loadTool(next: Tool, instance = selected, keepBrowse = false) {
     if (!instance) return;
     if (!toolAllowed(instance.core, next)) next = "overview";
+    if (page === "instance" && tool === "files" && (next !== "files" || instance.id !== selected?.id) && !(await leaveEditor())) return false;
     if (!keepBrowse) {
       setBrowseOpen(false);
       setProjectView(null);
@@ -2904,11 +2920,17 @@ function App() {
         setBrowseEntries(page.entries);
         setBrowseTotal(page.total);
         setBrowsePath("");
+        if (filesOwner.current === instance.id) {
+          stashActive();
+        } else {
+          setOpenTabs([]);
+          tabBuffers.current.clear();
+        }
+        filesOwner.current = instance.id;
+        editorNow.current = { path: null, content: "", saved: "" };
         setActiveFile(null);
         setFileContent("");
         setFileSaved("");
-        setOpenTabs([]);
-        tabBuffers.current.clear();
       }
       if (next === "worlds") {
         void commands.listBookmarks(instance.id)
@@ -3009,6 +3031,10 @@ function App() {
     window.setTimeout(() => void refresh(), 4000);
   }
   function goHome() {
+    if (editorDirtyHere()) {
+      void leaveEditor().then((ok) => ok && goHome());
+      return;
+    }
     setModal("none");
     setTaskDraft(null);
     setSessionOpen(null);
@@ -3016,6 +3042,10 @@ function App() {
     setSelectedId(null);
   }
   function closeServerTab(id: string) {
+    if (id === selectedId && editorDirtyHere()) {
+      void leaveEditor().then((ok) => ok && closeServerTab(id));
+      return;
+    }
     const rest = serverTabs.filter((one) => one !== id);
     setServerTabs(rest);
     if (selectedId !== id) return;
@@ -3027,6 +3057,10 @@ function App() {
     else goHome();
   }
   function openManage(instance: Instance, tool?: Tool) {
+    if (instance.id !== selected?.id && editorDirtyHere()) {
+      void leaveEditor().then((ok) => ok && openManage(instance, tool));
+      return;
+    }
     setModal("none");
     setTaskDraft(null);
     setSelectedId(instance.id);
@@ -3051,7 +3085,7 @@ function App() {
     setPage("instance");
     const remembered = tool ? undefined : lastPlace.current.get(instance.id);
     if (remembered) {
-      void loadTool(remembered.tool, instance).then(() => restoreInside(remembered, instance));
+      void loadTool(remembered.tool, instance).then((ok) => { if (ok !== false) void restoreInside(remembered, instance); });
       return;
     }
     void loadTool(tool ?? (instance.status === "running" || instance.status === "stopping" ? "console" : "overview"), instance);
@@ -4219,11 +4253,13 @@ function App() {
     }
   }
   function stashActive() {
-    if (activeFile) tabBuffers.current.set(activeFile, { content: fileContent, saved: fileSaved, image: fileImage, view: fileView });
+    const now = editorNow.current;
+    if (now.path) tabBuffers.current.set(now.path, { content: now.content, saved: now.saved, image: fileImage, view: fileView });
   }
   function showBuffer(path: string) {
     const kept = tabBuffers.current.get(path);
     tabBuffers.current.delete(path);
+    editorNow.current = { path, content: kept?.content ?? "", saved: kept?.saved ?? "" };
     setActiveFile(path);
     setFileContent(kept?.content ?? "");
     setFileSaved(kept?.saved ?? "");
@@ -4231,6 +4267,7 @@ function App() {
     setFileView(kept?.view ?? null);
   }
   function clearActive() {
+    editorNow.current = { path: null, content: "", saved: "" };
     setActiveFile(null);
     setFileImage(null);
     setFileView(null);
@@ -4239,7 +4276,8 @@ function App() {
   }
   function dirtyTabs(): string[] {
     const out: string[] = [];
-    if (activeFile && fileContent !== fileSaved) out.push(activeFile);
+    const now = editorNow.current;
+    if (now.path && now.content !== now.saved) out.push(now.path);
     for (const [path, one] of tabBuffers.current) if (one.content !== one.saved) out.push(path);
     return out;
   }
@@ -4253,6 +4291,47 @@ function App() {
       true,
     );
   }
+  function editorDirtyHere() {
+    return page === "instance" && tool === "files" && dirtyTabs().length > 0;
+  }
+  /** Before unsaved tabs are left behind: save them, drop the changes, or stay. */
+  async function leaveEditor(): Promise<boolean> {
+    const dirty = dirtyTabs();
+    if (!dirty.length || !selected) return true;
+    const answer = await new Promise<string | null>((resolve) =>
+      setAsk({
+        title: tr("Save changes?"),
+        body: tr("{0} has unsaved changes.", [dirty.map((one) => one.split("/").pop()).join(", ")]),
+        confirmLabel: tr("Save"),
+        altLabel: tr("Don't save"),
+        resolve,
+      }),
+    );
+    if (answer === null) return false;
+    const now = editorNow.current;
+    if (answer === "alt") {
+      for (const one of tabBuffers.current.values()) one.content = one.saved;
+      editorNow.current = { ...now, content: now.saved };
+      setFileContent(now.saved);
+      return true;
+    }
+    try {
+      for (const path of dirty) {
+        const kept = path === now.path ? now : tabBuffers.current.get(path);
+        if (!kept) continue;
+        await commands.saveEditableFile(selected.id, path, kept.content);
+        kept.saved = kept.content;
+      }
+    } catch (cause) {
+      setError(String(cause));
+      return false;
+    }
+    editorNow.current = { ...now };
+    setFileSaved(now.content);
+    setNotice(tr("File saved!"));
+    return true;
+  }
+  leaveEditorRef.current = leaveEditor;
   async function goFolder(path: string) {
     await browseTo(path);
   }
@@ -4306,13 +4385,13 @@ function App() {
     forgetTab(path);
   }
   function switchTab(path: string) {
-    if (path === activeFile) return;
+    if (path === editorNow.current.path) return;
     stashActive();
     showBuffer(path);
   }
   async function openFile(path: string) {
     if (!selected) return;
-    if (path === activeFile) return;
+    if (path === editorNow.current.path) return;
     if (tabBuffers.current.has(path)) {
       switchTab(path);
       return;
@@ -6108,6 +6187,10 @@ function App() {
     const target = historyAt.current + step;
     const point = historyRef.current[target];
     if (!point) return;
+    if ((point.page !== "instance" || point.instanceId !== selected?.id || point.tool !== "files") && editorDirtyHere()) {
+      void leaveEditor().then((ok) => ok && travelTo(step));
+      return;
+    }
     const from = historyRef.current[historyAt.current];
     historyAt.current = target;
     travelling.current = true;
@@ -6171,7 +6254,7 @@ function App() {
       syncNavState();
       return;
     }
-    void loadTool(point.tool, instance).then(() => restoreInside(point, instance));
+    void loadTool(point.tool, instance).then((ok) => { if (ok !== false) void restoreInside(point, instance); });
     syncNavState();
   }
   useEffect(() => {
@@ -8781,9 +8864,10 @@ function App() {
       )}
       {!toolLoading && tool === "claude" && !onWeb && (
         <Suspense fallback={null}>
-        <AgentPage key={selected.id} server={{ id: selected.id, name: selected.name, minecraft: kindOf(selected.core).family === "minecraft" }} onError={setError} />
+        <AgentPage key={selected.id} server={{ id: selected.id, name: selected.name, minecraft: kindOf(selected.core).family === "minecraft" }} onError={setError} confirm={confirmAction} />
         </Suspense>
       )}
+      {!toolLoading && tool === "memo" && <MemoPage key={selected.id} serverId={selected.id} onError={setError} />}
       {!toolLoading && tool === "integrations" && (
         <Integrations
           key={selected.id}
@@ -8797,7 +8881,7 @@ function App() {
           askChoice={askChoice}
           onError={setError}
           notify={setNotice}
-          openFile={(path) => void loadTool("files").then(() => openFile(path))}
+          openFile={(path) => void loadTool("files").then((ok) => { if (ok !== false) void openFile(path); })}
         />
       )}
       {!toolLoading && tool === "git" && (
