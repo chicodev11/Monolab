@@ -219,5 +219,6 @@
   "When a long agent chat gets an unrelated request, it moves to a new chat by itself, which uses less.": "긴 에이전트 대화에 상관없는 부탁이 오면 알아서 새 대화로 옮겨 사용량을 줄여요.",
   "Leaving the editor with unsaved files asks whether to save them. Unsaved edits also stay when you refresh or come back to the Files tab.": "저장하지 않은 파일이 있는 채로 편집기를 떠나면 저장할지 물어봐요. 새로고침하거나 파일 탭에 다시 와도 고치던 내용이 남아 있어요.",
   "Agent chats leave out tools they never use, so every step costs a little less.": "에이전트 대화에서 쓰지 않는 도구를 빼서 한 단계마다 사용량이 조금 줄었어요.",
-  "Stopping the agent stops the spinners in the chat list, tool rows and to-do list.": "에이전트를 중지하면 대화 목록·도구 줄·할 일 목록의 돌아가는 표시도 멈춰요."
+  "Stopping the agent stops the spinners in the chat list, tool rows and to-do list.": "에이전트를 중지하면 대화 목록·도구 줄·할 일 목록의 돌아가는 표시도 멈춰요.",
+  "Opening Monolab while it is already running brings the open window forward instead of starting another copy.": "Monolab이 이미 켜져 있을 때 다시 실행하면 새로 켜지지 않고 열려 있는 창이 앞으로 나와요."
 }

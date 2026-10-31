@@ -1,6 +1,14 @@
 [
   {
     "kind": "app",
+    "version": "1.6.8",
+    "date": "2026-10-31",
+    "fixed": [
+      "Opening Monolab while it is already running brings the open window forward instead of starting another copy."
+    ]
+  },
+  {
+    "kind": "app",
     "version": "1.6.7",
     "date": "2026-10-31",
     "added": [
