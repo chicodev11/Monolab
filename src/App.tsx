@@ -13,7 +13,6 @@ import type {
   SshHostView,
   InstanceView as GenInstance,
   WebPanelView as GenWebPanelView,
-  Online,
   WebAccountView as GenWebAccount,
   CoreBuild as GenCoreBuild,
   AddonStatus as GenAddonStatus,
@@ -117,7 +116,6 @@ import { isSavedOver, sha256Hex } from "./lib/hash";
 import { VpsTunnelCard } from "./components/servers/VpsTunnelCard";
 import { TeamStorage } from "./components/panels/TeamStorage";
 import { ProposalsPanel } from "./components/servers/ProposalsPanel";
-import { ShareDialog } from "./components/dialogs/ShareDialog";
 import { rankPalette, readRecent, rememberRecent, type PaletteEntry } from "./lib/palette";
 import { MarksPanel } from "./components/panels/MarksPanel";
 import { CrashPanel } from "./components/panels/CrashPanel";
@@ -1126,8 +1124,6 @@ function App() {
   const [paletteQuery, setPaletteQuery] = useState("");
   const [paletteIndex, setPaletteIndex] = useState(0);
   const [paletteScope, setPaletteScope] = useState<string | null>(null);
-  const [peopleOpen, setPeopleOpen] = useState(false);
-  const [webOnline, setWebOnline] = useState<Online[]>([]);
   const [paletteRecent, setPaletteRecent] = useState<string[]>(readRecent);
   const [trashEntries, setTrashEntries] = useState<TrashEntry[]>([]);
   const [filter, setFilter] = useState("");
@@ -2663,10 +2659,6 @@ ${payload.plugin}`;
       setBuildsBusy(false);
     }
   }
-  async function openShare() {
-    await refreshWebPanel();
-    setPeopleOpen(true);
-  }
   async function refreshWebPanel() {
     try {
       const next = await commands.webPanelState();
@@ -3729,20 +3721,6 @@ ${payload.plugin}`;
     setSelectedId(null);
     setHomeView("servers");
   }
-  /** Leaves the server and opens one of the home screen's side sections (web panel, Monolink). */
-  function openHomeSection(section: "web" | "monolink") {
-    if (editorDirtyHere()) {
-      void leaveEditor().then((ok) => ok && openHomeSection(section));
-      return;
-    }
-    goHome();
-    setModal(section);
-    if (section === "web") {
-      setAccountDraft(null);
-      void refreshWebPanel();
-      void refreshWebAccounts();
-    }
-  }
   function goClient() {
     goHome();
     setHomeView("client");
@@ -4463,7 +4441,7 @@ ${payload.plugin}`;
     if (!selected) return;
     const instance = selected;
     const what = paths.length
-      ? tr("{0, plural, one {# picked item} other {# picked items}} from {1} are compressed and kept with its backups.", [paths.length, instance.name])
+      ? tr("{0, plural, one {# picked item from {1} is} other {# picked items from {1} are}} compressed and kept with its backups.", [paths.length, instance.name])
       : worldsOnly
         ? tr("The worlds of {0} are compressed and kept with its backups.", [instance.name])
         : tr("The whole {0} server folder is compressed and kept with its backups.", [instance.name]);
@@ -7142,18 +7120,8 @@ ${payload.plugin}`;
           : tr("Restarting {0} servers in {1}.", [picked.length, group]),
     );
   }
-  useEffect(() => {
-    if (onWeb || !webPanel.on) {
-      setWebOnline([]);
-      return;
-    }
-    const look = () => void commands.webOnline().then((next) => setWebOnline((old) => keepSame(old, next)), () => {});
-    look();
-    const timer = window.setInterval(look, 10_000);
-    return () => window.clearInterval(timer);
-  }, [webPanel.on]);
-  const paletteRun = useRef({ openCreate, openManage, openConsole, toggle, openServerFolder, restartInstance, backupFromPalette, createFromJar, setTheme, goHome, openShare, stopBackupStart, groupAction });
-  paletteRun.current = { openCreate, openManage, openConsole, toggle, openServerFolder, restartInstance, backupFromPalette, createFromJar, setTheme, goHome, openShare, stopBackupStart, groupAction };
+  const paletteRun = useRef({ openCreate, openManage, openConsole, toggle, openServerFolder, restartInstance, backupFromPalette, createFromJar, setTheme, goHome, stopBackupStart, groupAction });
+  paletteRun.current = { openCreate, openManage, openConsole, toggle, openServerFolder, restartInstance, backupFromPalette, createFromJar, setTheme, goHome, stopBackupStart, groupAction };
   const paletteItems = useMemo(() => {
     const run = () => paletteRun.current;
     const items: PaletteEntry[] = [
@@ -7229,9 +7197,6 @@ ${payload.plugin}`;
       }
       if (!panel) {
         items.push({ id: `backup-${instance.id}`, group: "action", icon: "backup", label: tr("Back up {0} now", [name]), hint: tr("Whole server folder"), keywords: "backup snapshot save", serverId: instance.id, run: () => void run().backupFromPalette(instance) });
-      }
-      if (!onWeb && !panel) {
-        items.push({ id: `share-${instance.id}`, group: "action", icon: "users", label: tr("Share {0}", [name]), hint: tr("Invite people to this server"), keywords: "invite collaborate friends people access", serverId: instance.id, run: () => { run().openManage(instance); void run().openShare(); } });
       }
       if (!onWeb && !panel && !instance.remoteHost) {
         items.push({ id: `folder-${instance.id}`, group: "action", icon: "folder", label: tr("Open {0} folder", [name]), hint: instance.path, keywords: "explorer", serverId: instance.id, run: () => void run().openServerFolder(instance) });
@@ -8490,21 +8455,6 @@ ${payload.plugin}`;
         <Icon name="folder" />
       </button>
     )}
-    {!onWeb && !selected.panelHost && (() => {
-      const here = [...webOnline.filter((one) => one.server === selected.id).map((one) => one.name), ...teamHere];
-      return (
-        <button
-          type="button"
-          className={`button secondary wb-pill share-text${here.length ? " live" : ""}`}
-          data-tip={here.length ? tr("On this server now: {0}", [here.join(", ")]) : tr("Invite people to this server through the web panel")}
-          onClick={() => void openShare()}
-        >
-          <Icon name="link" />
-          {tr("Share")}
-          {here.length > 0 && <b className="share-here">{here.length}</b>}
-        </button>
-      );
-    })()}
     {onMonolink && teamHere.length > 0 && (
       <span className="wb-icon ghost share-button live team-here" role="status" data-tip={tr("On this server now: {0}", [teamHere.map((one) => (one === "host" ? tr("the host") : one)).join(", ")])}>
         <Icon name="users" />
@@ -10498,8 +10448,8 @@ ${payload.plugin}`;
                       </button>
                     }
                     items={[
-                      ...(worldsOk ? [{ label: tr("Worlds only"), icon: "map", hint: tr("Stores only the world folders. Smaller and faster; restoring replaces only those worlds."), onSelect: () => void makeBackup(true) }] : []),
-                      { label: tr("Choose files…"), icon: "check", hint: tr("Pick the folders and files to put in the backup."), onSelect: () => void openBackupPick() },
+                      ...(worldsOk ? [{ label: tr("Worlds only"), icon: "map", hint: tr("Smaller and faster"), onSelect: () => void makeBackup(true) }] : []),
+                      { label: tr("Choose files…"), icon: "check", hint: tr("Pick folders and files"), onSelect: () => void openBackupPick() },
                     ]}
                   />
                 )}
@@ -12666,6 +12616,12 @@ ${payload.plugin}`;
       <DragScroll />
       <TitleBar
         title={onMonolink ? `${monolinkHost || "Monolink"} · Monolink` : "Monolab"}
+        onSearch={() => {
+          setPaletteQuery("");
+          setPaletteIndex(0);
+          setPaletteScope(null);
+          setPaletteOpen(true);
+        }}
         nav={{
           back: navState.back,
           forward: navState.forward,
@@ -13005,20 +12961,6 @@ ${payload.plugin}`;
                 </p>
               </div>
               <div className="instance-actions">
-                {!onWeb && !selected.panelHost && (() => {
-                  const here = webOnline.filter((one) => one.server === selected.id);
-                  return (
-                    <button
-                      className={`icon-button share-button${here.length ? " live" : ""}`}
-                      data-tip={here.length ? tr("On this server now: {0}", [here.map((one) => one.name).join(", ")]) : tr("Share this server")}
-                      aria-label={tr("Share this server")}
-                      onClick={() => void openShare()}
-                    >
-                      <Icon name="users" />
-                      {here.length > 0 && <b>{here.length}</b>}
-                    </button>
-                  );
-                })()}
                 <button aria-label={t("card.folder")}
                   className="icon-button"
                   data-tip={t("card.folder")}
@@ -15149,26 +15091,11 @@ ${payload.plugin}`;
       {contextMenu && (
         <ContextMenu x={contextMenu.x} y={contextMenu.y} items={contextMenu.items} onClose={closeContextMenu} />
       )}
-      {peopleOpen && selected && !onWeb && (
-        <ShareDialog
-          server={{ id: selected.id, name: selected.name }}
-          panelOn={webPanel.on}
-          onClose={() => setPeopleOpen(false)}
-          onOpenPanelSettings={() => {
-            setPeopleOpen(false);
-            openHomeSection("web");
-          }}
-          onError={setError}
-          onNotice={setNotice}
-          confirm={confirmAction}
-        />
-      )}
       {!onWeb && (
         <TeamAgentAsks
           onError={setError}
           onShow={() => {
             // A teammate's agent is waiting: the question stands alone, like a join request.
-            setPeopleOpen(false);
             setPlayerInfo(null);
           }}
           onAway={(ask) => {

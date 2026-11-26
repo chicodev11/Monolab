@@ -4669,7 +4669,10 @@
     "Choose files…": "파일 고르기…",
     "The whole {0} server folder is compressed and kept with its backups.": "{0} 서버 폴더 전체를 압축해 백업에 보관해요.",
     "The worlds of {0} are compressed and kept with its backups.": "{0}의 월드를 압축해 백업에 보관해요.",
-    "{0, plural, one {# picked item} other {# picked items}} from {1} are compressed and kept with its backups.": "{1}에서 고른 {0}개를 압축해 백업에 보관해요.",
-    "Invite people to this server through the web panel": "웹 패널로 이 서버에 사람을 초대해요"
+    "{0, plural, one {# picked item from {1} is} other {# picked items from {1} are}} compressed and kept with its backups.": "{1}에서 고른 {0}개를 압축해 백업에 보관해요.",
+    "Invite people to this server through the web panel": "웹 패널로 이 서버에 사람을 초대해요",
+    "Search or jump to…": "검색하거나 바로 가기…",
+    "Smaller and faster": "더 작고 빨라요",
+    "Pick folders and files": "폴더와 파일 고르기"
   }
 }

@@ -5,8 +5,11 @@ import type { Window } from "@tauri-apps/api/window";
 export function TitleBar({
   title,
   nav,
+  onSearch,
 }: {
   title: string;
+  /** Opens the command palette (Ctrl K) from the search field in the middle of the bar. */
+  onSearch?: () => void;
   nav?: {
     back: boolean;
     forward: boolean;
@@ -42,6 +45,10 @@ export function TitleBar({
   return (
     <div className="titlebar" data-tauri-drag-region>
       <span className="titlebar-name" data-tauri-drag-region>
+        <svg className="titlebar-mark" viewBox="0 0 32 32" aria-hidden>
+          <rect width="32" height="32" rx="9" />
+          <path d="M9 11.5h14M9 16h14M9 20.5h14" />
+        </svg>
         {title}
       </span>
       {nav && (
@@ -69,6 +76,16 @@ export function TitleBar({
             </svg>
           </button>
         </div>
+      )}
+      {onSearch && (
+        <button type="button" className="titlebar-search" onClick={onSearch} aria-keyshortcuts="Control+K">
+          <svg viewBox="0 0 16 16" aria-hidden>
+            <circle cx="7" cy="7" r="4.5" />
+            <path d="m10.5 10.5 3 3" />
+          </svg>
+          <span>{tr("Search or jump to…")}</span>
+          <kbd>Ctrl K</kbd>
+        </button>
       )}
       {appWindow && (
         <div className="window-controls">
