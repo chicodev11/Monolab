@@ -12990,7 +12990,7 @@ ${payload.plugin}`;
                         ? selected.panelHost
                           ? tr("This tab isn't available for panel servers yet.")
                           : tr("Not available for SSH servers yet.")
-                        : label
+                        : undefined
                     }
                     data-tip-side="right"
                     aria-label={label}
@@ -13103,13 +13103,6 @@ ${payload.plugin}`;
                   
                 }}
               >
-                {!browseOpen && (() => {
-                  // The rail shows only icons, so each tool page says what it is at the top.
-                  const item = tool === "console" ? { label: tr("Console") } : (selected.panelHost ? panelNav : instanceNav).find((one) => one.id === tool);
-                  if (!item) return null;
-                  const label = tool === "addons" ? (addonKind(selected.core) === "mod" ? tr("Mods") : tr("Plugins")) : item.label;
-                  return <h1 className="tool-page-title">{label}</h1>;
-                })()}
                 {browseOpen ? browsePage : manage}
                 {depAsk && (
                   <DependencyDialog

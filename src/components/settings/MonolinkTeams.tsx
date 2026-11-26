@@ -1244,11 +1244,11 @@ function TeamPanel({
           ))}
         </div>
       </header>
-      {extraOn ? (
-        <div className="mlt-extra">{extra?.content}</div>
-      ) : (
       <div className="mlt-view-grid">
       <div className="mlt-view-main">
+      {extraOn && <div className="mlt-extra">{extra?.content}</div>}
+      {!extraOn && (
+      <>
 
       {tab === "servers" && (
         <>
@@ -1275,7 +1275,11 @@ function TeamPanel({
               {servers.map((server) => (
                 <ListRow
                   key={server.id}
-                  leading={<span className={`status-dot ${server.mine || server.host_online ? "status-running" : "status-stopped"}`} aria-hidden />}
+                  leading={
+                    <span className={`mlt-server-mark${server.mine || server.host_online ? "" : " off"}`} data-tip={server.mine || server.host_online ? tr("Online") : tr("Offline")}>
+                      <Icon name="server" />
+                    </span>
+                  }
                   title={<>{server.name}</>}
                   subtitle={<>{server.mine ? tr("on this PC") : server.host ? `@${server.host}` : tr("host left")}{server.node ? ` · ${tr("node")}` : ""}</>}
                   actions={
@@ -1679,6 +1683,8 @@ function TeamPanel({
           </section>
         </div>
       )}
+      </>
+      )}
       </div>
       <aside className="mlt-view-aside mlt-roster" aria-label={tr("Members")}>
         {[
@@ -1704,7 +1710,6 @@ function TeamPanel({
         )}
       </aside>
       </div>
-      )}
     </div>
   );
 }

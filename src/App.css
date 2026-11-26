@@ -12299,12 +12299,8 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .topbar-actions > .place-actions.in-top .button { width: 36px; height: 36px; padding: 0; justify-content: center; }
 .topbar-actions > .place-actions.in-top .button svg { width: 17px; height: 17px; }
 
-/* Server tool pages: the tool's name on top, since the rail has no words; the pages' own titles step aside. */
-.instance-body > .tool-page-title { flex: none; margin: 0 0 14px; color: var(--text); font-size: 24px; font-weight: 650; letter-spacing: -.01em; line-height: 1.2; }
-.instance-body .wb-head > h1 { display: none; }
-.instance-body:has(> .tool-page-title) { flex-direction: column; align-items: stretch; }
-.instance-body:has(> .tool-page-title) > .tool-content { flex: 1 1 auto; min-width: 0; min-height: 0; }
-.instance-body > .tool-page-title { margin-top: 6px; }
+
+
 
 /* Pill tabs: the chosen fill slides between pills (lib/pillMarks.ts sets the variables). */
 .pill-anim { position: relative; isolation: isolate; }
@@ -12334,3 +12330,75 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .agent-side-top { grid-template-columns: minmax(0, 1fr); }
 .agent-side-top > * { min-width: 0; }
 .agent-new { min-width: 0; overflow: hidden; white-space: nowrap; }
+
+/* Server tool rail: icons only, and the names slide out over the page while the pointer rests on it. */
+.app-shell.wb .wb-rail {
+  position: relative;
+  z-index: 40;
+  transition: flex-basis 180ms var(--ease), margin-right 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+.app-shell.wb .wb-rail button > span {
+  position: absolute;
+  left: 46px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms var(--ease);
+}
+.app-shell.wb .wb-rail:hover {
+  flex-basis: 212px;
+  margin-right: -144px;
+  align-items: stretch;
+  padding-left: 12px;
+  padding-right: 12px;
+  background: var(--panel);
+  box-shadow: 12px 0 32px rgb(0 0 0 / 35%);
+  transition-delay: 220ms;
+}
+.app-shell.wb .wb-rail:hover button { display: flex; width: auto; justify-content: flex-start; gap: 12px; padding: 0 0 0 11.5px; }
+.app-shell.wb .wb-rail:hover button > span {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: hidden;
+  clip-path: none;
+  opacity: 1;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition-delay: 260ms;
+}
+.app-shell.wb .wb-rail:hover .wb-homerail-line { align-self: stretch; }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.wb .wb-rail, .app-shell.wb .wb-rail button > span { transition: none; }
+}
+
+/* Monolink: Activity log and Roles sit in the same column as the other team tabs, next to the member list. */
+.mlt-extra .monolink-roles { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.mlt-extra .monolink-roles-lead { margin: 0; font-size: 13px; line-height: 1.5; }
+.mlt-extra .monolink-roles > .roles-card { display: grid; gap: 16px; margin: 0; padding: 18px 20px; border: 0; border-radius: var(--r-lg); background: var(--panel); }
+.mlt-extra .monolink-roles .list-card { border-color: transparent; background: var(--panel-2); }
+.mlt-extra .team-log-head { margin-top: 0; }
+.mlt-extra .team-log-box { flex: none; min-height: 280px; }
+
+/* Invite form: labels on one line, every control 36 px and on one baseline. */
+.mlt-invite-form { align-items: flex-end; border: 0; background: var(--panel); border-radius: var(--r-lg); padding: 14px 16px; gap: 14px 18px; }
+.mlt-invite-form label { gap: 8px; }
+.mlt-invite-form label > span:first-child { line-height: 16px; }
+.mlt-invite-form .dropdown-trigger { height: 36px; }
+.mlt-invite-form .ui-tabs { height: 36px; }
+.mlt-invite-form .mlt-switch { display: inline-flex; flex-direction: row; align-items: center; height: 36px; gap: 10px; }
+.mlt-invite-form .mlt-switch > span:first-child { line-height: 1; }
+.mlt-invite-form > .button { height: 36px; }
+
+/* Member rows: role pills keep their full width instead of being cut off. */
+.mlt-members .list-actions { flex: none; flex-wrap: nowrap; }
+.mlt-members .list-actions .ui-tabs { flex: none; max-width: none; overflow: visible; }
+
+/* Team servers: a server mark in front, dimmed while its host is away. */
+.mlt-server-mark { display: grid; flex: none; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--raise); color: var(--text-2); }
+.mlt-server-mark svg { width: 16px; height: 16px; }
+.mlt-server-mark.off { opacity: 0.45; }
+.mlt-extra .monolink-roles .role-list { border-color: transparent; background: transparent; }
+.mlt-extra .team-log-box { border-color: transparent; background: var(--panel); }
