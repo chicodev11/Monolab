@@ -79,22 +79,24 @@ export function LogLines({
 }: {
   logs: readonly LogLine[];
   filter: string;
-  level?: ConsoleLevel;
+  /** One level, or several (an empty list shows every line). */
+  level?: ConsoleLevel | readonly ConsoleLevel[];
   emptyText?: string;
 }) {
+  const levelKey = typeof level === "string" ? level : level.join();
   const chunks = useMemo(() => {
     const needle = filter.trim().toLowerCase();
     let mine = needle ? logs.filter((log) => log.line.toLowerCase().includes(needle)) : logs;
-    if (level !== "all") {
+    const wanted = levelKey === "" || levelKey.split(",").includes("all") ? null : new Set(levelKey.split(","));
+    if (wanted) {
       mine = mine.filter((log) => {
         const found = readLevel(log.line);
-        if (level === "error") return found === "error" || log.stream === "stderr" || isErrorTail(log.line);
-        if (level === "warn") return found === "warn";
-        return found === null && log.stream !== "stderr" && !isErrorTail(log.line);
+        const kind = found === "error" || log.stream === "stderr" || isErrorTail(log.line) ? "error" : found === "warn" ? "warn" : found === null ? "info" : found;
+        return wanted.has(kind);
       });
     }
     return groupConsole(mine, true);
-  }, [logs, filter, level]);
+  }, [logs, filter, levelKey]);
 
   const [followTail, setFollowTail] = useState(true);
   const userMoved = useRef(false);

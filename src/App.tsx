@@ -152,7 +152,7 @@ import { QrCode } from "./components/panels/QrCode";
 import { ConsoleLevels, ConsoleOutput, LogLines, type ConsoleLevel } from "./components/console/ConsoleOutput";
 import { SavedSearches } from "./components/console/SavedSearches";
 import { LogFilters } from "./components/console/LogFilters";
-import { lineMatches } from "./lib/logFilter";
+import { type LogLevel, lineMatches } from "./lib/logFilter";
 import { DiscordAlerts } from "./components/settings/DiscordAlerts";
 import { TeamNoticeSettings } from "./components/settings/TeamNoticeSettings";
 import { readSwitches, wantsNotice, type TeamNotice } from "./lib/teamNotice";
@@ -843,7 +843,7 @@ function App() {
   const [perfDays, setPerfDays] = useState<string[]>([]);
   const [perfDay, setPerfDay] = useState("");
   const [perfHistory, setPerfHistory] = useState<GameEvent[]>([]);
-  const [logLevelView, setLogLevelView] = useState<ConsoleLevel>("all");
+  const [logLevelView, setLogLevelView] = useState<LogLevel[]>([]);
   const [lagReport, setLagReport] = useState<LagDiagnosis | null>(null);
   const [sparkStartedAt, setSparkStartedAt] = useState<number | null>(null);
   /** A profile started without a time limit, running until Stop. */
@@ -3528,7 +3528,7 @@ ${payload.plugin}`;
       setAddonFilter("all");
       setPickedAddons([]);
       setLogQuery("");
-      setLogLevelView("all");
+      setLogLevelView([]);
       setShotView(null);
       setVersionOpen(false);
     }
@@ -10237,11 +10237,11 @@ ${payload.plugin}`;
             </Banner>
           )}
           <LogFilters
-            filter={{ ...logNarrow, query: logQuery, level: logLevelView }}
+            filter={{ ...logNarrow, query: logQuery, levels: logLevelView }}
             askName={(current) => askText(tr("Save filters"), tr("Name"), current, tr("Save"))}
             onChange={(next) => {
               setLogQuery(next.query);
-              setLogLevelView(next.level);
+              setLogLevelView(next.levels);
               setLogNarrow({ source: next.source, from: next.from, to: next.to, name: next.name });
             }}
           />

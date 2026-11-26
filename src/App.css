@@ -12410,3 +12410,22 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 /* Monolink member rows: two compact dropdowns and the remove button on one line. */
 .mlt-members .list-actions { gap: 8px; align-items: center; }
 .mlt-members .list-actions .dropdown-trigger { height: 32px; border-radius: var(--r-full); }
+
+/* Log levels: a filter mark and toggle chips; several can be on at once. */
+.log-levels { display: inline-flex; align-items: center; gap: 6px; color: var(--text-3); }
+.log-levels > svg { width: 18px; height: 18px; margin-right: 4px; }
+.log-level {
+  height: 30px;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 140ms var(--ease), border-color 140ms var(--ease), color 140ms var(--ease);
+}
+.log-level:hover { border-color: var(--text-4); color: var(--text); }
+.log-level.on { border-color: var(--ok-line); background: var(--ok-soft); color: var(--ok); }
+@media (prefers-reduced-motion: reduce) { .log-level { transition: none; } }

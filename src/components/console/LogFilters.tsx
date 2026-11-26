@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { tr } from "../../lib/i18n";
-import { EMPTY_FILTER, isEmptyFilter, readSavedFilters, sameFilter, withSaved, writeSavedFilters, type LogFilter } from "../../lib/logFilter";
-import { DropdownMenu, SegmentedControl } from "../primitives";
+import { EMPTY_FILTER, LOG_LEVELS, isEmptyFilter, toggleLevel, readSavedFilters, sameFilter, withSaved, writeSavedFilters, type LogFilter } from "../../lib/logFilter";
+import { DropdownMenu } from "../primitives";
 import { Icon } from "../ui/Icon";
 import { TimePicker } from "../ui/TimePicker";
 
@@ -66,17 +66,23 @@ export function LogFilters({
   ];
   return (
     <div className="log-filters" role="group" aria-label={tr("Log filters")}>
-      <SegmentedControl
-        className="console-levels"
-        value={filter.level}
-        onChange={(level) => onChange({ ...filter, level })}
-        options={[
-          { value: "all", label: tr("All") },
-          { value: "error", label: tr("Errors") },
-          { value: "warn", label: tr("Warnings") },
-          { value: "info", label: tr("Info") },
-        ]}
-      />
+      <div className="log-levels" role="group" aria-label={tr("Log level")}>
+        <Icon name="filter" />
+        <button type="button" className={`log-level${filter.levels.length === 0 ? " on" : ""}`} aria-pressed={filter.levels.length === 0} onClick={() => onChange({ ...filter, levels: [] })}>
+          {tr("All")}
+        </button>
+        {LOG_LEVELS.map((level) => (
+          <button
+            key={level}
+            type="button"
+            className={`log-level${filter.levels.includes(level) ? " on" : ""}`}
+            aria-pressed={filter.levels.includes(level)}
+            onClick={() => onChange({ ...filter, levels: toggleLevel(filter.levels, level) })}
+          >
+            {level === "error" ? tr("Error") : level === "warn" ? tr("Warn") : tr("Info")}
+          </button>
+        ))}
+      </div>
       <div className="log-filter-time" ref={timeBox}>
         <button
           type="button"
@@ -84,8 +90,8 @@ export function LogFilters({
           aria-expanded={timeOpen}
           onClick={() => setTimeOpen((open) => !open)}
         >
-          <Icon name="filter" />
-          {timed ? `${filter.from} – ${filter.to}` : tr("Filter")}
+          <Icon name="clock" />
+          {timed ? `${filter.from} – ${filter.to}` : tr("Time")}
         </button>
         {timeOpen && (
           <div className="log-filter-pop" role="dialog" aria-label={tr("Filter")}>

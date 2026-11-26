@@ -4,7 +4,8 @@ import type { ConsoleLevel } from "../components/console/ConsoleOutput";
 export type LogFilter = {
   name: string;
   query: string;
-  level: ConsoleLevel;
+  /** The levels shown; empty for every line. */
+  levels: LogLevel[];
   /** A plugin, mod or logger name; "" for every one. */
   source: string;
   /** "" for no limit. */
@@ -12,11 +13,22 @@ export type LogFilter = {
   to: string;
 };
 
-export const EMPTY_FILTER: LogFilter = { name: "", query: "", level: "all", source: "", from: "", to: "" };
+export type LogLevel = Exclude<ConsoleLevel, "all">;
+
+export const EMPTY_FILTER: LogFilter = { name: "", query: "", levels: [], source: "", from: "", to: "" };
 
 const KEY = "monolab.savedLogFilters";
 const MOST = 30;
-const LEVELS: ConsoleLevel[] = ["all", "error", "warn", "info"];
+export const LOG_LEVELS: LogLevel[] = ["error", "warn", "info"];
+
+const inOrder = (levels: LogLevel[]) => LOG_LEVELS.filter((level) => levels.includes(level));
+
+/** Turns one level on or off; all three on is the same as none (every line). */
+export function toggleLevel(levels: readonly LogLevel[], one: LogLevel): LogLevel[] {
+  const next = levels.includes(one) ? levels.filter((level) => level !== one) : [...levels, one];
+  return next.length === LOG_LEVELS.length ? [] : inOrder(next);
+}
+
 
 /** Minutes after midnight of a line's `[HH:MM:SS` stamp, or null when it has none. */
 export function lineMinute(line: string): number | null {
@@ -76,7 +88,7 @@ export function sourcesIn(lines: readonly string[]): string[] {
 }
 
 export function sameFilter(a: LogFilter, b: LogFilter): boolean {
-  return a.query.trim() === b.query.trim() && a.level === b.level && a.source === b.source && a.from === b.from && a.to === b.to;
+  return a.query.trim() === b.query.trim() && a.levels.join() === b.levels.join() && a.source === b.source && a.from === b.from && a.to === b.to;
 }
 
 export function isEmptyFilter(filter: LogFilter): boolean {
@@ -87,8 +99,10 @@ function clean(raw: unknown): LogFilter | null {
   if (!raw || typeof raw !== "object") return null;
   const one = raw as Record<string, unknown>;
   const text = (key: string) => (typeof one[key] === "string" ? (one[key] as string) : "");
-  const level = LEVELS.includes(one.level as ConsoleLevel) ? (one.level as ConsoleLevel) : "all";
-  const filter = { name: text("name").trim(), query: text("query"), level, source: text("source"), from: text("from"), to: text("to") };
+  // Older saved filters kept a single "level".
+  const picked = Array.isArray(one.levels) ? one.levels : typeof one.level === "string" ? [one.level] : [];
+  const levels = LOG_LEVELS.filter((level) => picked.includes(level));
+  const filter = { name: text("name").trim(), query: text("query"), levels: levels.length === LOG_LEVELS.length ? [] : levels, source: text("source"), from: text("from"), to: text("to") };
   return filter.name ? filter : null;
 }
 

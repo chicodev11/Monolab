@@ -50,6 +50,6 @@ describe("saved filters", () => {
   });
   it("knows an empty filter", () => {
     expect(isEmptyFilter(EMPTY_FILTER)).toBe(true);
-    expect(isEmptyFilter({ ...EMPTY_FILTER, level: "error" })).toBe(false);
+    expect(isEmptyFilter({ ...EMPTY_FILTER, levels: ["error"] })).toBe(false);
   });
 });
