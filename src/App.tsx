@@ -1,6 +1,6 @@
 import { keepSame, keepSameLive } from "./lib/same";
 import { shownServerName, withShownNames } from "./lib/serverName";
-import { Fragment, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Fragment, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ghostSuffix, usageSlot, wantsPlayerName } from "./lib/console";
 import appIcon from "./assets/app-icon.png";
 import { commands } from "./lib/ipc";
@@ -1138,7 +1138,8 @@ function App() {
     null,
   );
   const [modal, setModal] = useState<Modal>("none");
-  const [settingsTab, setSettingsTab] = useState<"general" | "server" | "account" | "trash">("general");
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"general" | "server" | "trash">("general");
   const [createStep, setCreateStep] = useState<"core" | "version" | "modpack">("core");
   const [createPage, setCreatePage] = useState<"core" | "finish" | "confirm">("core");
   const [createVersionQuery, setCreateVersionQuery] = useState("");
@@ -12918,6 +12919,25 @@ ${payload.plugin}`;
             <span className="wb-homerail-gap" />
             {!onWeb && (
               <button
+                data-tip={tr("Account")}
+                data-tip-side="right"
+                type="button"
+                className={`account-rail-button ${accountOpen ? "on" : ""}`}
+                aria-expanded={accountOpen}
+                aria-haspopup="dialog"
+                onClick={() => setAccountOpen((open) => !open)}
+              >
+                <Icon name="user" />
+                <span>{tr("Account")}</span>
+              </button>
+            )}
+            {!onWeb && accountOpen && (
+              <AccountPopup onClose={() => setAccountOpen(false)}>
+                <AccountSettings onError={setError} onNotice={setNotice} confirm={confirmAction} />
+              </AccountPopup>
+            )}
+            {!onWeb && (
+              <button
                 data-tip={tr("Settings")}
                 data-tip-side="right"
                 type="button"
@@ -13137,40 +13157,80 @@ ${payload.plugin}`;
         <header className="topbar">
           <div className="topbar-title home-title">
             <h1>{tr("Server list")}</h1>
+          {(remotePlaces.length > 0 || Object.keys(panelHosts).length > 0) && (
+            <div className="place-tabs" role="tablist" ref={setPlaceBar}>
+              <span
+                className={`place-mark ${placeMark.ready ? "ready" : ""}`}
+                style={{ left: `${placeMark.left}px`, width: `${placeMark.width}px` }}
+                aria-hidden
+              />
+              {[
+                {
+                  id: "local",
+                  label: tr("Local"),
+                  count: instances.filter((one) => !one.remoteHost && !one.panelHost).length,
+                },
+                ...remotePlaces.map((id) => ({
+                  id,
+                  label: sshHosts[id] ?? tr("SSH"),
+                  count: instances.filter((one) => one.remoteHost === id).length as number | null,
+                })),
+                ...Object.entries(panelHosts).map(([id, name]) => ({
+                  id: `panel:${id}`,
+                  label: name,
+                  count: instances.filter((one) => one.panelHost === id).length as number | null,
+                })),
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={place === tab.id}
+                  className={place === tab.id ? "on" : ""}
+                  onClick={() => setPlace(tab.id)}
+                >
+                  {tab.id.startsWith("panel:") ? <Icon name="cloud" /> : tab.id !== "local" && <Icon name="plug" />}
+                  {tab.label}
+                  {tab.count !== null && <b>{tab.count}</b>}
+                </button>
+              ))}
+            </div>
+          )}
+            {(!onWeb || webAdmin) && (
+              <div className="place-actions in-title">
+                {webAdmin && (
+                  <button
+                    className="button ghost small place-java"
+                    type="button"
+                    aria-label={tr("Java processes")}
+                    data-tip={javaProcs.some((proc) => proc.orphan) ? tr("Java processes · some are left over") : tr("Java processes")}
+                    onClick={() => {
+                      void refreshJavaProcs();
+                      setModal("java");
+                    }}
+                  >
+                    <Icon name={javaProcs.some((proc) => proc.orphan) ? "alert" : "java"} />
+                    {javaProcs.some((proc) => proc.orphan) && <b className="wb-dot warn" aria-hidden />}
+                  </button>
+                )}
+                {!onWeb && (
+                <button
+                  className="button ghost small place-sessions"
+                  type="button"
+                  aria-label={tr("Manage sessions")}
+                  data-tip={tr("Manage sessions")}
+                  onClick={() =>
+                    setSessionOpen({ tab: remotePlaces.length || !Object.keys(panelHosts).length ? "ssh" : "panel", adding: false })
+                  }
+                >
+                  <Icon name="settings" />
+                </button>
+                )}
+              </div>
+            )}
           </div>
           {(
           <div className="topbar-actions">
-          {(!onWeb || webAdmin) && (
-            <div className="place-actions in-top">
-              {webAdmin && (
-                <button
-                  className="button ghost small place-java"
-                  type="button"
-                  aria-label={tr("Java processes")}
-                  data-tip={javaProcs.some((proc) => proc.orphan) ? tr("Java processes · some are left over") : tr("Java processes")}
-                  onClick={() => {
-                    void refreshJavaProcs();
-                    setModal("java");
-                  }}
-                >
-                  <Icon name={javaProcs.some((proc) => proc.orphan) ? "alert" : "java"} />
-                  {javaProcs.some((proc) => proc.orphan) && <b className="wb-dot warn" aria-hidden />}
-                </button>
-              )}
-              {!onWeb && (
-              <button
-                className="button ghost small"
-                type="button"
-                onClick={() =>
-                  setSessionOpen({ tab: remotePlaces.length || !Object.keys(panelHosts).length ? "ssh" : "panel", adding: false })
-                }
-              >
-                <Icon name="settings" />
-                {tr("Manage sessions")}
-              </button>
-              )}
-            </div>
-          )}
             <SearchField value={filter} onChange={setFilter} placeholder={t("top.search")} />
             {serverGroups.length > 0 && (
               <Dropdown
@@ -13205,45 +13265,6 @@ ${payload.plugin}`;
         <div className="workspace-body">
           {!loading && (
               <div className="place-row">
-              {(remotePlaces.length > 0 || Object.keys(panelHosts).length > 0) && (
-                <div className="place-tabs" role="tablist" ref={setPlaceBar}>
-                  <span
-                    className={`place-mark ${placeMark.ready ? "ready" : ""}`}
-                    style={{ left: `${placeMark.left}px`, width: `${placeMark.width}px` }}
-                    aria-hidden
-                  />
-                  {[
-                    {
-                      id: "local",
-                      label: tr("Local"),
-                      count: instances.filter((one) => !one.remoteHost && !one.panelHost).length,
-                    },
-                    ...remotePlaces.map((id) => ({
-                      id,
-                      label: sshHosts[id] ?? tr("SSH"),
-                      count: instances.filter((one) => one.remoteHost === id).length as number | null,
-                    })),
-                    ...Object.entries(panelHosts).map(([id, name]) => ({
-                      id: `panel:${id}`,
-                      label: name,
-                      count: instances.filter((one) => one.panelHost === id).length as number | null,
-                    })),
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={place === tab.id}
-                      className={place === tab.id ? "on" : ""}
-                      onClick={() => setPlace(tab.id)}
-                    >
-                      {tab.id.startsWith("panel:") ? <Icon name="cloud" /> : tab.id !== "local" && <Icon name="plug" />}
-                      {tab.label}
-                      {tab.count !== null && <b>{tab.count}</b>}
-                    </button>
-                  ))}
-                </div>
-              )}
               {groupShown && groupShown !== NO_GROUP && (
                 <div className="group-bar">
                   <strong>{groupShown}</strong>
@@ -14094,13 +14115,11 @@ ${payload.plugin}`;
                   options={[
                     { value: "general", label: tr("General") },
                     { value: "server", label: tr("Server") },
-                    { value: "account", label: tr("Account") },
                     { value: "trash", label: tr("Trash"), count: trashEntries.length || null },
                   ]}
                 />
                 {settingsTab !== "trash" && (
                 <div className="settings-list">
-                  {settingsTab === "account" && <AccountSettings onError={setError} onNotice={setNotice} confirm={confirmAction} />}
                   {settingsTab === "general" && (
                   <section className="settings-group">
                     <h3 className="settings-group-title"><Icon name="sparkles" />{tr("Display")}</h3>
@@ -14238,7 +14257,7 @@ ${payload.plugin}`;
                     </div>
                   </section>
                   )}
-                  {!onWeb && settingsTab === "account" && (
+                  {!onWeb && settingsTab === "general" && (
                   <section className="settings-group">
                     <h3 className="settings-group-title"><Icon name="shield" />{tr("Privacy")}</h3>
                     <div className="settings-group-rows">
@@ -15791,3 +15810,28 @@ ${payload.plugin}`;
 
 export default App;
 
+/** The account card that opens beside the rail's person button: closes on Escape or a click outside it. */
+function AccountPopup({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const away = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target || box.current?.contains(target) || target.closest(".account-rail-button, .ask-dialog, .modal-backdrop, [role='dialog']")) return;
+      onClose();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [onClose]);
+  return (
+    <div className="account-pop" ref={box} role="dialog" aria-label={tr("Account")}>
+      {children}
+    </div>
+  );
+}
