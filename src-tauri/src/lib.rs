@@ -1521,6 +1521,32 @@ async fn monolink_close(app: AppHandle, peer: String, team: String) -> Result<()
     Ok(())
 }
 
+/// Opens the window at 1600 × 1000 only where that fits comfortably: on a smaller or scaled screen
+/// (a 1920 × 1080 laptop at 125–150%) it takes about four fifths of the free area, centered.
+fn fit_main_to_screen(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let monitor = match window.current_monitor() {
+        Ok(Some(one)) => one,
+        _ => match window.primary_monitor() {
+            Ok(Some(one)) => one,
+            _ => return,
+        },
+    };
+    let scale = monitor.scale_factor();
+    let area = monitor.work_area();
+    let free_width = f64::from(area.size.width) / scale;
+    let free_height = f64::from(area.size.height) / scale;
+    let width = (free_width * 0.8).clamp(960.0, 1600.0).min(free_width);
+    let height = (free_height * 0.85).clamp(600.0, 1000.0).min(free_height);
+    if width >= 1600.0 && height >= 1000.0 {
+        return;
+    }
+    let _ = window.set_size(tauri::LogicalSize::new(width, height));
+    let _ = window.center();
+}
+
 fn run_due_tasks(app: &AppHandle) {
     let mut list = read_tasks(app);
     if list.is_empty() {
@@ -22049,6 +22075,7 @@ pub fn run() {
             data_root::init(app.handle());
             tray::build(app.handle())?;
             // Started by "Start with Windows": stay in the tray until the user opens the window.
+            fit_main_to_screen(app.handle());
             if !std::env::args().any(|one| one == tray::HIDDEN_ARG) {
                 tray::show_main(app.handle());
             }

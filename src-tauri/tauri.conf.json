@@ -16,8 +16,8 @@
         "width": 1600,
         "height": 1000,
         "maximized": false,
-        "minWidth": 1180,
-        "minHeight": 760,
+        "minWidth": 960,
+        "minHeight": 600,
         "decorations": false,
         "transparent": false,
         "visible": false
