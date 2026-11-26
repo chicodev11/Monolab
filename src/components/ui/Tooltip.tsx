@@ -12,6 +12,12 @@ export function Tooltip() {
   useEffect(() => {
     let timer = 0;
     const show = (event: MouseEvent) => {
+      // No tips while a button is held (dragging a splitter, a slider or a selection).
+      if (event.buttons) {
+        window.clearTimeout(timer);
+        setTip(null);
+        return;
+      }
       const host = (event.target as HTMLElement | null)?.closest?.(
         "[data-tip]",
       ) as HTMLElement | null;

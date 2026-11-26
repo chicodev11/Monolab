@@ -56,7 +56,7 @@ export function Splitter({ pane, side, label, className }: { pane: ReturnType<ty
       aria-valuemin={pane.min}
       aria-valuemax={pane.max}
       tabIndex={0}
-      data-tip={tr("Drag to resize · double-click to reset")}
+      data-tip={dragging ? undefined : tr("Drag to resize · double-click to reset")}
       className={`pane-splitter${dragging ? " dragging" : ""}${className ? ` ${className}` : ""}`}
       onPointerDown={(event) => {
         if (event.button !== 0) return;

@@ -12305,3 +12305,32 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .instance-body:has(> .tool-page-title) { flex-direction: column; align-items: stretch; }
 .instance-body:has(> .tool-page-title) > .tool-content { flex: 1 1 auto; min-width: 0; min-height: 0; }
 .instance-body > .tool-page-title { margin-top: 6px; }
+
+/* Pill tabs: the chosen fill slides between pills (lib/pillMarks.ts sets the variables). */
+.pill-anim { position: relative; isolation: isolate; }
+.pill-anim::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  width: var(--pill-w);
+  height: var(--pill-h);
+  border-radius: var(--pill-radius);
+  background: var(--pill-bg);
+  transform: translate(var(--pill-x), var(--pill-y));
+  pointer-events: none;
+}
+.pill-anim.pill-ready::before { transition: transform 260ms var(--ease), width 260ms var(--ease), height 260ms var(--ease); }
+.pill-anim > :is(.on, [aria-selected="true"], [aria-checked="true"]) { background: transparent !important; box-shadow: none !important; }
+.pill-anim > button { transition: color 200ms var(--ease); }
+@media (prefers-reduced-motion: reduce) {
+  .pill-anim.pill-ready::before { transition: none; }
+  .pill-anim > button { transition: none; }
+}
+
+/* Agent side list at its narrowest: New chat and the search box shrink with it instead of sticking out. */
+.agent-side { min-width: 0; }
+.agent-side-top { grid-template-columns: minmax(0, 1fr); }
+.agent-side-top > * { min-width: 0; }
+.agent-new { min-width: 0; overflow: hidden; white-space: nowrap; }

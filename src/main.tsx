@@ -4,10 +4,12 @@ import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { applyCompact, applyTheme, readCompact, readTheme } from "./lib/theme";
 import { loadLanguage } from "./lib/i18n";
 import { watchDialogFocus } from "./lib/dialogFocus";
+import { watchPillMarks } from "./lib/pillMarks";
 
 applyTheme(readTheme());
 applyCompact(readCompact());
 watchDialogFocus();
+watchPillMarks();
 
 const sink = import.meta.env.DEV && window.location.hash === "#/dev/kitchen-sink";
 
