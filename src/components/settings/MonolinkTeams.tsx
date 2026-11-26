@@ -26,8 +26,11 @@ type Device = { id: string; name: string; kind?: string; last_seen: number };
  * The person's monolab-node machines: pair one with a one-time code (typed on the machine), take one away,
  * and put one of its servers in this team (the server id from the node's config).
  */
+/** The last node list this session saw, so opening Settings again shows it at once and only refreshes it. */
+let knownNodes: Device[] | null = null;
+
 function Nodes({ team, onChanged, onError, confirm }: { team: string; onChanged: () => void; onError: (message: string) => void; confirm: Confirm }) {
-  const [nodes, setNodes] = useState<Device[] | null>(null);
+  const [nodes, setNodes] = useState<Device[] | null>(knownNodes);
   const [code, setCode] = useState<{ code: string; expires: number } | null>(null);
   const [node, setNode] = useState("");
   const [serverId, setServerId] = useState("");
@@ -48,12 +51,26 @@ function Nodes({ team, onChanged, onError, confirm }: { team: string; onChanged:
   };
   const load = useCallback(() => {
     api<{ devices: Device[] }>("GET", "/v2/me/devices").then(
-      (got) => setNodes(got.devices.filter((one) => one.kind === "node")),
-      () => setNodes([]),
+      (got) => {
+        knownNodes = got.devices.filter((one) => one.kind === "node");
+        setNodes(knownNodes);
+      },
+      () => setNodes((now) => now ?? []),
     );
   }, []);
   useEffect(load, [load]);
-  if (nodes === null) return null;
+  if (nodes === null) {
+    // The section keeps its place while the list comes in, so the page doesn't jump under the reader.
+    return (
+      <div className="mlt-nodes" aria-busy="true">
+        <div className="mlt-nodes-head">
+          <strong>{tr("Nodes")}</strong>
+          <small className="muted">{tr("A Linux machine with monolab-node keeps its servers reachable while your PC is off.")}</small>
+        </div>
+        <div className="mlt-nodes-wait" aria-hidden />
+      </div>
+    );
+  }
   const chosen = nodes.some((one) => one.id === node) ? node : (nodes[0]?.id ?? "");
   return (
     <div className="mlt-nodes">

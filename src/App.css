@@ -12738,3 +12738,35 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .settings-dialog-body.config-shell .shell-tab-term { flex: 1 1 0; min-height: 0; }
 .settings-dialog-body.config-shell .shell-tab-head strong { flex: none; white-space: nowrap; }
 .server-layout.cards.wb-off-cards { grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); }
+
+/* Places kept while lists load (Monolink › Settings › Nodes, Activity log): quiet bars, no spinner text. */
+.mlt-nodes-wait { height: 58px; border-radius: var(--r-md); background: var(--panel-2); }
+.team-log-wait > li { padding: 12px 10px; }
+.team-log-wait > li > span { display: block; height: 14px; border-radius: 7px; background: color-mix(in srgb, var(--text) 6%, transparent); }
+.team-log-wait > li:nth-child(even) > span { width: 82%; }
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes mx-breathe { 50% { opacity: 0.55; } }
+  .mlt-nodes-wait, .team-log-wait > li > span { animation: mx-breathe 1.4s ease-in-out infinite; }
+  .mlt-nodes > :not(.mlt-nodes-head), .team-log-list:not(.team-log-wait) { animation: mx-fade 220ms var(--ease) backwards; }
+  /* Home (Library): title, tools and cards rise in; cards one after another. */
+  .ch-section > * { animation: mx-rise 260ms var(--ease) backwards; }
+  .ch-section > :nth-child(2) { animation-delay: 30ms; }
+  .ch-section > :nth-child(3) { animation-delay: 60ms; }
+  .ch-section > :nth-child(n+4) { animation-delay: 90ms; }
+  .ch-grid > .ch-card { animation: mx-rise 280ms var(--ease) backwards; }
+  .ch-grid > .ch-card:nth-child(2) { animation-delay: 120ms; }
+  .ch-grid > .ch-card:nth-child(3) { animation-delay: 150ms; }
+  .ch-grid > .ch-card:nth-child(4) { animation-delay: 180ms; }
+  .ch-grid > .ch-card:nth-child(n+5) { animation-delay: 210ms; }
+  .ch-card { transition: transform 160ms var(--ease), background-color 160ms var(--ease); }
+  .ch-card:hover { transform: translateY(-2px); }
+  .ch-backdrop { animation: mx-fade 180ms var(--ease) backwards; }
+  .ch-dialog { animation: mx-pop 220ms var(--ease) backwards; }
+  /* Agent: the chat list slides in from the side, the chat rises; groups come in one after another. */
+  .agent-home .agent-side { animation: mx-slide-in 260ms var(--ease) backwards; }
+  .agent-home .agent-main, .agent-home.empty > * { animation: mx-rise 300ms var(--ease) 60ms backwards; }
+  .agent-side-scroll > .agent-group { animation: mx-rise 240ms var(--ease) backwards; }
+  .agent-side-scroll > .agent-group:nth-child(2) { animation-delay: 60ms; }
+  .agent-side-scroll > .agent-group:nth-child(3) { animation-delay: 90ms; }
+  .agent-side-scroll > .agent-group:nth-child(n+4) { animation-delay: 120ms; }
+}

@@ -10,6 +10,10 @@ import "./TeamLog.css";
 
 const PAGE = 200;
 
+/** What each filter set last showed this session, so coming back to the tab shows it at once while it refreshes. */
+const seen = new Map<string, TeamLogEntry[]>();
+const seenKey = (serverId: string, who: string, text: string, refused: boolean) => JSON.stringify([serverId, who, text, refused]);
+
 /** To the second: the log is for finding out exactly when. */
 const when = dateTimeSeconds;
 
@@ -33,7 +37,7 @@ export function TeamLog({
   onError: (message: string) => void;
   onDone: (message: string) => void;
 }) {
-  const [entries, setEntries] = useState<TeamLogEntry[] | null>(null);
+  const [entries, setEntries] = useState<TeamLogEntry[] | null>(() => seen.get(seenKey("", "", "", false)) ?? null);
   // "" = every server together.
   const [serverId, setServerId] = useState("");
   const serverName = (id: string) => servers.find((one) => one.id === id)?.name ?? (id || tr("No server"));
@@ -52,6 +56,7 @@ export function TeamLog({
   const load = useCallback(() => {
     void commands.teamLog(serverId, asked.who, asked.text, refusedOnly, null, PAGE).then(
       (list) => {
+        seen.set(seenKey(serverId, asked.who, asked.text, refusedOnly), list);
         setEntries(list);
         setMore(list.length === PAGE);
         setOpen(null);
@@ -145,7 +150,13 @@ export function TeamLog({
       </div>
       <div className="team-log-box">
       {entries === null ? (
-        <p className="muted team-log-loading">{tr("Loading…")}</p>
+        <ol className="team-log-list team-log-wait" aria-busy="true" aria-label={tr("Loading…")}>
+          {Array.from({ length: 8 }, (_, index) => (
+            <li key={index} aria-hidden>
+              <span />
+            </li>
+          ))}
+        </ol>
       ) : entries.length === 0 ? (
         filtered ? (
           <EmptyState icon="search" title={tr("Nothing matches")} hint={tr("Try another person or command, or clear the filters.")} />
