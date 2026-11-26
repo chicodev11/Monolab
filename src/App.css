@@ -12775,3 +12775,8 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .modal-backdrop.roomy .add-modal.backup-pick-dialog { display: grid; gap: 14px; width: min(720px, 100%); max-height: min(80vh, 720px); grid-template-rows: auto minmax(0, 1fr) auto; }
 .add-modal.backup-pick-dialog .backup-pick-grid { overflow-y: auto; align-content: start; }
 .add-modal.backup-pick-dialog .backup-pick-foot { display: flex; align-items: center; gap: 8px; }
+
+/* Server top bar: Share is a labelled button; the count of people on the server sits inside it. */
+.wb-run .share-text .share-here { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--ok); color: var(--bg); font-size: 11px; font-weight: 700; }
+/* Virtual lists place each row with an inline transform; an entering animation would replace it and stack the rows. */
+.file-virtual > *, [style*="transform"]:is(.list-row, li, div) { animation: none !important; }

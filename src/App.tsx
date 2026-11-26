@@ -8495,13 +8495,13 @@ ${payload.plugin}`;
       return (
         <button
           type="button"
-          className={`wb-icon ghost share-button${here.length ? " live" : ""}`}
-          aria-label={tr("Share this server")}
-          data-tip={here.length ? tr("On this server now: {0}", [here.join(", ")]) : tr("Share this server")}
+          className={`button secondary wb-pill share-text${here.length ? " live" : ""}`}
+          data-tip={here.length ? tr("On this server now: {0}", [here.join(", ")]) : tr("Invite people to this server through the web panel")}
           onClick={() => void openShare()}
         >
-          <Icon name="users" />
-          {here.length > 0 && <b>{here.length}</b>}
+          <Icon name="link" />
+          {tr("Share")}
+          {here.length > 0 && <b className="share-here">{here.length}</b>}
         </button>
       );
     })()}
