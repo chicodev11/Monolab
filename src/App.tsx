@@ -147,7 +147,6 @@ import { period, useAttention } from "./lib/polling";
 import { CATEGORIES, propertyMatches, propertyMeta, propertyOrder, type Category } from "./lib/properties";
 import { Badge, Banner, Button, Card, DropdownMenu, EmptyState, IconButton, List, ListGroup, ListHeader, ListRow, SegmentedControl, Skeleton, SearchField, FilterTabs } from "./components/primitives";
 import { consoleTokens } from "./lib/consoleTokens";
-import { type PlayerCommand, PlayerCommandsDialog, playerCommandLines, readPlayerCommands, savePlayerCommands } from "./components/servers/PlayerCommands";
 import { QrCode } from "./components/panels/QrCode";
 import { ConsoleLevels, ConsoleOutput, LogLines, type ConsoleLevel } from "./components/console/ConsoleOutput";
 import { SavedSearches } from "./components/console/SavedSearches";
@@ -5807,37 +5806,6 @@ ${payload.plugin}`;
       live = false;
     };
   }, [luckPermsServer, tool]);
-  const [playerCommands, setPlayerCommands] = useState<PlayerCommand[]>(readPlayerCommands);
-  const [editingPlayerCommands, setEditingPlayerCommands] = useState(false);
-  /** Runs one of the user's command sets for a player, line by line in the console (only when they pick it). */
-  async function runPlayerCommand(set: PlayerCommand, player: { name: string; uuid: string }) {
-    if (!selected) return;
-    if (selected.status !== "running") {
-      setError(tr("Start the server first: these run in its console."));
-      return;
-    }
-    const lines = playerCommandLines(set, player);
-    const ok = await call(async () => {
-      for (const line of lines) {
-        if (useRcon) await commands.sendRconCommand(selected.id, line);
-        else await commands.sendConsoleCommand(selected.id, line);
-      }
-    });
-    if (ok) setNotice(tr("Ran {0} for {1}.", [set.label, player.name]));
-  }
-  /** The user's command sets plus the editor, for a player's menus. */
-  function playerCommandItems(player: { name: string; uuid: string }) {
-    const running = selected?.status === "running";
-    return [
-      ...playerCommands.map((set) => ({
-        label: set.label,
-        icon: "terminal",
-        disabled: !running,
-        onSelect: () => void runPlayerCommand(set, player),
-      })),
-      { label: tr("My commands…"), icon: "pencil", onSelect: () => setEditingPlayerCommands(true) },
-    ];
-  }
   async function addPlayerHere() {
     if (playerAddKind === "ban") {
       const ok = await confirmAction(
@@ -7532,7 +7500,6 @@ ${payload.plugin}`;
     const playerHere = playerUuid ? players.find((one) => one.uuid === playerUuid) : undefined;
     if (playerHere && !editable) {
       items.push(
-        ...playerCommandItems(playerHere),
         "-",
         { label: tr("Copy UUID"), icon: "copy", onSelect: () => void navigator.clipboard.writeText(playerHere.uuid).then(() => setNotice(tr("UUID copied."))) },
       );
@@ -9307,8 +9274,6 @@ ${payload.plugin}`;
             const tabs = CATEGORIES.filter((category) => (grouped.get(category) ?? []).length > 0 || (category === "General" && !searching && properties.length > 0));
             const tab = tabs.includes(propsTab) ? propsTab : tabs[0];
             const shown = searching ? tabs : tabs.filter((category) => category === tab);
-            const segment = (entry: Property) =>
-              entry.kind === "choice" && entry.options.length <= 4 && entry.options.join("").length <= 40;
             return (
               <>
               <div className="wb-head props-bar">
@@ -9400,21 +9365,6 @@ ${payload.plugin}`;
                               />
                               <span />
                             </label>
-                          ) : segment(entry) ? (
-                            <div className="wb-seg" role="radiogroup" aria-label={meta.label}>
-                              {entry.options.map((option) => (
-                                <button
-                                  type="button"
-                                  role="radio"
-                                  key={option}
-                                  aria-checked={entry.value === option}
-                                  className={entry.value === option ? "on" : ""}
-                                  onClick={() => update(entry.key, option)}
-                                >
-                                  {option}
-                                </button>
-                              ))}
-                            </div>
                           ) : entry.kind === "choice" ? (
                             <Dropdown
                               value={entry.value}
@@ -10257,29 +10207,32 @@ ${payload.plugin}`;
             </div>
           )}
           {logView === "events" && (
-            <div className="log-view events">
+            <div className={`log-view events ${dailyStats.length > 0 ? "with-days" : ""}`}>
           {dailyStats.length > 0 && (
-            <div className="daily-stats">
-              <span>{tr("Daily summary")}</span>
-              <div>
-                {dailyStats.map((day) => (
-                  <button
-                    type="button"
-                    key={day.fileName}
-                    className={activeLogFile === day.fileName ? "chosen" : ""}
-                    onClick={() => void loadTimeline(day.fileName, timelineKind)}
-                  >
+            <nav className="summary-days" aria-label={tr("Daily summary")}>
+              <span className="summary-days-head">{tr("Daily summary")}</span>
+              {dailyStats.map((day) => (
+                <button
+                  type="button"
+                  key={day.fileName}
+                  className={activeLogFile === day.fileName ? "on" : ""}
+                  aria-current={activeLogFile === day.fileName ? "true" : undefined}
+                  onClick={() => void loadTimeline(day.fileName, timelineKind)}
+                >
+                  <span className="summary-day-top">
                     <strong>{day.date}</strong>
-                    <p>
-                      {tr("Joins")}{" "}{day.joins} {tr("· chat")}{" "}{day.chats} {tr("· deaths")}{" "}{day.deaths} {tr("· errors")}{" "}{day.errors}
-                    </p>
-                    <small>
-                      {tr("Players")}{" "}{day.uniquePlayers}{tr("suffix.people")}{day.busiestPlayer && tr(" · most active {0}", [day.busiestPlayer])}
-                    </small>
-                  </button>
-                ))}
-              </div>
-            </div>
+                    <small>{tr("{0, plural, one {# player} other {# players}}", [day.uniquePlayers])}</small>
+                  </span>
+                  <span className="summary-day-counts">
+                    <span>{tr("Joins")} <b>{day.joins}</b></span>
+                    <span>{tr("Chat")} <b>{day.chats}</b></span>
+                    <span>{tr("Deaths")} <b>{day.deaths}</b></span>
+                    <span className={day.errors ? "has-errors" : ""}>{tr("Errors")} <b>{day.errors}</b></span>
+                  </span>
+                  {day.busiestPlayer && <small className="summary-day-busy">{tr("Most active: {0}", [day.busiestPlayer])}</small>}
+                </button>
+              ))}
+            </nav>
           )}
           <div className="timeline-panel">
             <div className="timeline-head">
@@ -10292,14 +10245,23 @@ ${payload.plugin}`;
                   hint: file.compressed ? tr("Compression") : undefined,
                 }))}
                 placeholder={tr("Log file")}
+                label={tr("File")}
               />
-              <Dropdown
-                value={timelineKind}
-                onChange={(kind) => void loadTimeline(activeLogFile, kind)}
-                options={["All", "Join", "Leave", "Chat", "Command", "Death", "Error"].map(
-                  (kind) => ({ value: kind, label: tr(kind) }),
-                )}
-              />
+              <span className="live-spacer" />
+              <div className="log-levels summary-kinds" role="group" aria-label={tr("Show")}>
+                <Icon name="filter" />
+                {["All", "Join", "Leave", "Chat", "Command", "Death", "Error"].map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    className={`log-level${timelineKind === kind ? " on" : ""}`}
+                    aria-pressed={timelineKind === kind}
+                    onClick={() => void loadTimeline(activeLogFile, kind)}
+                  >
+                    {tr(kind)}
+                  </button>
+                ))}
+              </div>
             </div>
             {timeline.length ? (
               <div className="timeline-list">
@@ -12092,7 +12054,6 @@ ${payload.plugin}`;
                             </button>
                           }
                           items={[
-                            ...playerCommandItems(player),
                             {
                               label: tr("Copy UUID"),
                               icon: "copy",
@@ -12235,6 +12196,7 @@ ${payload.plugin}`;
             {tabAddons.length > 0 && (
               <Dropdown
                 className="addon-sort"
+                label={tr("Sort by")}
                 value={addonSort}
                 onChange={setAddonSort}
                 options={[
@@ -15205,17 +15167,6 @@ ${payload.plugin}`;
       )}
       {contextMenu && (
         <ContextMenu x={contextMenu.x} y={contextMenu.y} items={contextMenu.items} onClose={closeContextMenu} />
-      )}
-      {editingPlayerCommands && (
-        <PlayerCommandsDialog
-          open
-          list={playerCommands}
-          onClose={() => setEditingPlayerCommands(false)}
-          onSave={(list) => {
-            savePlayerCommands(list);
-            setPlayerCommands(list);
-          }}
-        />
       )}
       {peopleOpen && selected && !onWeb && (
         <ShareDialog

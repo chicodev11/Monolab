@@ -315,6 +315,7 @@ export function ClientHome({
           <div className="ch-tools">
             <Dropdown
               className="ch-sort"
+              label={tr("Sort by")}
               value={sort}
               options={[
                 { value: "played", label: tr("Last played") },

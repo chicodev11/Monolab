@@ -10968,9 +10968,6 @@ textarea:focus-visible { outline: none; box-shadow: none; border-color: var(--ac
 .wb-card .sc-meta .host-chip svg { flex: none; }
 .host-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* My player commands editor (PlayerCommands.tsx). */
-.player-commands-text { width: 100%; min-height: 96px; font-family: var(--mono); font-size: 12px; resize: vertical; }
-
 /* Console input shades: the typed text is drawn under the input (same font, same widths), the input's own text
    is see-through so only the caret and selection show. No colors, only how strong the text is. */
 .console-command-field input.colored { color: transparent; caret-color: var(--text); }
@@ -12625,3 +12622,38 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .dropdown-trigger > svg:first-child:not(:last-child) { flex: none; width: 15px; height: 15px; color: var(--text-3); }
 .dropdown-trigger .dropdown-label { flex: none; color: var(--text-3); font-weight: 500; }
 .dropdown-trigger .dropdown-value { min-width: 0; overflow: hidden; color: var(--text); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Pill rule (2026-11-26, Modrinth as reference): white fill is only for main buttons (Start, Add, New server).
+   Tabs and view switches mark the chosen one with a raised dark pill, like the memo List/Board switch;
+   choosing a value or a sort is a dropdown; filters are outlined chips. */
+.ui-tab.on,
+.wb-seg button.on,
+.app-shell.wb .wb-head .wb-seg > button.on,
+.app-shell.wb .wb-head .segmented > button.on,
+.segmented button.on { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgb(0 0 0 / 22%); }
+:root[data-theme="light"] :is(.ui-tab.on, .wb-seg button.on, .segmented button.on) { background: #ffffff; box-shadow: 0 1px 2px rgb(0 0 0 / 12%); }
+.wb-seg.slide::before { background: var(--panel); box-shadow: 0 1px 2px rgb(0 0 0 / 22%); }
+.ui-tab.on b { color: var(--text-3); opacity: 1; }
+/* Filter rows: chips, not a tab track. */
+.list-filters .ui-tabs { gap: 6px; height: auto; padding: 0; background: transparent; }
+.list-filters .ui-tab { height: 32px; padding: 0 12px; border: 1px solid var(--line); background: transparent; color: var(--text-2); }
+.list-filters .ui-tab:hover { border-color: var(--text-4); color: var(--text); }
+.list-filters .ui-tab.on { border-color: var(--text); background: transparent; color: var(--text); box-shadow: none; }
+
+/* Logs › Summary: the days are a list on the left (one compact row each), the day's events on the right
+   with kind chips and the file picker above them. */
+.log-view.events.with-days { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; min-height: 0; }
+.summary-days { display: flex; min-height: 0; flex-direction: column; gap: 2px; padding: 8px; overflow-y: auto; border-radius: var(--r-lg); background: var(--bg); }
+.summary-days-head { margin: 4px 8px 6px; color: var(--text-3); font-size: 12px; font-weight: 600; }
+.summary-days button { display: flex; flex: none; flex-direction: column; gap: 4px; padding: 10px 12px; border: 0; border-radius: 12px; background: transparent; color: var(--text-2); text-align: left; cursor: pointer; transition: background var(--fast); }
+.summary-days button:hover { background: var(--raise); }
+.summary-days button.on { background: var(--raise-hover); color: var(--text); }
+.summary-day-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.summary-day-top strong { color: var(--text); font-size: 14px; font-weight: 600; }
+.summary-day-top small, .summary-day-busy { color: var(--text-3); font-size: 12px; }
+.summary-day-counts { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--text-3); font-size: 12px; }
+.summary-day-counts b { color: var(--text-2); font-weight: 600; font-variant-numeric: tabular-nums; }
+.summary-day-counts .has-errors b { color: var(--danger); }
+.summary-kinds { flex-wrap: wrap; }
+@media (prefers-reduced-motion: reduce) { .summary-days button { transition: none; } }
+@media (max-width: 900px) { .log-view.events.with-days { grid-template-columns: minmax(0, 1fr); } }
