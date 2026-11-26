@@ -80,7 +80,7 @@ const SPARK_MODRINTH_ID = "l6YH9Als";
 const GEYSER_CORES = ["Paper", "Purpur", "Folia", "Leaf", "Velocity", "BungeeCord", "Fabric", "NeoForge"];
 import type { Sent } from "./lib/sent";
 import { safeHtml } from "./lib/safeHtml";
-import { listenTo, monolinkHost, monolinkPeer, monolinkPresence, monolinkTeam, monolinkWhoAmI, onMonolink, onWeb, webSession } from "./lib/bridge";
+import { listenTo, monolinkHost, monolinkPeer, monolinkPresence, monolinkTeam, monolinkWhoAmI, onMonolink, onWeb, webSession, emitHere } from "./lib/bridge";
 import { ContextMenu, type ContextItem } from "./components/ui/ContextMenu";
 import { WebLogin } from "./components/dialogs/WebLogin";
 import { offerDownload, pickFiles, pickRawFiles, uploadRaw } from "./lib/pickFile";
@@ -1280,15 +1280,31 @@ function App() {
   // Team invites sent to me: a notice wherever I am in the app, and a Windows notification while the
   // window isn't in front. Once per team per run; invites that came while the app was closed show at start.
   const invitesTold = useRef(new Set<string>());
+  // Invites shown as cards in the top right, answered right there.
+  const [invitePops, setInvitePops] = useState<{ team: string; name: string; by: string; busy?: boolean }[]>([]);
+  async function answerInvite(team: string, accept: boolean) {
+    const one = invitePops.find((pop) => pop.team === team);
+    setInvitePops((now) => now.map((pop) => (pop.team === team ? { ...pop, busy: true } : pop)));
+    try {
+      await commands.accountApi("POST", `/v2/me/invites/${encodeURIComponent(team)}`, JSON.stringify({ accept }));
+      setInvitePops((now) => now.filter((pop) => pop.team !== team));
+      setNotice(accept ? tr("You joined {0}.", [one?.name ?? team]) : tr("Turned down the invite to {0}.", [one?.name ?? team]));
+      // Team lists and the Account page read again.
+      void emitHere("account-changed");
+    } catch (cause) {
+      setInvitePops((now) => now.map((pop) => (pop.team === team ? { ...pop, busy: false } : pop)));
+      setError(String(cause));
+    }
+  }
   useEffect(() => {
     if (onWeb) return;
     let alive = true;
     async function tellInvite(team: string, by: string, name: string) {
       if (!alive || !team || invitesTold.current.has(team)) return;
       invitesTold.current.add(team);
-      const text = tr("@{0} invited you to {1}. Answer in Settings → Account.", [by || "?", name]);
-      setNotice(text);
+      setInvitePops((now) => (now.some((pop) => pop.team === team) ? now : [...now, { team, name, by }]));
       if (document.hasFocus()) return;
+      const text = tr("@{0} invited you to {1}.", [by || "?", name]);
       try {
         let allowed = await isPermissionGranted();
         if (!allowed) allowed = (await requestPermission()) === "granted";
@@ -15209,6 +15225,38 @@ ${payload.plugin}`;
           </div>
         );
       })()}
+      {invitePops.length > 0 && (
+        <div className="invite-pops" role="region" aria-live="polite" aria-label={tr("Team invites")}>
+          {invitePops.map((pop) => (
+            <section key={pop.team} className="invite-pop" aria-label={tr("Invite to {0}", [pop.name])}>
+              <span className="invite-pop-mark" aria-hidden>
+                <Icon name="users" />
+              </span>
+              <div className="invite-pop-text">
+                <strong>{pop.name}</strong>
+                <small>{tr("@{0} invited you to this Monolink team.", [pop.by || "?"])}</small>
+                <div className="invite-pop-actions">
+                  <button type="button" className="button secondary small" disabled={pop.busy} onClick={() => void answerInvite(pop.team, false)}>
+                    {tr("Decline")}
+                  </button>
+                  <button type="button" className="button primary small" disabled={pop.busy} onClick={() => void answerInvite(pop.team, true)}>
+                    {tr("Accept")}
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="wb-icon ghost invite-pop-close"
+                aria-label={tr("Later")}
+                data-tip={tr("Later — it stays in Settings → Account")}
+                onClick={() => setInvitePops((now) => now.filter((one) => one.team !== pop.team))}
+              >
+                <Icon name="close" />
+              </button>
+            </section>
+          ))}
+        </div>
+      )}
       <div className="toast-stack">
         {jobs.map((job) => {
           const percent = job.total ? Math.min(100, Math.round(((job.sent ?? 0) / job.total) * 100)) : null;

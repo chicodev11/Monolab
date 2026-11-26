@@ -486,7 +486,10 @@ export function AccountSettings({ onError, onNotice, confirm }: { onError: (mess
   }, []);
   useEffect(() => {
     load();
-    const off = listen("account-changed", load);
+    const off = listen("account-changed", () => {
+      load();
+      loadInvites();
+    });
     const live = listen<Record<string, unknown>>("account-live", (event) => {
       if (event.payload.type === "notice") loadInvites();
     });

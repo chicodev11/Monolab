@@ -143,3 +143,10 @@ function startPolling() {
     }
   })();
 }
+
+/** Tells this window's own listeners (listenTo) that something changed; nothing on the web panel. */
+export async function emitHere(event: string) {
+  if (onWeb) return;
+  const { emit } = await import("@tauri-apps/api/event");
+  await emit(event);
+}

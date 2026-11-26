@@ -4673,6 +4673,11 @@
     "Invite people to this server through the web panel": "웹 패널로 이 서버에 사람을 초대해요",
     "Search or jump to…": "검색하거나 바로 가기…",
     "Smaller and faster": "더 작고 빨라요",
-    "Pick folders and files": "폴더와 파일 고르기"
+    "Pick folders and files": "폴더와 파일 고르기",
+    "@{0} invited you to this Monolink team.": "@{0}님이 이 Monolink 팀에 초대했어요.",
+    "@{0} invited you to {1}.": "@{0}님이 {1}에 초대했어요.",
+    "Accept": "수락",
+    "Invite to {0}": "{0} 초대",
+    "Later — it stays in Settings → Account": "나중에 — 설정 → 계정에 남아 있어요"
   }
 }

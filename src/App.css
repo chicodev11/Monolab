@@ -12793,3 +12793,18 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .window-controls button { width: 40px; height: 32px; border-radius: 8px; color: var(--text-3); }
 .window-controls svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .window-controls button:hover { color: var(--text); }
+
+/* Team invites: cards in the top right, under the title bar, answered in place. */
+.invite-pops { position: fixed; top: calc(var(--titlebar-h) + 12px); right: 16px; z-index: 950; display: grid; gap: 8px; width: min(360px, calc(100vw - 32px)); }
+.invite-pop { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; padding: 14px 40px 14px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); box-shadow: 0 12px 32px rgb(0 0 0 / 0.35); }
+.invite-pop-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--raise); color: var(--text-2); }
+.invite-pop-mark svg { width: 17px; height: 17px; }
+.invite-pop-text { display: grid; gap: 3px; min-width: 0; }
+.invite-pop-text strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.invite-pop-text small { color: var(--text-3); font-size: 12.5px; line-height: 1.45; }
+.invite-pop-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+.invite-pop-close { position: absolute; top: 8px; right: 8px; }
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes mx-drop { from { opacity: 0; transform: translateY(-8px) scale(0.98); } to { opacity: 1; transform: none; } }
+  .invite-pop { animation: mx-drop 240ms var(--ease) backwards; }
+}
