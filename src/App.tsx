@@ -1139,6 +1139,7 @@ function App() {
   );
   const [modal, setModal] = useState<Modal>("none");
   const [accountOpen, setAccountOpen] = useState(false);
+  const openAccount = useCallback(() => setAccountOpen(true), []);
   const [settingsTab, setSettingsTab] = useState<"general" | "server" | "trash">("general");
   const [createStep, setCreateStep] = useState<"core" | "version" | "modpack">("core");
   const [createPage, setCreatePage] = useState<"core" | "finish" | "confirm">("core");
@@ -12939,11 +12940,6 @@ ${payload.plugin}`;
                 <span>{tr("Account")}</span>
               </button>
             )}
-            {!onWeb && accountOpen && (
-              <AccountPopup onClose={() => setAccountOpen(false)}>
-                <AccountSettings onError={setError} onNotice={setNotice} confirm={confirmAction} />
-              </AccountPopup>
-            )}
             {!onWeb && (
               <button
                 data-tip={tr("Settings")}
@@ -14072,6 +14068,7 @@ ${payload.plugin}`;
                   </div>
                 )}
                 <MonolinkTeams
+                  onAccount={openAccount}
                   invite={monolinkInvite}
                   onInviteSeen={seenMonolinkInvite}
                   onError={setError}
@@ -15279,6 +15276,11 @@ ${payload.plugin}`;
           </section>
         </div>
       )}
+      {accountOpen && !onWeb && (
+        <AccountPopup onClose={() => setAccountOpen(false)}>
+          <AccountSettings onError={setError} onNotice={setNotice} confirm={confirmAction} />
+        </AccountPopup>
+      )}
       {sessionOpen && !onWeb && (
         <div className="modal-backdrop roomy session-page session-pop" onClick={() => setSessionOpen(null)}>
           <section className="add-modal modal-session" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
@@ -15823,28 +15825,24 @@ ${payload.plugin}`;
 
 export default App;
 
-/** The account card that opens beside the rail's person button: closes on Escape or a click outside it. */
+/** Account in a dialog in the middle of the screen, over any page: closes on Escape, the X or a click outside it. */
 function AccountPopup({ onClose, children }: { onClose: () => void; children: ReactNode }) {
-  const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const away = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (!target || box.current?.contains(target) || target.closest(".account-rail-button, .ask-dialog, .modal-backdrop, [role='dialog']")) return;
-      onClose();
-    };
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
-    document.addEventListener("mousedown", away);
     document.addEventListener("keydown", escape);
-    return () => {
-      document.removeEventListener("mousedown", away);
-      document.removeEventListener("keydown", escape);
-    };
+    return () => document.removeEventListener("keydown", escape);
   }, [onClose]);
   return (
-    <div className="account-pop" ref={box} role="dialog" aria-label={tr("Account")}>
-      {children}
+    <div className="modal-backdrop account-backdrop" onClick={onClose}>
+      <section className="add-modal account-dialog" role="dialog" aria-modal="true" aria-label={tr("Account")} onClick={(event) => event.stopPropagation()}>
+        <button className="close" data-tip={tr("Close")} aria-label={tr("Close")} onClick={onClose}>
+          <Icon name="close" />
+        </button>
+        <h2>{tr("Account")}</h2>
+        {children}
+      </section>
     </div>
   );
 }

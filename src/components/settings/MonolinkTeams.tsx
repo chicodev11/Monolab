@@ -356,7 +356,10 @@ function MonolinkHome({
   onError,
   onNotice,
   confirm,
+  onAccount,
 }: {
+  /** Opens the app's account dialog; when set, signing in happens there instead of here. */
+  onAccount?: () => void;
   /** An invite link the app was opened with (monolab://invite/…). */
   invite: string | null;
   onInviteSeen: () => void;
@@ -391,6 +394,15 @@ function MonolinkHome({
     load();
   }
 
+  // Signed out: open the account dialog once on the way in, so signing in is the first thing offered.
+  const askedAccount = useRef(false);
+  const signedOut = account?.status === "signed_out";
+  useEffect(() => {
+    if (!signedOut || !onAccount || askedAccount.current) return;
+    askedAccount.current = true;
+    onAccount();
+  }, [signedOut, onAccount]);
+
   if (!account) return null;
 
   if (suggested !== null) return <PickHandle suggested={suggested} onDone={() => { setSuggested(null); load(); }} onError={onError} />;
@@ -407,7 +419,7 @@ function MonolinkHome({
             <div>
               <strong>{tr("Sign in to Monolink")}</strong>
               <small>
-                {tr("Make a team, invite people with a link and build servers together. You can also sign in from Settings → Account.")}
+                {tr("Make a team, invite people with a link and build servers together. You can also sign in from the person icon in the left bar.")}
               </small>
             </div>
             {signing ? (
@@ -418,7 +430,7 @@ function MonolinkHome({
                 </button>
               </div>
             ) : (
-              <button type="button" className="button primary small" onClick={() => void signIn()}>
+              <button type="button" className="button primary small" onClick={() => (onAccount ? onAccount() : void signIn())}>
                 {tr("Sign in with Discord")}
               </button>
             )}

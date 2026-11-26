@@ -12235,45 +12235,37 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .place-actions.in-title .button { width: 34px; height: 34px; padding: 0; justify-content: center; }
 .place-actions.in-title .button svg { width: 17px; height: 17px; }
 
-/* Account card beside the rail's person button. */
-.account-pop {
-  position: fixed;
-  left: 76px;
-  bottom: 64px;
-  z-index: 60;
-  display: grid;
-  gap: 0;
-  width: 380px;
-  max-height: calc(100vh - 120px);
-  overflow: auto;
-  padding: 6px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--panel-2);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
-  animation: account-pop-in 140ms ease-out;
-}
-@keyframes account-pop-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .account-pop { animation: none; } }
-.account-pop .settings-group { margin: 0; padding: 10px 12px; border: 0; background: none; box-shadow: none; }
-.account-pop .settings-group + .settings-group { border-top: 1px solid var(--line-soft); }
-.account-pop .settings-group-title { margin: 0 0 6px; font-size: 12.5px; color: var(--text-3); }
-.account-pop .settings-group-title svg { display: none; }
-.account-pop .setting-row { flex-direction: column; align-items: stretch; gap: 10px; padding: 10px 0; }
-.account-pop .setting-row + .setting-row { border-top: 1px solid var(--line-soft); }
-.account-pop .setting-row small { font-size: 12.5px; line-height: 1.45; }
-.account-pop .mlt-actions { justify-content: flex-start; flex-wrap: wrap; }
-.account-pop .mlt-handle { width: 100%; }
-.account-pop .setting-row > * { flex: none; max-width: none; min-width: 0; width: auto; }
-.account-pop .setting-row > .button { align-self: flex-start; }
 
 /* An on/off with its name beside the switch, where a button used to say Enable / Disable. */
 .switch-line { display: inline-flex; align-items: center; gap: 10px; color: var(--text-2); font-size: 13.5px; cursor: pointer; }
 .dropdown-pills { flex: none; flex-wrap: nowrap; }
 .dropdown-pills .ui-tab { white-space: nowrap; }
-.account-pop .mlt-actions { width: auto; flex-wrap: wrap; }
-.account-pop .mlt-actions > * { flex: none; width: auto; min-width: max-content; }
 .about-row { align-items: flex-start; }
 .about-row > div:first-child { flex: 1 1 auto; min-width: 0; }
 .about-row small, .about-row .about-notice { display: block; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .setting-buttons > .setting-reset { width: 34px; height: 34px; align-self: center; }
+
+/* Account dialog in the middle of the screen, above every page (web panel, Monolink, SFTP, tasks too). */
+.account-backdrop { z-index: 400; }
+.add-modal.account-dialog { position: relative; width: min(520px, calc(100vw - 48px)); max-height: calc(100vh - 80px); overflow: auto; padding: 22px 22px 14px; }
+.account-dialog > h2 { margin: 0 0 8px; font-size: 18px; }
+.account-dialog > .close { position: absolute; top: 14px; right: 14px; }
+.account-dialog .settings-group { margin: 0; padding: 8px 0; border: 0; background: none; box-shadow: none; }
+.account-dialog .settings-group + .settings-group { border-top: 1px solid var(--line-soft); }
+.account-dialog .settings-group-title { display: none; }
+.account-dialog .settings-group + .settings-group .settings-group-title { display: flex; margin: 6px 0; font-size: 12.5px; color: var(--text-3); }
+.account-dialog .setting-row { padding: 12px 0; }
+.account-dialog .mlt-actions > * { flex: none; }
+
+/* A switch beside buttons sits on their middle line. */
+.setting-buttons { align-items: center; }
+.switch { align-self: center; }
+
+/* Inside a server every box is the dark one Studio and History use. */
+.app-shell.wb.in-server .wb-body :is(
+  .setting-card, .memo-pane, .memo-grid > .card, .tool-empty, .empty-block, .file-list, .file-head-list,
+  .pt-head, .card, .addon-strip, .list-card, .addon-list > .addon-head, .settings-group, .audit-center,
+  .player-add-card, .msmp-bar, .msmp-card .msmp-body, .cmp-table, .cmp-row.cmp-head, .cmp-file-view,
+  .studio-side-card, .studio-home-card, .pregen-install, .pregen-progress, .addon-version,
+  .disk-stats > div, .adv-stats > div, .task-warn, .plugin-config-note, .bk-foot, .status-strip > div
+) { background: var(--bg); }
