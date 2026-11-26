@@ -44,7 +44,13 @@ struct Args {
 }
 
 fn args() -> Result<Args, String> {
-    let mut out = Args { command: "run".into(), config: config::DEFAULT_CONFIG.into(), data: config::DEFAULT_DATA.into(), code: String::new(), name: String::new() };
+    let mut out = Args {
+        command: "run".into(),
+        config: config::DEFAULT_CONFIG.into(),
+        data: config::DEFAULT_DATA.into(),
+        code: String::new(),
+        name: String::new(),
+    };
     let mut list = std::env::args().skip(1);
     while let Some(one) = list.next() {
         match one.as_str() {
@@ -97,7 +103,11 @@ fn pair(args: &Args) -> Result<(), String> {
     let config = config::Config::load(&args.config)?;
     let key = key::load_or_create(&args.data)?;
     let host = std::fs::read_to_string("/etc/hostname").map(|text| text.trim().to_string()).unwrap_or_default();
-    let name = if args.name.trim().is_empty() { if host.is_empty() { "Monolab node".to_string() } else { host } } else { args.name.trim().to_string() };
+    let name = if args.name.trim().is_empty() {
+        if host.is_empty() { "Monolab node".to_string() } else { host }
+    } else {
+        args.name.trim().to_string()
+    };
     let device = account::pair(&config.accounts_url, &args.data, &key, &args.code, &name)?;
     println!("Paired as \"{name}\" ({device}). Restart the service so it tells the account server where it is:");
     println!("  sudo systemctl restart monolab-node");
@@ -157,7 +167,10 @@ fn run(args: Args) -> Result<(), String> {
                 let mut rounds = 0u32;
                 loop {
                     let (asked, with) = (accounts.clone(), token.clone());
-                    match tokio::task::spawn_blocking(move || account::team_versions(&asked, &with)).await.unwrap_or_else(|error| Err(error.to_string())) {
+                    match tokio::task::spawn_blocking(move || account::team_versions(&asked, &with))
+                        .await
+                        .unwrap_or_else(|error| Err(error.to_string()))
+                    {
                         Ok(teams) => {
                             teams.iter().for_each(|(team, version)| server.raise(team, *version));
                             if teams != known || rounds.is_multiple_of(20) {
@@ -189,7 +202,9 @@ fn run(args: Args) -> Result<(), String> {
                 loop {
                     let addr = serde_json::to_value(endpoint.addr()).unwrap_or_default();
                     let (accounts, token) = (accounts.clone(), token.clone());
-                    let sent = tokio::task::spawn_blocking(move || account::send_addr(&accounts, &token, &addr)).await.unwrap_or_else(|error| Err(error.to_string()));
+                    let sent = tokio::task::spawn_blocking(move || account::send_addr(&accounts, &token, &addr))
+                        .await
+                        .unwrap_or_else(|error| Err(error.to_string()));
                     match sent {
                         Err(error) if error == "unpaired" => {
                             eprintln!("monolab-node: the account server doesn't know this node any more; pair it again.");
@@ -232,7 +247,11 @@ fn run(args: Args) -> Result<(), String> {
 /// The iroh relay for connections with no direct path: Monolink's own at the account server's address
 /// (`relay/deploy/iroh-relay.toml`), as the app uses. `MONOLAB_IROH_RELAY` names another, `n0` for n0's.
 fn relay_choice(accounts: &str) -> String {
-    std::env::var("MONOLAB_IROH_RELAY").ok().map(|one| one.trim().to_string()).filter(|one| !one.is_empty()).unwrap_or_else(|| accounts.trim_end_matches('/').to_string())
+    std::env::var("MONOLAB_IROH_RELAY")
+        .ok()
+        .map(|one| one.trim().to_string())
+        .filter(|one| !one.is_empty())
+        .unwrap_or_else(|| accounts.trim_end_matches('/').to_string())
 }
 
 /// A local test account server (plain http) has no relay next to it, so it keeps n0's.

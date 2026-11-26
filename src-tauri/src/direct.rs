@@ -72,7 +72,11 @@ pub fn device_of(id: &iroh::EndpointId) -> DeviceId {
 /// server's address (`relay/deploy/iroh-relay.toml`, only devices of an account may use it).
 /// `MONOLAB_IROH_RELAY` names another, `n0` for n0's public relays.
 fn relay_choice() -> String {
-    std::env::var("MONOLAB_IROH_RELAY").ok().map(|one| one.trim().to_string()).filter(|one| !one.is_empty()).unwrap_or_else(crate::monolink_account::server)
+    std::env::var("MONOLAB_IROH_RELAY")
+        .ok()
+        .map(|one| one.trim().to_string())
+        .filter(|one| !one.is_empty())
+        .unwrap_or_else(crate::monolink_account::server)
 }
 
 /// A local test account server (plain http) has no relay next to it, so it keeps n0's.
@@ -210,7 +214,13 @@ async fn serve_team(app: AppHandle, connection: Connection) {
         let mut held = held();
         held.next += 1;
         let id = held.next;
-        held.team_conns.push(TeamConn { id, team: team.clone(), grant: grant.clone(), connection: connection.clone(), control: control.clone() });
+        held.team_conns.push(TeamConn {
+            id,
+            team: team.clone(),
+            grant: grant.clone(),
+            connection: connection.clone(),
+            control: control.clone(),
+        });
         id
     };
 
@@ -273,7 +283,9 @@ async fn serve_team(app: AppHandle, connection: Connection) {
                         let body = request.get("body").cloned().unwrap_or(Value::Null);
                         // The grant as it is now: a renewal that lowered the role applies to the next request.
                         let grant = grant.lock().unwrap_or_else(|poison| poison.into_inner()).clone();
-                        let ran = tauri::async_runtime::spawn_blocking(move || crate::monolink_team::serve(&app, &peer, &grant, &command, &body)).await;
+                        let ran =
+                            tauri::async_runtime::spawn_blocking(move || crate::monolink_team::serve(&app, &peer, &grant, &command, &body))
+                                .await;
                         match ran {
                             Ok(Ok(value)) => json!({ "value": value }),
                             Ok(Err(error)) => json!({ "error": error }),
@@ -443,8 +455,14 @@ async fn open_team_link(app: &AppHandle, team: &str, host: DeviceId, fresh: bool
         .map_err(|_| ("Couldn't reach the host.".to_string(), !fresh))?
         .map_err(|_| ("Couldn't reach the host.".to_string(), !fresh))?;
     let (mut send, mut recv) = connection.open_bi().await.map_err(|error| (error.to_string(), false))?;
-    write_frame(&mut send, &json!({ "type": "hello", "grant": pass.grant, "app": env!("CARGO_PKG_VERSION") })).await.map_err(|error| (error, false))?;
-    let answer = tokio::time::timeout(CONNECT_WAIT, read_frame(&mut recv)).await.ok().flatten().ok_or(("The host didn't answer.".to_string(), false))?;
+    write_frame(&mut send, &json!({ "type": "hello", "grant": pass.grant, "app": env!("CARGO_PKG_VERSION") }))
+        .await
+        .map_err(|error| (error, false))?;
+    let answer = tokio::time::timeout(CONNECT_WAIT, read_frame(&mut recv))
+        .await
+        .ok()
+        .flatten()
+        .ok_or(("The host didn't answer.".to_string(), false))?;
     if answer["type"] != "welcome" {
         let reason = answer["reason"].as_str().unwrap_or("denied").to_string();
         connection.close(0u32.into(), b"denied");
@@ -488,7 +506,9 @@ async fn open_team_link(app: &AppHandle, team: &str, host: DeviceId, fresh: bool
 /// How this device reaches a team host right now: "direct", "relayed" (iroh relay) or "none".
 pub fn team_route(team: &str, host: &DeviceId) -> &'static str {
     let held = held();
-    let Some(connection) = held.team_links.get(&(team.to_string(), *host)).filter(|one| one.close_reason().is_none()) else { return "none" };
+    let Some(connection) = held.team_links.get(&(team.to_string(), *host)).filter(|one| one.close_reason().is_none()) else {
+        return "none";
+    };
     match connection.paths().iter().find(|one| one.is_selected()) {
         Some(path) if path.is_ip() => "direct",
         _ => "relayed",

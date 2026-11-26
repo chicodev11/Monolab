@@ -35,14 +35,24 @@ pub struct Pack {
 impl Pack {
     pub fn new(studio_root: &Path) -> Self {
         let folder = studio_root.join("pack");
-        Self { file: folder.join("pack.json"), zip: folder.join("monolab.zip"), stamp: None, wanted: None, hosted: None, sent: HashMap::new() }
+        Self {
+            file: folder.join("pack.json"),
+            zip: folder.join("monolab.zip"),
+            stamp: None,
+            wanted: None,
+            hosted: None,
+            sent: HashMap::new(),
+        }
     }
 
     /// Rereads `pack.json` when it changed.
     pub fn check(&mut self) {
         let stamp = fs::metadata(&self.file)
             .ok()
-            .map(|meta| meta.modified().ok().and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |at| at.as_millis() as u64) ^ meta.len())
+            .map(|meta| {
+                meta.modified().ok().and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |at| at.as_millis() as u64)
+                    ^ meta.len()
+            })
             .unwrap_or(0);
         if self.stamp == Some(stamp) {
             return;
@@ -159,8 +169,13 @@ mod tests {
 
     #[test]
     fn reads_how_to_send() {
-        let make = |mode: &str, address: &str| format!(r#"{{"sha1":"{SHA}","sending":{{"mode":"{mode}","port":25590,"address":"{address}","required":true}}}}"#);
-        assert_eq!(wanted(&make("url", " https://example.com/p.zip ")), Some(Wanted { url: Some("https://example.com/p.zip".into()), sha1: SHA.into(), required: true }));
+        let make = |mode: &str, address: &str| {
+            format!(r#"{{"sha1":"{SHA}","sending":{{"mode":"{mode}","port":25590,"address":"{address}","required":true}}}}"#)
+        };
+        assert_eq!(
+            wanted(&make("url", " https://example.com/p.zip ")),
+            Some(Wanted { url: Some("https://example.com/p.zip".into()), sha1: SHA.into(), required: true })
+        );
         assert_eq!(wanted(&make("self", "")), Some(Wanted { url: None, sha1: SHA.into(), required: true }));
         assert_eq!(wanted(&make("off", "https://example.com/p.zip")), None);
         assert_eq!(wanted(&make("url", "ftp://example.com/p.zip")), None);

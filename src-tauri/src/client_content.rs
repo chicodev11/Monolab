@@ -49,11 +49,7 @@ pub struct ClientContentCard {
 }
 
 fn folder_of(kind: &str) -> Result<&'static str, String> {
-    KINDS
-        .iter()
-        .find(|(one, _)| *one == kind)
-        .map(|(_, folder)| *folder)
-        .ok_or_else(|| "Unknown content kind.".to_string())
+    KINDS.iter().find(|(one, _)| *one == kind).map(|(_, folder)| *folder).ok_or_else(|| "Unknown content kind.".to_string())
 }
 
 /// The Modrinth loader whose versions fit this kind in this instance.
@@ -71,12 +67,8 @@ fn modrinth_loader(kind: &str, loader: &str) -> Option<String> {
 
 /// One plain file name inside the kind's folder; no paths, no tricks.
 fn checked_name(name: &str) -> Result<&str, String> {
-    let bad = name.is_empty()
-        || name.len() > 255
-        || name.contains(['/', '\\', ':'])
-        || name == "."
-        || name == ".."
-        || name.starts_with('.');
+    let bad =
+        name.is_empty() || name.len() > 255 || name.contains(['/', '\\', ':']) || name == "." || name == ".." || name.starts_with('.');
     if bad {
         Err("That file name is not allowed.".into())
     } else {
@@ -97,13 +89,7 @@ fn is_running(id: &str) -> bool {
 }
 
 fn old_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?
-        .join("old")
-        .join("clients")
-        .join(id);
+    let dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?.join("old").join("clients").join(id);
     fs::create_dir_all(&dir).map_err(|error| format!("Could not create the folder for removed files: {error}"))?;
     Ok(dir)
 }
@@ -174,10 +160,7 @@ fn scan_kind(game: &Path, kind: &str, folder_name: &str) -> Vec<ClientContent> {
 pub fn client_content(app: AppHandle, id: String) -> Result<Vec<ClientContent>, String> {
     clients::find(&app, &id)?;
     let game = clients::game_dir(&app, &id)?;
-    let mut list: Vec<ClientContent> = KINDS
-        .iter()
-        .flat_map(|(kind, folder)| scan_kind(&game, kind, folder))
-        .collect();
+    let mut list: Vec<ClientContent> = KINDS.iter().flat_map(|(kind, folder)| scan_kind(&game, kind, folder)).collect();
     list.sort_by_key(|one| one.name.to_lowercase());
     Ok(list)
 }
@@ -374,10 +357,7 @@ pub fn open_client_content_folder(app: AppHandle, id: String, kind: String) -> R
     let program = "open";
     #[cfg(all(not(windows), not(target_os = "macos")))]
     let program = "xdg-open";
-    crate::hidden_command(program)
-        .arg(&folder)
-        .spawn()
-        .map_err(|error| format!("Could not open the folder: {error}"))?;
+    crate::hidden_command(program).arg(&folder).spawn().map_err(|error| format!("Could not open the folder: {error}"))?;
     Ok(())
 }
 

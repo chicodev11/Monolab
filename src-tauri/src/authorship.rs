@@ -62,16 +62,23 @@ pub fn who_changed(server: &str, path: &str, at_secs: u64) -> Option<String> {
 /// The server-folder paths a request writes, without the studio root (`studio/...`; see [`with_studio_root`]).
 pub fn paths_of(command: &str, body: &Value) -> Vec<String> {
     let text = |key: &str| body.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
-    let joined = |dir: String, name: String| if dir.trim_matches('/').is_empty() { name } else { format!("{}/{name}", dir.trim_end_matches('/')) };
+    let joined =
+        |dir: String, name: String| if dir.trim_matches('/').is_empty() { name } else { format!("{}/{name}", dir.trim_end_matches('/')) };
     let path = match command {
         "save_editable_file" | "trash_server_path" => text("path"),
         "create_server_file" => joined(text("path"), text("name")),
         "studio_save" => format!("studio/{}/{}.json", text("kind"), text("name")),
-        "studio_asset_add" | "studio_asset_add_upload" | "studio_asset_remove" => format!("studio/assets/{}/{}", text("folder"), text("file")),
+        "studio_asset_add" | "studio_asset_add_upload" | "studio_asset_remove" => {
+            format!("studio/assets/{}/{}", text("folder"), text("file"))
+        }
         _ => String::new(),
     };
     let path = clean(&path);
-    if path.is_empty() || path.contains("//") || path.ends_with("/.json") { Vec::new() } else { vec![path] }
+    if path.is_empty() || path.contains("//") || path.ends_with("/.json") {
+        Vec::new()
+    } else {
+        vec![path]
+    }
 }
 
 /// `studio/...` from [`paths_of`] under the server's real studio folder (`plugins/Monolab/studio` or Pumpkin's).
@@ -84,7 +91,11 @@ pub fn with_studio_root(path: &str, studio_root: Option<&str>) -> String {
 
 /// The name shown for a writer: `@amy`, `@amy's AI` for a teammate's agent.
 pub fn teammate(handle: &str, agent: bool) -> String {
-    if agent { format!("@{handle}'s AI") } else { format!("@{handle}") }
+    if agent {
+        format!("@{handle}'s AI")
+    } else {
+        format!("@{handle}")
+    }
 }
 
 #[cfg(test)]
@@ -98,7 +109,10 @@ mod tests {
         assert_eq!(paths_of("create_server_file", &json!({ "path": "plugins", "name": "x.yml" })), ["plugins/x.yml"]);
         assert_eq!(paths_of("create_server_file", &json!({ "path": "", "name": "x.yml" })), ["x.yml"]);
         assert_eq!(paths_of("studio_save", &json!({ "kind": "mob", "name": "golem" })), ["studio/mob/golem.json"]);
-        assert_eq!(paths_of("studio_asset_add_upload", &json!({ "folder": "models", "file": "bot.bbmodel" })), ["studio/assets/models/bot.bbmodel"]);
+        assert_eq!(
+            paths_of("studio_asset_add_upload", &json!({ "folder": "models", "file": "bot.bbmodel" })),
+            ["studio/assets/models/bot.bbmodel"]
+        );
         assert_eq!(paths_of("trash_server_path", &json!({ "path": "old.txt" })), ["old.txt"]);
         assert!(paths_of("set_server_memo", &json!({ "id": "s" })).is_empty());
         assert!(paths_of("studio_save", &json!({})).is_empty());

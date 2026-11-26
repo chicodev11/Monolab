@@ -1,4 +1,3 @@
-
 use serde::Serialize;
 use std::{fs, net::TcpListener, path::Path};
 
@@ -12,19 +11,11 @@ pub struct Finding {
 
 impl Finding {
     pub fn stop(title: &str, fix: &str) -> Self {
-        Finding {
-            level: "Blocked".into(),
-            title: title.into(),
-            fix: fix.into(),
-        }
+        Finding { level: "Blocked".into(), title: title.into(), fix: fix.into() }
     }
 
     pub fn warn(title: &str, fix: &str) -> Self {
-        Finding {
-            level: "Caution".into(),
-            title: title.into(),
-            fix: fix.into(),
-        }
+        Finding { level: "Caution".into(), title: title.into(), fix: fix.into() }
     }
 }
 
@@ -70,15 +61,12 @@ pub fn precheck(
         if major < needs_java {
             out.push(Finding::stop(
                 &format!("This server cannot run on Java {major}"),
-                &format!(
-                    "This Minecraft version needs Java {needs_java} or newer. Choose \"Install Java\" in the Java field."
-                ),
+                &format!("This Minecraft version needs Java {needs_java} or newer. Choose \"Install Java\" in the Java field."),
             ));
         }
     }
 
-    if machine_memory_mib > 0 && u64::from(max_memory_mib) > machine_memory_mib.saturating_sub(2048)
-    {
+    if machine_memory_mib > 0 && u64::from(max_memory_mib) > machine_memory_mib.saturating_sub(2048) {
         out.push(Finding::warn(
             "Memory limit is too high",
             &format!(
@@ -123,9 +111,7 @@ mod tests {
             let low = line.to_ascii_lowercase();
             assert!(harmless(&low), "this line should be skipped: {line}");
         }
-        let frame =
-            "	at net.minecraft.server.MinecraftServer.tickServer(MinecraftServer.java:1620)"
-                .to_ascii_lowercase();
+        let frame = "	at net.minecraft.server.MinecraftServer.tickServer(MinecraftServer.java:1620)".to_ascii_lowercase();
         assert!(!harmless(&frame));
         assert!(!harmless("java.lang.outofmemoryerror: java heap space"));
         assert!(!harmless("[error]: **** failed to bind to port!"));
@@ -143,10 +129,7 @@ mod tests {
             "[13:41:46 WARN]: Failed to get system info for Process Resident Size (MiB)",
         ];
         for line in block {
-            assert!(
-                harmless(&line.to_ascii_lowercase()),
-                "this line leaks through: {line}"
-            );
+            assert!(harmless(&line.to_ascii_lowercase()), "this line leaks through: {line}");
         }
         for line in [
             "	at com.sun.jna.platform.win32.Advapi32Util.registryGetStringArray(Advapi32Util.java:921)",
@@ -161,15 +144,7 @@ mod tests {
 
     #[test]
     fn precheck_sees_a_low_java_and_a_big_heap() {
-        let found = precheck(
-            Path::new("."),
-            None,
-            0,
-            15_360,
-            16_384,
-            Some(17),
-            21,
-        );
+        let found = precheck(Path::new("."), None, 0, 15_360, 16_384, Some(17), 21);
         assert!(found.iter().any(|one| one.title.contains("Java 17")));
         assert!(found.iter().any(|one| one.title.contains("Memory")));
         assert!(found.iter().all(|one| !one.fix.is_empty()));

@@ -3,7 +3,7 @@
 //! y; each is a place in the palette. Pasting puts the lowest corner at the spot, turned a quarter clockwise
 //! (seen from above) as many times as asked.
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 /// A fill may change this many blocks at most; a copied area may hold this many.
 pub const MOST_FILL: u64 = 32_768;
@@ -11,7 +11,9 @@ pub const MOST_REGION: u64 = 262_144;
 
 /// A region's name: lower-case letters, digits, `_` and `-`, at most 64.
 pub fn name_ok(name: &str) -> bool {
-    !name.is_empty() && name.len() <= 64 && name.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == b'_' || one == b'-')
+    !name.is_empty()
+        && name.len() <= 64
+        && name.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == b'_' || one == b'-')
 }
 
 /// Where the file of a region lives, under the studio folder.
@@ -51,7 +53,8 @@ impl Region {
         let size = value.get("size")?.as_array()?;
         let part = |at: usize| size.get(at).and_then(Value::as_u64).filter(|one| *one > 0 && *one <= 4096).map(|one| one as u32);
         let size = (part(0)?, part(1)?, part(2)?);
-        let palette: Vec<String> = value.get("palette")?.as_array()?.iter().map(|one| one.as_str().unwrap_or("minecraft:air").to_string()).collect();
+        let palette: Vec<String> =
+            value.get("palette")?.as_array()?.iter().map(|one| one.as_str().unwrap_or("minecraft:air").to_string()).collect();
         let blocks: Vec<u32> = value.get("blocks")?.as_array()?.iter().map(|one| one.as_u64().unwrap_or(0) as u32).collect();
         let volume = u64::from(size.0) * u64::from(size.1) * u64::from(size.2);
         if volume != blocks.len() as u64 || volume > MOST_REGION || blocks.iter().any(|one| *one as usize >= palette.len()) {
@@ -98,12 +101,18 @@ pub fn turn_state(state: &str, quarter: u32) -> String {
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
         let (key, value) = match key {
             "facing" => (key.to_string(), turn_side(value, quarter).unwrap_or(value).to_string()),
-            "axis" if quarter % 2 == 1 => (key.to_string(), match value {
-                "x" => "z".to_string(),
-                "z" => "x".to_string(),
-                other => other.to_string(),
-            }),
-            "rotation" => (key.to_string(), value.parse::<u32>().map(|one| ((one + 4 * quarter) % 16).to_string()).unwrap_or_else(|_| value.to_string())),
+            "axis" if quarter % 2 == 1 => (
+                key.to_string(),
+                match value {
+                    "x" => "z".to_string(),
+                    "z" => "x".to_string(),
+                    other => other.to_string(),
+                },
+            ),
+            "rotation" => (
+                key.to_string(),
+                value.parse::<u32>().map(|one| ((one + 4 * quarter) % 16).to_string()).unwrap_or_else(|_| value.to_string()),
+            ),
             side if SIDES.contains(&side) => (turn_side(side, quarter).unwrap_or(side).to_string(), value.to_string()),
             _ => (key.to_string(), value.to_string()),
         };
@@ -129,7 +138,8 @@ mod tests {
 
     #[test]
     fn round_trips_and_turns() {
-        let states: Vec<String> = ["minecraft:stone", "minecraft:air", "minecraft:stone", "minecraft:dirt"].iter().map(|one| one.to_string()).collect();
+        let states: Vec<String> =
+            ["minecraft:stone", "minecraft:air", "minecraft:stone", "minecraft:dirt"].iter().map(|one| one.to_string()).collect();
         let region = Region::from_states((2, 1, 2), &states);
         assert_eq!(region.palette, vec!["minecraft:stone", "minecraft:air", "minecraft:dirt"]);
         assert_eq!(Region::from_json(&region.to_json()), Some(region.clone()));
@@ -145,7 +155,10 @@ mod tests {
         assert_eq!(turn_state("minecraft:oak_stairs[facing=north,half=bottom]", 1), "minecraft:oak_stairs[facing=east,half=bottom]");
         assert_eq!(turn_state("minecraft:oak_log[axis=x]", 1), "minecraft:oak_log[axis=z]");
         assert_eq!(turn_state("minecraft:oak_sign[rotation=14]", 1), "minecraft:oak_sign[rotation=2]");
-        assert_eq!(turn_state("minecraft:oak_fence[east=false,north=true,south=false,west=false]", 1), "minecraft:oak_fence[east=true,north=false,south=false,west=false]");
+        assert_eq!(
+            turn_state("minecraft:oak_fence[east=false,north=true,south=false,west=false]", 1),
+            "minecraft:oak_fence[east=true,north=false,south=false,west=false]"
+        );
         assert_eq!(turn_state("minecraft:stone", 3), "minecraft:stone");
     }
 

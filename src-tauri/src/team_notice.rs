@@ -58,7 +58,14 @@ pub fn send(app: &AppHandle, server: &str, kind: NoticeKind, to: Option<&str>, t
 
 /// To-dos whose assignee changed to someone between two versions of a memo: (assignee, to-do text).
 pub fn newly_assigned(before: &serde_json::Value, after: &serde_json::Value) -> Vec<(String, String)> {
-    let old = |id: &str| before["todos"].as_array().and_then(|list| list.iter().find(|one| one["id"].as_str() == Some(id))).and_then(|one| one["assignee"].as_str()).unwrap_or_default().to_string();
+    let old = |id: &str| {
+        before["todos"]
+            .as_array()
+            .and_then(|list| list.iter().find(|one| one["id"].as_str() == Some(id)))
+            .and_then(|one| one["assignee"].as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
     after["todos"]
         .as_array()
         .into_iter()

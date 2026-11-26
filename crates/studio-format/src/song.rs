@@ -4,7 +4,7 @@
 //! `jukebox_playable` component); the sound itself is a studio sound in the pack.
 
 use crate::{fields, item, mini};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 type Data = Map<String, Value>;
 
@@ -15,7 +15,11 @@ pub const MOST_SECONDS: f64 = 3600.0;
 /// a name with `:` is used as it is (`minecraft:music_disc.cat`).
 pub fn sound(data: &Data) -> String {
     let raw = fields::text(data, "sound", "").trim().to_ascii_lowercase();
-    if raw.is_empty() || raw.contains(':') { raw } else { format!("monolab:studio.{raw}") }
+    if raw.is_empty() || raw.contains(':') {
+        raw
+    } else {
+        format!("monolab:studio.{raw}")
+    }
 }
 
 pub fn seconds(data: &Data) -> f64 {
@@ -30,7 +34,11 @@ pub fn comparator(data: &Data) -> u8 {
 /// The line under the disc's name and in the "Now playing" bar (MiniMessage).
 pub fn description(data: &Data, id: &str) -> String {
     let name = fields::text(data, "name", "").trim().to_string();
-    if name.is_empty() { id.replace(['_', '-'], " ") } else { name }
+    if name.is_empty() {
+        id.replace(['_', '-'], " ")
+    } else {
+        name
+    }
 }
 
 /// What both add-ons compare to tell that a song changed since the server started.
@@ -54,7 +62,11 @@ pub fn problems(data: &Data) -> Vec<String> {
     let sound = sound(data);
     if sound.is_empty() {
         out.push("\"sound\" is needed: a studio sound's name or a sound id.".into());
-    } else if !sound.split_once(':').is_some_and(|(space, path)| !space.is_empty() && !path.is_empty() && sound.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || b"_-.:/".contains(&one))) {
+    } else if !sound.split_once(':').is_some_and(|(space, path)| {
+        !space.is_empty()
+            && !path.is_empty()
+            && sound.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || b"_-.:/".contains(&one))
+    }) {
         out.push(format!("\"sound\" isn't a sound name: {sound}."));
     }
     if !data.get("seconds").is_some_and(Value::is_number) {

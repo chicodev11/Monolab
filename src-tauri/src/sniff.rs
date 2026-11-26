@@ -1,4 +1,3 @@
-
 use std::fs;
 use std::io::Read;
 use std::path::Path;
@@ -15,11 +14,7 @@ pub struct Sniffed {
 
 pub fn sniff(folder: &Path, jar: Option<&Path>) -> Sniffed {
     if let Some(core) = jar.and_then(by_name) {
-        let version = if core == "Pumpkin" {
-            crate::pumpkin::version_from_log(folder)
-        } else {
-            jar.and_then(version_in_jar)
-        };
+        let version = if core == "Pumpkin" { crate::pumpkin::version_from_log(folder) } else { jar.and_then(version_in_jar) };
         return Sniffed { core, version };
     }
     if let Some(found) = jar.and_then(by_contents) {
@@ -28,10 +23,7 @@ pub fn sniff(folder: &Path, jar: Option<&Path>) -> Sniffed {
     if let Some(found) = by_folder(folder) {
         return found;
     }
-    Sniffed {
-        core: UNKNOWN.into(),
-        version: jar.and_then(version_in_jar),
-    }
+    Sniffed { core: UNKNOWN.into(), version: jar.and_then(version_in_jar) }
 }
 
 pub fn core_in_name(name: &str) -> Option<String> {
@@ -74,16 +66,10 @@ fn by_contents(jar: &Path) -> Option<Sniffed> {
     let file = fs::File::open(jar).ok()?;
     let mut zip = ZipArchive::new(file).ok()?;
     let manifest = read_entry(&mut zip, "META-INF/MANIFEST.MF").unwrap_or_default();
-    let main = manifest
-        .lines()
-        .find_map(|line| line.strip_prefix("Main-Class:"))
-        .map(|value| value.trim().to_string())
-        .unwrap_or_default();
+    let main = manifest.lines().find_map(|line| line.strip_prefix("Main-Class:")).map(|value| value.trim().to_string()).unwrap_or_default();
 
     if main.starts_with("io.papermc.paperclip") {
-        let list = read_entry(&mut zip, "META-INF/versions.list")
-            .unwrap_or_default()
-            .to_lowercase();
+        let list = read_entry(&mut zip, "META-INF/versions.list").unwrap_or_default().to_lowercase();
         let core = if list.contains("purpur") {
             "Purpur"
         } else if list.contains("/leaf-") {
@@ -93,39 +79,21 @@ fn by_contents(jar: &Path) -> Option<Sniffed> {
         } else {
             "Paper"
         };
-        return Some(Sniffed {
-            core: core.into(),
-            version: version_in_zip(&mut zip),
-        });
+        return Some(Sniffed { core: core.into(), version: version_in_zip(&mut zip) });
     }
     if main.starts_with("net.fabricmc.installer") {
         let props = read_entry(&mut zip, "install.properties").unwrap_or_default();
-        let version = props
-            .lines()
-            .find_map(|line| line.trim().strip_prefix("game-version="))
-            .map(|value| value.trim().to_string());
-        return Some(Sniffed {
-            core: "Fabric".into(),
-            version,
-        });
+        let version = props.lines().find_map(|line| line.trim().strip_prefix("game-version=")).map(|value| value.trim().to_string());
+        return Some(Sniffed { core: "Fabric".into(), version });
     }
     if main.starts_with("com.velocitypowered") {
-        return Some(Sniffed {
-            core: "Velocity".into(),
-            version: None,
-        });
+        return Some(Sniffed { core: "Velocity".into(), version: None });
     }
     if main.starts_with("net.md_5.bungee") {
-        return Some(Sniffed {
-            core: "BungeeCord".into(),
-            version: None,
-        });
+        return Some(Sniffed { core: "BungeeCord".into(), version: None });
     }
     if main.starts_with("net.minecraft.bundler") || main.starts_with("net.minecraft.server") {
-        return Some(Sniffed {
-            core: "Vanilla".into(),
-            version: version_in_zip(&mut zip),
-        });
+        return Some(Sniffed { core: "Vanilla".into(), version: version_in_zip(&mut zip) });
     }
     None
 }
@@ -134,23 +102,14 @@ fn version_in_zip<R: Read + std::io::Seek>(zip: &mut ZipArchive<R>) -> Option<St
     if let Some(text) = read_entry(zip, "version.json") {
         if let Some(version) = serde_json::from_str::<serde_json::Value>(&text)
             .ok()
-            .and_then(|value| {
-                value
-                    .get("id")
-                    .or_else(|| value.get("name"))
-                    .and_then(|value| value.as_str())
-                    .map(str::to_owned)
-            })
+            .and_then(|value| value.get("id").or_else(|| value.get("name")).and_then(|value| value.as_str()).map(str::to_owned))
         {
             return Some(version);
         }
     }
     let text = read_entry(zip, "version.properties")?;
     text.lines().find_map(|line| {
-        line.trim()
-            .strip_prefix("minecraftVersion=")
-            .or_else(|| line.trim().strip_prefix("minecraft.version="))
-            .map(str::to_owned)
+        line.trim().strip_prefix("minecraftVersion=").or_else(|| line.trim().strip_prefix("minecraft.version=")).map(str::to_owned)
     })
 }
 
@@ -162,36 +121,21 @@ pub fn version_in_jar(jar: &Path) -> Option<String> {
 
 fn by_folder(folder: &Path) -> Option<Sniffed> {
     if folder.join(crate::pumpkin::CONFIG).is_file() {
-        return Some(Sniffed {
-            core: "Pumpkin".into(),
-            version: crate::pumpkin::version_from_log(folder),
-        });
+        return Some(Sniffed { core: "Pumpkin".into(), version: crate::pumpkin::version_from_log(folder) });
     }
     let libraries = folder.join("libraries").join("net");
     if let Some(build) = first_dir_name(&libraries.join("neoforged").join("neoforge")) {
-        return Some(Sniffed {
-            core: "NeoForge".into(),
-            version: crate::cores::neoforge_game_version(&build),
-        });
+        return Some(Sniffed { core: "NeoForge".into(), version: crate::cores::neoforge_game_version(&build) });
     }
     if let Some(build) = first_dir_name(&libraries.join("minecraftforge").join("forge")) {
         let version = build.split('-').next().map(str::to_owned);
-        return Some(Sniffed {
-            core: "Forge".into(),
-            version,
-        });
+        return Some(Sniffed { core: "Forge".into(), version });
     }
     if folder.join(".fabric").is_dir() || folder.join("fabric-server-launch.properties").is_file() {
-        return Some(Sniffed {
-            core: "Fabric".into(),
-            version: None,
-        });
+        return Some(Sniffed { core: "Fabric".into(), version: None });
     }
     if folder.join("plugins").is_dir() && !folder.join("mods").is_dir() {
-        return Some(Sniffed {
-            core: "Paper".into(),
-            version: None,
-        });
+        return Some(Sniffed { core: "Paper".into(), version: None });
     }
     None
 }
@@ -244,10 +188,7 @@ mod tests {
                 ("version.json", r#"{"id":"1.21.4","name":"1.21.4"}"#),
             ],
         );
-        assert_eq!(
-            sniff(&dir, Some(&paper)),
-            Sniffed { core: "Paper".into(), version: Some("1.21.4".into()) }
-        );
+        assert_eq!(sniff(&dir, Some(&paper)), Sniffed { core: "Paper".into(), version: Some("1.21.4".into()) });
 
         let purpur = jar(
             &dir,
@@ -267,18 +208,12 @@ mod tests {
                 ("install.properties", "fabric-loader-version=0.16.9\ngame-version=1.21.1\n"),
             ],
         );
-        assert_eq!(
-            sniff(&dir, Some(&fabric)),
-            Sniffed { core: "Fabric".into(), version: Some("1.21.1".into()) }
-        );
+        assert_eq!(sniff(&dir, Some(&fabric)), Sniffed { core: "Fabric".into(), version: Some("1.21.1".into()) });
 
         let vanilla = jar(
             &dir,
             "minecraft_server.jar",
-            &[
-                ("META-INF/MANIFEST.MF", "Main-Class: net.minecraft.bundler.Main\n"),
-                ("version.json", r#"{"id":"1.21.5"}"#),
-            ],
+            &[("META-INF/MANIFEST.MF", "Main-Class: net.minecraft.bundler.Main\n"), ("version.json", r#"{"id":"1.21.5"}"#)],
         );
         assert_eq!(sniff(&dir, Some(&vanilla)).core, "Vanilla");
         let _ = fs::remove_dir_all(&dir);
@@ -288,17 +223,11 @@ mod tests {
     fn knows_an_installed_forge_folder_without_a_jar() {
         let dir = scratch("installed");
         fs::create_dir_all(dir.join("libraries/net/neoforged/neoforge/21.4.157")).unwrap();
-        assert_eq!(
-            sniff(&dir, None),
-            Sniffed { core: "NeoForge".into(), version: Some("1.21.4".into()) }
-        );
+        assert_eq!(sniff(&dir, None), Sniffed { core: "NeoForge".into(), version: Some("1.21.4".into()) });
 
         let dir = scratch("forge");
         fs::create_dir_all(dir.join("libraries/net/minecraftforge/forge/1.21.1-52.0.1")).unwrap();
-        assert_eq!(
-            sniff(&dir, None),
-            Sniffed { core: "Forge".into(), version: Some("1.21.1".into()) }
-        );
+        assert_eq!(sniff(&dir, None), Sniffed { core: "Forge".into(), version: Some("1.21.1".into()) });
 
         let dir = scratch("plugins");
         fs::create_dir_all(dir.join("plugins")).unwrap();

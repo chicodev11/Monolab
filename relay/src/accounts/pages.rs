@@ -175,7 +175,9 @@ fn table(title: &str, column: &str, rows: &[(String, u64)]) -> String {
     } else {
         rows.iter().map(|(value, count)| format!("<tr><td>{}</td><td class=\"n\">{count}</td></tr>", esc(value))).collect()
     };
-    format!("<section><h2>{title}</h2><table><thead><tr><th>{column}</th><th class=\"n\">Installs</th></tr></thead><tbody>{body}</tbody></table></section>")
+    format!(
+        "<section><h2>{title}</h2><table><thead><tr><th>{column}</th><th class=\"n\">Installs</th></tr></thead><tbody>{body}</tbody></table></section>"
+    )
 }
 
 pub fn admin(view: &AdminView<'_>) -> String {

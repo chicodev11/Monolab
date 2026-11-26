@@ -45,11 +45,18 @@ pub fn asset_name<'a>(folder: &str, file: &'a str) -> Option<&'a str> {
 pub fn check_upload(folder: &str, file: &str, bytes: &[u8]) -> Result<(), String> {
     let Some((_, most)) = kind_of(folder) else { return Err("Assets go in textures, models or sounds.".into()) };
     if asset_name(folder, file).is_none() {
-        return Err(format!("{file}: names use a-z, 0-9, - and _ (up to 48), ending in {}.", kind_of(folder).map(|(one, _)| one.join(" or ")).unwrap_or_default()));
+        return Err(format!(
+            "{file}: names use a-z, 0-9, - and _ (up to 48), ending in {}.",
+            kind_of(folder).map(|(one, _)| one.join(" or ")).unwrap_or_default()
+        ));
     }
     let most = if file.ends_with(".bbmodel") { MOST_BBMODEL } else { most };
     if bytes.len() > most {
-        return Err(if most >= 1024 * 1024 { format!("{file} is over {} MB.", most / 1024 / 1024) } else { format!("{file} is over {} KB.", most / 1024) });
+        return Err(if most >= 1024 * 1024 {
+            format!("{file} is over {} MB.", most / 1024 / 1024)
+        } else {
+            format!("{file} is over {} KB.", most / 1024)
+        });
     }
     let fits = match folder {
         "textures" if file.ends_with(".png") => bytes.starts_with(b"\x89PNG\r\n\x1a\n"),
@@ -58,7 +65,16 @@ pub fn check_upload(folder: &str, file: &str, bytes: &[u8]) -> Result<(), String
         _ => false,
     };
     if !fits {
-        return Err(format!("{file} isn't a real {}.", if file.ends_with(".png") { "PNG" } else if file.ends_with(".ogg") { "Ogg sound" } else { "JSON file" }));
+        return Err(format!(
+            "{file} isn't a real {}.",
+            if file.ends_with(".png") {
+                "PNG"
+            } else if file.ends_with(".ogg") {
+                "Ogg sound"
+            } else {
+                "JSON file"
+            }
+        ));
     }
     Ok(())
 }
@@ -66,7 +82,8 @@ pub fn check_upload(folder: &str, file: &str, bytes: &[u8]) -> Result<(), String
 /// The resource pack format for a Minecraft version, and the oldest the pack says it works with. Newer versions than
 /// the table get the newest known number plus an open range, which clients accept.
 pub fn pack_format(version: &str) -> u32 {
-    let mut parts = version.split(|one: char| !one.is_ascii_digit()).filter(|one| !one.is_empty()).map(|one| one.parse::<u32>().unwrap_or(0));
+    let mut parts =
+        version.split(|one: char| !one.is_ascii_digit()).filter(|one| !one.is_empty()).map(|one| one.parse::<u32>().unwrap_or(0));
     let (major, minor, patch) = (parts.next().unwrap_or(0), parts.next().unwrap_or(0), parts.next().unwrap_or(0));
     if major >= 26 {
         return 75;
@@ -164,11 +181,17 @@ pub fn build(version: &str, sources: &[Source], extra: &[(String, Vec<u8>)]) -> 
     for (folder, file, bytes) in sources {
         let Some(name) = asset_name(folder, file) else { continue };
         let target = match folder.as_str() {
-            "textures" => format!("assets/{NAMESPACE}/textures/studio/{name}{}", if file.ends_with(".mcmeta") { ".png.mcmeta" } else { ".png" }),
+            "textures" => {
+                format!("assets/{NAMESPACE}/textures/studio/{name}{}", if file.ends_with(".mcmeta") { ".png.mcmeta" } else { ".png" })
+            }
             "models" if file.ends_with(".json") => format!("assets/{NAMESPACE}/models/studio/{name}.json"),
             "sounds" => {
                 // Long sounds (music discs, over 256 KB) stream, as the game's own music does, instead of loading whole.
-                let sound = if bytes.len() > STREAM_BYTES { serde_json::json!({ "name": format!("{NAMESPACE}:studio/{name}"), "stream": true }) } else { serde_json::json!(format!("{NAMESPACE}:studio/{name}")) };
+                let sound = if bytes.len() > STREAM_BYTES {
+                    serde_json::json!({ "name": format!("{NAMESPACE}:studio/{name}"), "stream": true })
+                } else {
+                    serde_json::json!(format!("{NAMESPACE}:studio/{name}"))
+                };
                 sounds.insert(format!("studio.{name}"), serde_json::json!({ "sounds": [sound] }));
                 format!("assets/{NAMESPACE}/sounds/studio/{name}.ogg")
             }
@@ -193,7 +216,11 @@ pub fn build(version: &str, sources: &[Source], extra: &[(String, Vec<u8>)]) -> 
         let stamp = zip::DateTime::default();
         for (path, bytes) in &files {
             // Pictures and sounds are already compressed; storing them is faster and the zip barely grows.
-            let method = if path.ends_with(".png") || path.ends_with(".ogg") { zip::CompressionMethod::Stored } else { zip::CompressionMethod::Deflated };
+            let method = if path.ends_with(".png") || path.ends_with(".ogg") {
+                zip::CompressionMethod::Stored
+            } else {
+                zip::CompressionMethod::Deflated
+            };
             let options = zip::write::SimpleFileOptions::default().compression_method(method).last_modified_time(stamp);
             zip.start_file(path.as_str(), options).map_err(|error| error.to_string())?;
             zip.write_all(bytes).map_err(|error| error.to_string())?;
@@ -205,7 +232,15 @@ pub fn build(version: &str, sources: &[Source], extra: &[(String, Vec<u8>)]) -> 
         return Err("The studio pack would be over 100 MB. Remove some sounds or big pictures.".into());
     }
     let sha1 = Sha1::digest(&bytes).iter().map(|one| format!("{one:02x}")).collect();
-    let info = PackInfo { schema: 1, sha1, bytes: bytes.len() as u64, built: 0, format: pack_format(version), counts, sending: Sending::default() };
+    let info = PackInfo {
+        schema: 1,
+        sha1,
+        bytes: bytes.len() as u64,
+        built: 0,
+        format: pack_format(version),
+        counts,
+        sending: Sending::default(),
+    };
     Ok((bytes, info))
 }
 

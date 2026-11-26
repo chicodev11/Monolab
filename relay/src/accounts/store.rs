@@ -5,9 +5,9 @@
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
-use super::util::{new_id, random, Role, DAY};
+use super::util::{DAY, Role, new_id, random};
 
 /// How long a session stays valid without being used.
 pub const SESSION_SECS: u64 = 30 * DAY;
@@ -159,7 +159,13 @@ pub struct Activity {
 }
 
 fn user_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<User> {
-    Ok(User { id: row.get(0)?, handle: row.get(1)?, avatar: row.get(2)?, handle_changed_at: row.get::<_, i64>(3)? as u64, number: row.get::<_, Option<i64>>(4)?.unwrap_or(0) as u64 })
+    Ok(User {
+        id: row.get(0)?,
+        handle: row.get(1)?,
+        avatar: row.get(2)?,
+        handle_changed_at: row.get::<_, i64>(3)? as u64,
+        number: row.get::<_, Option<i64>>(4)?.unwrap_or(0) as u64,
+    })
 }
 
 fn role_of(text: String) -> rusqlite::Result<Role> {
@@ -316,7 +322,8 @@ impl Store {
     /// Older databases: adds the permanent `number` column and gives every person without one a number.
     /// Devices got a kind later: "app" for every device made before, "node" for paired monolab-node machines.
     fn give_kinds(db: &Connection) -> rusqlite::Result<()> {
-        let has: bool = db.query_row("SELECT EXISTS (SELECT 1 FROM pragma_table_info('devices') WHERE name = 'kind')", [], |row| row.get(0))?;
+        let has: bool =
+            db.query_row("SELECT EXISTS (SELECT 1 FROM pragma_table_info('devices') WHERE name = 'kind')", [], |row| row.get(0))?;
         if !has {
             db.execute_batch("ALTER TABLE devices ADD COLUMN kind TEXT NOT NULL DEFAULT 'app'")?;
         }
@@ -324,7 +331,8 @@ impl Store {
     }
 
     fn give_numbers(db: &Connection) -> rusqlite::Result<()> {
-        let has: bool = db.query_row("SELECT EXISTS (SELECT 1 FROM pragma_table_info('users') WHERE name = 'number')", [], |row| row.get(0))?;
+        let has: bool =
+            db.query_row("SELECT EXISTS (SELECT 1 FROM pragma_table_info('users') WHERE name = 'number')", [], |row| row.get(0))?;
         if !has {
             db.execute_batch("ALTER TABLE users ADD COLUMN number INTEGER")?;
         }
@@ -346,7 +354,8 @@ impl Store {
         loop {
             let raw = u64::from_le_bytes(random::<8>());
             let number = 10_000_000 + raw % 90_000_000;
-            let taken: bool = db.query_row("SELECT EXISTS (SELECT 1 FROM users WHERE number = ?1)", params![number as i64], |row| row.get(0))?;
+            let taken: bool =
+                db.query_row("SELECT EXISTS (SELECT 1 FROM users WHERE number = ?1)", params![number as i64], |row| row.get(0))?;
             if !taken {
                 return Ok(number);
             }
@@ -381,7 +390,13 @@ impl Store {
             "SELECT id, name, created_at, last_seen, kind FROM devices WHERE user_id = ?1 AND revoked_at IS NULL ORDER BY last_seen DESC",
         )?;
         let rows = query.query_map(params![user], |row| {
-            Ok(Device { id: row.get(0)?, name: row.get(1)?, created_at: row.get::<_, i64>(2)? as u64, last_seen: row.get::<_, i64>(3)? as u64, kind: row.get(4)? })
+            Ok(Device {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                created_at: row.get::<_, i64>(2)? as u64,
+                last_seen: row.get::<_, i64>(3)? as u64,
+                kind: row.get(4)?,
+            })
         })?;
         rows.collect()
     }
@@ -529,7 +544,14 @@ impl Store {
     }
 
     /// Makes a new person with their first sign-in. Fails with `Ok(None)` when the handle was taken meanwhile.
-    pub fn create_user(&self, handle: &str, avatar: Option<&str>, provider: &str, subject: &str, now: u64) -> rusqlite::Result<Option<User>> {
+    pub fn create_user(
+        &self,
+        handle: &str,
+        avatar: Option<&str>,
+        provider: &str,
+        subject: &str,
+        now: u64,
+    ) -> rusqlite::Result<Option<User>> {
         let mut db = self.db();
         let tx = db.transaction()?;
         let busy: bool = tx.query_row(
@@ -537,8 +559,11 @@ impl Store {
             params![handle, now as i64],
             |row| row.get(0),
         )?;
-        let known: bool =
-            tx.query_row("SELECT EXISTS (SELECT 1 FROM oauth_identities WHERE provider = ?1 AND subject = ?2)", params![provider, subject], |row| row.get(0))?;
+        let known: bool = tx.query_row(
+            "SELECT EXISTS (SELECT 1 FROM oauth_identities WHERE provider = ?1 AND subject = ?2)",
+            params![provider, subject],
+            |row| row.get(0),
+        )?;
         if busy || known {
             return Ok(None);
         }
@@ -609,13 +634,11 @@ impl Store {
     pub fn open_session(&self, token_hash: &[u8], user: &str, device: &str, now: u64) -> rusqlite::Result<bool> {
         let mut db = self.db();
         let tx = db.transaction()?;
-        let owner: Option<Option<String>> = tx.query_row("SELECT user_id FROM devices WHERE id = ?1", params![device], |row| row.get(0)).optional()?;
+        let owner: Option<Option<String>> =
+            tx.query_row("SELECT user_id FROM devices WHERE id = ?1", params![device], |row| row.get(0)).optional()?;
         if owner.flatten().as_deref() != Some(user) {
-            let count: i64 = tx.query_row(
-                "SELECT COUNT(*) FROM devices WHERE user_id = ?1 AND revoked_at IS NULL",
-                params![user],
-                |row| row.get(0),
-            )?;
+            let count: i64 =
+                tx.query_row("SELECT COUNT(*) FROM devices WHERE user_id = ?1 AND revoked_at IS NULL", params![user], |row| row.get(0))?;
             if count >= DEVICES_PER_USER {
                 return Ok(false);
             }
@@ -734,7 +757,8 @@ impl Store {
     /// Marks a team as changed so hosts re-check what they allowed. Gives the new version.
     pub fn bump(&self, team: &str) -> rusqlite::Result<u64> {
         let version: i64 =
-            self.db().query_row("UPDATE teams SET version = version + 1 WHERE id = ?1 RETURNING version", params![team], |row| row.get(0))?;
+            self.db()
+                .query_row("UPDATE teams SET version = version + 1 WHERE id = ?1 RETURNING version", params![team], |row| row.get(0))?;
         Ok(version as u64)
     }
 
@@ -780,7 +804,13 @@ impl Store {
             "INSERT OR IGNORE INTO servers (id, team_id, host_device, instance_id, name, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![id, team, host, instance, name, now as i64],
         )?;
-        Ok((added > 0).then(|| TeamServer { id, host_device: host.into(), host_user: None, instance_id: instance.into(), name: name.into() }))
+        Ok((added > 0).then(|| TeamServer {
+            id,
+            host_device: host.into(),
+            host_user: None,
+            instance_id: instance.into(),
+            name: name.into(),
+        }))
     }
 
     pub fn detach_server(&self, team: &str, id: &str) -> rusqlite::Result<bool> {
@@ -797,7 +827,13 @@ impl Store {
              WHERE s.team_id = ?1 ORDER BY s.created_at",
         )?;
         let rows = query.query_map(params![team], |row| {
-            Ok(TeamServer { id: row.get(0)?, host_device: row.get(1)?, host_user: row.get(2)?, instance_id: row.get(3)?, name: row.get(4)? })
+            Ok(TeamServer {
+                id: row.get(0)?,
+                host_device: row.get(1)?,
+                host_user: row.get(2)?,
+                instance_id: row.get(3)?,
+                name: row.get(4)?,
+            })
         })?;
         rows.collect()
     }
@@ -859,7 +895,8 @@ impl Store {
         })
     }
 
-    const INVITE_COLS: &str = "code_hash, prefix, team_id, role, created_by, created_at, expires, max_uses, uses, needs_approval, revoked_at";
+    const INVITE_COLS: &str =
+        "code_hash, prefix, team_id, role, created_by, created_at, expires, max_uses, uses, needs_approval, revoked_at";
 
     pub fn invite(&self, code_hash: &[u8]) -> rusqlite::Result<Option<Invite>> {
         self.db()
@@ -902,7 +939,9 @@ impl Store {
             return Ok(None);
         }
         let member: bool =
-            tx.query_row("SELECT EXISTS (SELECT 1 FROM members WHERE team_id = ?1 AND user_id = ?2)", params![invite.team, user], |row| row.get(0))?;
+            tx.query_row("SELECT EXISTS (SELECT 1 FROM members WHERE team_id = ?1 AND user_id = ?2)", params![invite.team, user], |row| {
+                row.get(0)
+            })?;
         if member {
             return Ok(Some(Joined::Already(invite.team)));
         }
@@ -970,7 +1009,15 @@ impl Store {
     }
 
     /// An activity row, about one of the team's servers or none.
-    pub fn record_for(&self, team: &str, server: Option<&str>, actor: Option<&str>, kind: &str, data: &serde_json::Value, now: u64) -> rusqlite::Result<Activity> {
+    pub fn record_for(
+        &self,
+        team: &str,
+        server: Option<&str>,
+        actor: Option<&str>,
+        kind: &str,
+        data: &serde_json::Value,
+        now: u64,
+    ) -> rusqlite::Result<Activity> {
         let db = self.db();
         let _ = db.execute("DELETE FROM activity WHERE at < ?1", params![now.saturating_sub(ACTIVITY_KEEP) as i64]);
         let text = data.to_string();
@@ -1040,7 +1087,9 @@ impl Store {
     pub fn stats(&self, now: u64) -> rusqlite::Result<Stats> {
         let db = self.db();
         let today = (now / DAY) as i64;
-        let count = |sql: &str, value: i64| -> rusqlite::Result<u64> { db.query_row(sql, params![value], |row| row.get::<_, i64>(0)).map(|one| one as u64) };
+        let count = |sql: &str, value: i64| -> rusqlite::Result<u64> {
+            db.query_row(sql, params![value], |row| row.get::<_, i64>(0)).map(|one| one as u64)
+        };
         let total = |sql: &str| -> rusqlite::Result<u64> { db.query_row(sql, [], |row| row.get::<_, i64>(0)).map(|one| one as u64) };
         let users_since = "SELECT COUNT(DISTINCT id) FROM install_days WHERE day >= ?1";
         let recent = now.saturating_sub(30 * DAY) as i64;

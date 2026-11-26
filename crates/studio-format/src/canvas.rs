@@ -173,7 +173,9 @@ pub fn problem(canvas: &Map<String, Value>, glyphs: Option<&Glyphs>) -> Option<S
             if let Some(table) = glyphs {
                 match table.get(&pressed) {
                     None => return Some(format!("There is no glyph :{pressed}: (make it as a glyph image, then build the pack).")),
-                    Some(glyph) if !glyph.canvas => return Some(format!(":{pressed}: is too small for its picture to go in a canvas. Make its height 8 or more.")),
+                    Some(glyph) if !glyph.canvas => {
+                        return Some(format!(":{pressed}: is too small for its picture to go in a canvas. Make its height 8 or more."))
+                    }
                     _ => {}
                 }
             }
@@ -186,7 +188,9 @@ pub fn problem(canvas: &Map<String, Value>, glyphs: Option<&Glyphs>) -> Option<S
             if let Some(table) = glyphs {
                 match table.get(&name) {
                     None => return Some(format!("There is no glyph :{name}: (make it as a glyph image, then build the pack).")),
-                    Some(glyph) if !glyph.canvas => return Some(format!(":{name}: is too small for its picture to go in a canvas. Make its height 8 or more.")),
+                    Some(glyph) if !glyph.canvas => {
+                        return Some(format!(":{name}: is too small for its picture to go in a canvas. Make its height 8 or more."))
+                    }
                     _ => {}
                 }
             }
@@ -271,12 +275,24 @@ fn canvas_font(offset: i32) -> String {
 /// - `click`: an element's index and object → its `click_event` JSON, or `None` when it isn't clickable for this
 ///   player (no permission...).
 /// - `shadow_off`: write `"shadow_color": 0` so pictures get no shadow (servers whose text type can say so).
-pub fn render(canvas: &Map<String, Value>, glyphs: &Glyphs, draw_text: impl FnMut(&str) -> (Value, String), click: impl FnMut(usize, &Map<String, Value>) -> Option<Value>, shadow_off: bool) -> Result<Rendered, String> {
+pub fn render(
+    canvas: &Map<String, Value>,
+    glyphs: &Glyphs,
+    draw_text: impl FnMut(&str) -> (Value, String),
+    click: impl FnMut(usize, &Map<String, Value>) -> Option<Value>,
+    shadow_off: bool,
+) -> Result<Rendered, String> {
     render_with(canvas, glyphs, draw_text, click, &Options { shadow_off, ..Options::default() })
 }
 
 /// Draws a canvas for one player (`Options`: hidden elements, a pressed button).
-pub fn render_with(canvas: &Map<String, Value>, glyphs: &Glyphs, mut draw_text: impl FnMut(&str) -> (Value, String), mut click: impl FnMut(usize, &Map<String, Value>) -> Option<Value>, options: &Options) -> Result<Rendered, String> {
+pub fn render_with(
+    canvas: &Map<String, Value>,
+    glyphs: &Glyphs,
+    mut draw_text: impl FnMut(&str) -> (Value, String),
+    mut click: impl FnMut(usize, &Map<String, Value>) -> Option<Value>,
+    options: &Options,
+) -> Result<Rendered, String> {
     let shadow_off = options.shadow_off;
     let widths = Widths::vanilla();
     let width = int(canvas, "width", 176, 1, MOST_BODY);
@@ -310,8 +326,14 @@ pub fn render_with(canvas: &Map<String, Value>, glyphs: &Glyphs, mut draw_text: 
         }
         match text(one, "type").as_str() {
             "image" | "button" => {
-                let pressed = (options.pressed == Some(at)).then(|| pressed_glyph(one)).flatten().and_then(|name| glyphs.get(&name)).filter(|glyph| glyph.canvas);
-                let Some(glyph) = pressed.or_else(|| glyphs.get(&text(one, "glyph")).filter(|glyph| glyph.canvas)).cloned() else { continue };
+                let pressed = (options.pressed == Some(at))
+                    .then(|| pressed_glyph(one))
+                    .flatten()
+                    .and_then(|name| glyphs.get(&name))
+                    .filter(|glyph| glyph.canvas);
+                let Some(glyph) = pressed.or_else(|| glyphs.get(&text(one, "glyph")).filter(|glyph| glyph.canvas)).cloned() else {
+                    continue;
+                };
                 found.push(Element::Image { glyph, x, y, style });
             }
             "text" => {
@@ -423,7 +445,9 @@ mod tests {
     use super::*;
 
     fn table() -> Glyphs {
-        Glyphs::parse(r#"{"glyphs":{"bg":{"char":"","advance":177,"width":176,"height":166},"buy":{"char":"","advance":17,"width":16,"height":16},"tiny":{"char":"","advance":3,"canvas":false}},"hit":{"char":"","advance":2}}"#)
+        Glyphs::parse(
+            r#"{"glyphs":{"bg":{"char":"","advance":177,"width":176,"height":166},"buy":{"char":"","advance":17,"width":16,"height":16},"tiny":{"char":"","advance":3,"canvas":false}},"hit":{"char":"","advance":2}}"#,
+        )
     }
 
     fn data(text: &str) -> Map<String, Value> {
@@ -447,8 +471,12 @@ mod tests {
 
     #[test]
     fn places_pictures_on_lines_and_spots() {
-        let canvas = data(r#"{"width":176,"height":166,"elements":[{"type":"image","glyph":"bg","x":0,"y":0},{"type":"button","glyph":"buy","x":20,"y":40,"tooltip":"Buy","actions":[]}]}"#);
-        let drawn = render(&canvas, &table(), plain, |at, _| Some(json!({ "action": "custom", "id": format!("monolab:dialog/shop/c{at}") })), true).unwrap();
+        let canvas = data(
+            r#"{"width":176,"height":166,"elements":[{"type":"image","glyph":"bg","x":0,"y":0},{"type":"button","glyph":"buy","x":20,"y":40,"tooltip":"Buy","actions":[]}]}"#,
+        );
+        let drawn =
+            render(&canvas, &table(), plain, |at, _| Some(json!({ "action": "custom", "id": format!("monolab:dialog/shop/c{at}") })), true)
+                .unwrap();
         // The background moves the pen 177 (176 drawn + the gap), one past the canvas width.
         assert_eq!(drawn.width, 177 + 8 + 32);
         let lines = drawn.content["extra"].as_array().unwrap();
@@ -486,7 +514,9 @@ mod tests {
 
     #[test]
     fn text_moves_by_pixels_unless_unifont() {
-        let canvas = data(r#"{"width":100,"height":27,"elements":[{"type":"text","text":"Shop","x":50,"y":4,"align":"center"},{"type":"text","text":"상점","x":0,"y":13}]}"#);
+        let canvas = data(
+            r#"{"width":100,"height":27,"elements":[{"type":"text","text":"Shop","x":50,"y":4,"align":"center"},{"type":"text","text":"상점","x":0,"y":13}]}"#,
+        );
         let drawn = render(&canvas, &table(), plain, |_, _| None, true).unwrap();
         let lines = drawn.content["extra"].as_array().unwrap();
         let wrapper = lines[0]["extra"].as_array().unwrap().iter().find(|one| one.get("extra").is_some()).unwrap();
@@ -511,13 +541,21 @@ mod tests {
 
     #[test]
     fn hidden_and_pressed_elements() {
-        let canvas = data(r#"{"width":100,"height":18,"elements":[{"type":"button","glyph":"buy","pressed":"bg","x":0,"y":0,"actions":[]},{"type":"area","x":0,"y":9,"w":20,"h":9,"actions":[]}]}"#);
+        let canvas = data(
+            r#"{"width":100,"height":18,"elements":[{"type":"button","glyph":"buy","pressed":"bg","x":0,"y":0,"actions":[]},{"type":"area","x":0,"y":9,"w":20,"h":9,"actions":[]}]}"#,
+        );
         let mut clicks = Vec::new();
         let options = Options { shadow_off: true, hidden: [1].into_iter().collect(), pressed: Some(0) };
-        let drawn = render_with(&canvas, &table(), plain, |at, _| {
-            clicks.push(at);
-            Some(json!({ "action": "custom", "id": "x" }))
-        }, &options)
+        let drawn = render_with(
+            &canvas,
+            &table(),
+            plain,
+            |at, _| {
+                clicks.push(at);
+                Some(json!({ "action": "custom", "id": "x" }))
+            },
+            &options,
+        )
         .unwrap();
         // The hidden area gets no click and isn't drawn; the button shows its pressed picture.
         assert_eq!(clicks, vec![0]);
@@ -539,7 +577,9 @@ mod tests {
         assert_eq!(after(&data(r#"{"close":false}"#)), "stay");
         assert_eq!(after(&data(r#"{"close":false,"after":"refresh"}"#)), "refresh");
         assert_eq!(after(&data(r#"{"after":"wobble"}"#)), "close");
-        let steps: Value = serde_json::from_str(r#"[{"type":"message"},{"type":"if","if":[{"type":"quest"}],"then":[{"type":"menu","menu":"x"}]}]"#).unwrap();
+        let steps: Value =
+            serde_json::from_str(r#"[{"type":"message"},{"type":"if","if":[{"type":"quest"}],"then":[{"type":"menu","menu":"x"}]}]"#)
+                .unwrap();
         assert_eq!(leaving(Some(&steps)), vec!["menu"]);
         assert!(leaving(Some(&json!([{ "type": "set" }]))).is_empty());
         assert!(leaving(None).is_empty());
@@ -554,7 +594,9 @@ mod tests {
         assert_eq!(problem(&data(r#"{"after":"refresh"}"#), None), None);
         assert!(problem(&data(r#"{"elements":[{"type":"text","if":"yes"}]}"#), None).is_some());
         assert_eq!(problem(&data(r#"{"elements":[{"type":"text","if":[]}]}"#), None), None);
-        assert!(problem(&data(r#"{"elements":[{"type":"button","glyph":"buy","pressed":"nope"}]}"#), Some(&glyphs)).unwrap().contains(":nope:"));
+        assert!(problem(&data(r#"{"elements":[{"type":"button","glyph":"buy","pressed":"nope"}]}"#), Some(&glyphs))
+            .unwrap()
+            .contains(":nope:"));
         assert!(problem(&data(r#"{"elements":[{"type":"button","glyph":"buy","pressed":"Bad Name"}]}"#), None).is_some());
         assert_eq!(problem(&data(r#"{"elements":[{"type":"button","glyph":"buy","pressed":"bg"}]}"#), Some(&glyphs)), None);
         assert_eq!(variables_problem(&data(r#"{}"#)), None);

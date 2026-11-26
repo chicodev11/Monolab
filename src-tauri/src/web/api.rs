@@ -1,4 +1,3 @@
-
 use super::auth::{self, Account};
 use tauri::{AppHandle, Manager};
 
@@ -317,25 +316,107 @@ const WRITES: &[&str] = &[
 /// Every command on the change lists needs one (a test checks), so a role with nothing ticked changes nothing.
 pub fn needs(command: &str) -> &'static [&'static str] {
     match command {
-        "get_console_logs" | "list_log_files" | "summarize_logs" | "read_log_timeline" | "list_log_entries" | "list_crash_reports" | "preview_share_log" => &["console.view"],
+        "get_console_logs" | "list_log_files" | "summarize_logs" | "read_log_timeline" | "list_log_entries" | "list_crash_reports"
+        | "preview_share_log" => &["console.view"],
         "send_console_command" | "send_rcon_command" | "share_log" => &["console.send"],
-        "start_instance" | "stop_instance" | "restart_instance" | "force_stop_instance" | "set_start_with_app" | "set_crash_restart" => &["power"],
-        "browse_server_files" | "read_editable_file" | "view_server_file" | "read_server_image" | "read_texture_animation" | "list_server_trash" => &["files.read"],
-        "save_editable_file" | "save_server_properties" | "nbt_open" | "nbt_open_chunk" | "nbt_act" | "nbt_copy" | "nbt_save" | "nbt_close" | "rename_server_path"
-        | "trash_server_path" | "restore_server_trash" | "delete_server_trash" | "empty_server_trash" | "clean_disk" | "chunky_run" | "create_server_folder"
-        | "create_server_file" | "add_server_uploads" | "zip_server_paths" | "unzip_server_path" => &["files.write"],
+        "start_instance" | "stop_instance" | "restart_instance" | "force_stop_instance" | "set_start_with_app" | "set_crash_restart" => {
+            &["power"]
+        }
+        "browse_server_files"
+        | "read_editable_file"
+        | "view_server_file"
+        | "read_server_image"
+        | "read_texture_animation"
+        | "list_server_trash" => &["files.read"],
+        "save_editable_file"
+        | "save_server_properties"
+        | "nbt_open"
+        | "nbt_open_chunk"
+        | "nbt_act"
+        | "nbt_copy"
+        | "nbt_save"
+        | "nbt_close"
+        | "rename_server_path"
+        | "trash_server_path"
+        | "restore_server_trash"
+        | "delete_server_trash"
+        | "empty_server_trash"
+        | "clean_disk"
+        | "chunky_run"
+        | "create_server_folder"
+        | "create_server_file"
+        | "add_server_uploads"
+        | "zip_server_paths"
+        | "unzip_server_path" => &["files.write"],
         // Whole files and packs as they are: secrets in them can't be hidden.
         "read_server_file_download" | "export_mrpack_download" => &["secrets"],
-        "set_addon_config" | "toggle_addon" | "apply_addon_updates" | "delete_addon" | "install_addon" | "set_pumpkin_addon_allowed" | "allow_pumpkin_plugin" | "install_addon_with_dependencies"
-        | "install_modrinth" | "remove_addon" | "rollback_addon_update" | "add_addon_upload" | "add_addon_files" | "install_datapack" | "cancel_pending_addon"
-        | "preview_mrpack" | "search_modpacks" | "preview_cfpack" | "import_cfpack" | "import_mrpack" | "download_modpack" => &["plugins"],
-        "create_backup" | "delete_backup" | "rewind_scan" | "rewind_restore" | "set_rewind_enabled" | "restore_backup" | "restore_backup_paths" => &["backups"],
-        "studio_overview" | "studio_read" | "studio_watch" | "studio_unwatch" | "studio_template" | "studio_assets" | "studio_asset_list" | "studio_asset_image" | "studio_expansions" => &["studio.read"],
-        "studio_save" | "download_studio_assets" | "studio_asset_add_upload" | "studio_asset_remove" | "studio_pack_build" | "studio_bundle_peek_upload" | "studio_bundle_import_upload" => &["studio.write"],
-        "toggle_player_access" | "edit_player_item" | "essentials_set_setting" | "luckperms_data" | "extension_set" | "run_extension_action" => &["players"],
-        "update_launch_settings" | "save_task" | "delete_task" | "run_task_now" | "save_bookmark" | "delete_bookmark" | "save_world_settings" | "clear_server_icon"
-        | "rename_instance" | "set_server_group" | "set_server_memo" | "agent_update_todo" | "add_memo_image" | "delete_memo_image" | "set_server_icon_upload" | "playit_expose"
-        | "playit_unexpose" | "upgrade_instance" | "rollback_last_upgrade" | "trash_instance" | "save_server_agents_md" | "msmp_setup" | "msmp_set_setting" | "msmp_set_rule" => &["settings"],
+        "set_addon_config"
+        | "toggle_addon"
+        | "apply_addon_updates"
+        | "delete_addon"
+        | "install_addon"
+        | "set_pumpkin_addon_allowed"
+        | "allow_pumpkin_plugin"
+        | "install_addon_with_dependencies"
+        | "install_modrinth"
+        | "remove_addon"
+        | "rollback_addon_update"
+        | "add_addon_upload"
+        | "add_addon_files"
+        | "install_datapack"
+        | "cancel_pending_addon"
+        | "preview_mrpack"
+        | "search_modpacks"
+        | "preview_cfpack"
+        | "import_cfpack"
+        | "import_mrpack"
+        | "download_modpack" => &["plugins"],
+        "create_backup"
+        | "delete_backup"
+        | "rewind_scan"
+        | "rewind_restore"
+        | "set_rewind_enabled"
+        | "restore_backup"
+        | "restore_backup_paths" => &["backups"],
+        "studio_overview" | "studio_read" | "studio_watch" | "studio_unwatch" | "studio_template" | "studio_assets"
+        | "studio_asset_list" | "studio_asset_image" | "studio_expansions" => &["studio.read"],
+        "studio_save"
+        | "download_studio_assets"
+        | "studio_asset_add_upload"
+        | "studio_asset_remove"
+        | "studio_pack_build"
+        | "studio_bundle_peek_upload"
+        | "studio_bundle_import_upload" => &["studio.write"],
+        "toggle_player_access"
+        | "edit_player_item"
+        | "essentials_set_setting"
+        | "luckperms_data"
+        | "extension_set"
+        | "run_extension_action" => &["players"],
+        "update_launch_settings"
+        | "save_task"
+        | "delete_task"
+        | "run_task_now"
+        | "save_bookmark"
+        | "delete_bookmark"
+        | "save_world_settings"
+        | "clear_server_icon"
+        | "rename_instance"
+        | "set_server_group"
+        | "set_server_memo"
+        | "agent_update_todo"
+        | "add_memo_image"
+        | "delete_memo_image"
+        | "set_server_icon_upload"
+        | "playit_expose"
+        | "playit_unexpose"
+        | "upgrade_instance"
+        | "rollback_last_upgrade"
+        | "trash_instance"
+        | "save_server_agents_md"
+        | "msmp_setup"
+        | "msmp_set_setting"
+        | "msmp_set_rule" => &["settings"],
         // A file waiting to be used by another change (an icon, a plugin, an upload): any change will do.
         "stash_upload" => &["files.write", "plugins", "settings", "studio.write"],
         _ => &[],
@@ -368,17 +449,10 @@ pub fn without_console(mut value: serde_json::Value, perms: &[String]) -> serde_
 }
 
 fn server_of(body: &serde_json::Value) -> Option<String> {
-    body.get("id")
-        .and_then(|value| value.as_str())
-        .map(str::to_string)
+    body.get("id").and_then(|value| value.as_str()).map(str::to_string)
 }
 
-pub fn run(
-    app: &AppHandle,
-    command: &str,
-    body: &serde_json::Value,
-    who: Option<&Account>,
-) -> Result<serde_json::Value, String> {
+pub fn run(app: &AppHandle, command: &str, body: &serde_json::Value, who: Option<&Account>) -> Result<serde_json::Value, String> {
     if !READS.contains(&command) && !WRITES.contains(&command) && !ADMINS.contains(&command) {
         return Err("Not available from the web.".into());
     }
@@ -431,12 +505,13 @@ pub fn run(
     Ok(value)
 }
 
-
 /// A setting name that holds a secret: `rcon.password`, `management-server-secret`, `token`,
 /// `discord.bot-token`, `api_key`, `password` in a plugin's config…
 fn secret_name(name: &str) -> bool {
     let name = name.trim().trim_matches('"').trim_matches('\'').to_ascii_lowercase();
-    ["password", "passwd", "secret", "token", "apikey", "api-key", "api_key", "private-key", "private_key", "webhook"].iter().any(|one| name.contains(one))
+    ["password", "passwd", "secret", "token", "apikey", "api-key", "api_key", "private-key", "private_key", "webhook"]
+        .iter()
+        .any(|one| name.contains(one))
 }
 
 /// What a role without `secrets` (a Viewer) gets back: secret values in settings and in file text replaced by asterisks.
@@ -444,7 +519,9 @@ fn secret_name(name: &str) -> bool {
 fn hide_secrets(value: &mut serde_json::Value) {
     use std::sync::OnceLock;
     static LINE: OnceLock<regex::Regex> = OnceLock::new();
-    let line = LINE.get_or_init(|| regex::Regex::new(r#"(?m)^([ \t]*"?([A-Za-z0-9_.\-]+)"?[ \t]*[:=][ \t]*)(.+?)([ \t]*,?)\r?$"#).expect("secret line regex"));
+    let line = LINE.get_or_init(|| {
+        regex::Regex::new(r#"(?m)^([ \t]*"?([A-Za-z0-9_.\-]+)"?[ \t]*[:=][ \t]*)(.+?)([ \t]*,?)\r?$"#).expect("secret line regex")
+    });
     match value {
         serde_json::Value::String(text) => {
             if line.is_match(text) {
@@ -472,7 +549,6 @@ fn hide_secrets(value: &mut serde_json::Value) {
         _ => {}
     }
 }
-
 
 /// Commands that name no server and are safe for anyone signed in. Lists are trimmed by [`hide_other_servers`].
 const ANY_SERVER: &[&str] = &[
@@ -532,7 +608,8 @@ fn hide_other_servers(app: &AppHandle, command: &str, value: &mut serde_json::Va
         }
         "playit_state" => {
             // Tunnels are matched to servers by port; only show the ones for servers this account may open.
-            let ports: Vec<u64> = crate::web_server_ports(app).into_iter().filter(|(id, _)| who.may(id)).map(|(_, port)| port as u64).collect();
+            let ports: Vec<u64> =
+                crate::web_server_ports(app).into_iter().filter(|(id, _)| who.may(id)).map(|(_, port)| port as u64).collect();
             if let Some(list) = value.get_mut("tunnels").and_then(|one| one.as_array_mut()) {
                 list.retain(|item| item.get("localPort").and_then(|one| one.as_u64()).is_some_and(|port| ports.contains(&port)));
             }
@@ -581,7 +658,9 @@ pub fn run_server_admin(app: &AppHandle, command: &str, body: &serde_json::Value
 /// so nothing about other servers on this PC leaks to a guest.
 pub fn events_for(text: &str, servers: &[String]) -> serde_json::Value {
     let mut value: serde_json::Value = serde_json::from_str(text).unwrap_or_else(|_| serde_json::json!({ "events": [], "at": 0 }));
-    let ours = |item: &serde_json::Value| item.get("serverId").and_then(|one| one.as_str()).is_some_and(|id| servers.iter().any(|mine| mine == id));
+    let ours = |item: &serde_json::Value| {
+        item.get("serverId").and_then(|one| one.as_str()).is_some_and(|id| servers.iter().any(|mine| mine == id))
+    };
     if let Some(events) = value.get_mut("events").and_then(|one| one.as_array_mut()) {
         events.retain_mut(|event| match event.get_mut("payload") {
             Some(serde_json::Value::Array(items)) => {
@@ -617,14 +696,9 @@ pub fn wait_for_events(app: &AppHandle, after: u64, most: std::time::Duration) -
 pub fn events_since(app: &AppHandle, after: u64) -> String {
     let held = app.state::<crate::WebEvents>();
     let queue = held.lock().expect("web events poisoned");
-    let from = queue
-        .iter()
-        .position(|(at, _, _)| *at > after)
-        .unwrap_or(queue.len());
-    let events: Vec<serde_json::Value> = queue[from..]
-        .iter()
-        .map(|(_, event, payload)| serde_json::json!({ "event": event, "payload": payload }))
-        .collect();
+    let from = queue.iter().position(|(at, _, _)| *at > after).unwrap_or(queue.len());
+    let events: Vec<serde_json::Value> =
+        queue[from..].iter().map(|(_, event, payload)| serde_json::json!({ "event": event, "payload": payload })).collect();
     let at = queue.last().map(|(at, _, _)| *at).unwrap_or(after);
     serde_json::json!({ "events": events, "at": at }).to_string()
 }
@@ -640,7 +714,13 @@ mod secret_tests {
             assert!(super::is_read(read), "{read}");
             assert_eq!(super::needs(read), &["studio.read"], "{read}");
         }
-        for write in ["studio_asset_add_upload", "studio_asset_remove", "studio_pack_build", "studio_bundle_peek_upload", "studio_bundle_import_upload"] {
+        for write in [
+            "studio_asset_add_upload",
+            "studio_asset_remove",
+            "studio_pack_build",
+            "studio_bundle_peek_upload",
+            "studio_bundle_import_upload",
+        ] {
             assert!(super::WRITES.contains(&write) && !super::is_read(write), "{write}");
             assert_eq!(super::needs(write), &["studio.write"], "{write}");
         }
@@ -667,7 +747,11 @@ mod secret_tests {
     }
 
     fn perms(role: &str) -> Vec<String> {
-        let custom = vec![super::auth::CustomRole { id: "role:console".into(), name: "Console".into(), perms: vec!["console.view".into(), "console.send".into()] }];
+        let custom = vec![super::auth::CustomRole {
+            id: "role:console".into(),
+            name: "Console".into(),
+            perms: vec!["console.view".into(), "console.send".into()],
+        }];
         super::auth::perms_of(role, &custom)
     }
 

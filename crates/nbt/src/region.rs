@@ -33,10 +33,7 @@ pub struct ChunkInfo {
 
 /// Reads `r.X.Z.mca` into its region coordinates.
 pub fn region_coords(file_name: &str) -> Option<(i32, i32)> {
-    let mut parts = file_name
-        .strip_prefix("r.")?
-        .strip_suffix(".mca")?
-        .split('.');
+    let mut parts = file_name.strip_prefix("r.")?.strip_suffix(".mca")?.split('.');
     let x = parts.next()?.parse().ok()?;
     let z = parts.next()?.parse().ok()?;
     parts.next().is_none().then_some((x, z))
@@ -44,9 +41,7 @@ pub fn region_coords(file_name: &str) -> Option<(i32, i32)> {
 
 impl Region {
     pub fn empty() -> Region {
-        Region {
-            slots: vec![None; 1024],
-        }
+        Region { slots: vec![None; 1024] }
     }
 
     pub fn read(bytes: &[u8]) -> Result<Region, String> {
@@ -78,12 +73,7 @@ impl Region {
             let Some(payload) = bytes.get(offset + 5..offset + 4 + length) else {
                 continue;
             };
-            *slot = Some(Slot {
-                timestamp,
-                scheme: scheme & 0x7f,
-                payload: payload.to_vec(),
-                external: scheme & 0x80 != 0,
-            });
+            *slot = Some(Slot { timestamp, scheme: scheme & 0x7f, payload: payload.to_vec(), external: scheme & 0x80 != 0 });
         }
         Ok(Region { slots })
     }
@@ -116,16 +106,8 @@ impl Region {
 
     /// Decodes one chunk. `external` supplies the `.mcc` bytes for chunks too
     /// large for the region, and is only called for those.
-    pub fn load(
-        &self,
-        index: usize,
-        external: impl FnOnce() -> Result<Vec<u8>, String>,
-    ) -> Result<NbtFile, String> {
-        let slot = self
-            .slots
-            .get(index)
-            .and_then(Option::as_ref)
-            .ok_or("That chunk is empty.")?;
+    pub fn load(&self, index: usize, external: impl FnOnce() -> Result<Vec<u8>, String>) -> Result<NbtFile, String> {
+        let slot = self.slots.get(index).and_then(Option::as_ref).ok_or("That chunk is empty.")?;
         let owned;
         let bytes = if slot.external {
             owned = external()?;
@@ -142,11 +124,7 @@ impl Region {
         };
         let raw = binary::decompress(bytes, compression)?;
         let (name, root) = binary::read_root(&raw)?;
-        Ok(NbtFile {
-            name,
-            root,
-            compression,
-        })
+        Ok(NbtFile { name, root, compression })
     }
 
     /// Replaces a chunk with `file`, compressed the way `file` says.
@@ -161,12 +139,7 @@ impl Region {
             return Err("This chunk is over 1 MB once saved, which needs an external file; that is not supported yet.".into());
         }
         let slot = self.slots.get_mut(index).ok_or("No such chunk.")?;
-        *slot = Some(Slot {
-            timestamp,
-            scheme,
-            payload,
-            external: false,
-        });
+        *slot = Some(Slot { timestamp, scheme, payload, external: false });
         Ok(())
     }
 
@@ -181,11 +154,7 @@ impl Region {
         let mut out = vec![0u8; SECTOR * 2];
         for (index, slot) in self.slots.iter().enumerate() {
             let Some(slot) = slot else { continue };
-            let body = if slot.external {
-                1
-            } else {
-                slot.payload.len() + 1
-            };
+            let body = if slot.external { 1 } else { slot.payload.len() + 1 };
             let sectors = (body + 4).div_ceil(SECTOR);
             let offset = out.len() / SECTOR;
             let entry = ((offset as u32) << 8) | sectors as u32;

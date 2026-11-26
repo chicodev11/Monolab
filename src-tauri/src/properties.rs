@@ -1,4 +1,3 @@
-
 use serde::Serialize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, specta::Type)]
@@ -39,25 +38,13 @@ const fn spec(
     max: Option<i64>,
     common: bool,
 ) -> Spec {
-    Spec {
-        key,
-        kind,
-        options,
-        min,
-        max,
-        common,
-    }
+    Spec { key, kind, options, min, max, common }
 }
 
 const DIFFICULTIES: &[&str] = &["peaceful", "easy", "normal", "hard"];
 const GAMEMODES: &[&str] = &["survival", "creative", "adventure", "spectator"];
-const LEVEL_TYPES: &[&str] = &[
-    "minecraft:normal",
-    "minecraft:flat",
-    "minecraft:large_biomes",
-    "minecraft:amplified",
-    "minecraft:single_biome_surface",
-];
+const LEVEL_TYPES: &[&str] =
+    &["minecraft:normal", "minecraft:flat", "minecraft:large_biomes", "minecraft:amplified", "minecraft:single_biome_surface"];
 
 static SPECS: &[Spec] = &[
     spec("motd", ValueKind::Text, &[], None, None, true),
@@ -120,11 +107,7 @@ pub fn describe(key: &str, value: &str) -> PropertyInfo {
         None => PropertyInfo {
             key: key.to_string(),
             value: value.to_string(),
-            kind: if value == "true" || value == "false" {
-                ValueKind::Toggle
-            } else {
-                ValueKind::Text
-            },
+            kind: if value == "true" || value == "false" { ValueKind::Toggle } else { ValueKind::Text },
             options: Vec::new(),
             min: None,
             max: None,
@@ -148,11 +131,7 @@ pub fn unescape(value: &str) -> String {
             Some('f') => out.push('\u{000C}'),
             Some('u') => {
                 let hex: String = chars.clone().take(4).collect();
-                match u32::from_str_radix(&hex, 16)
-                    .ok()
-                    .filter(|_| hex.len() == 4)
-                    .and_then(char::from_u32)
-                {
+                match u32::from_str_radix(&hex, 16).ok().filter(|_| hex.len() == 4).and_then(char::from_u32) {
                     Some(found) => {
                         out.push(found);
                         for _ in 0..4 {
@@ -199,9 +178,7 @@ pub fn parse(text: &str) -> Vec<(String, String)> {
 }
 
 pub fn needs_check(before: &[(String, String)], key: &str, value: &str) -> bool {
-    !before
-        .iter()
-        .any(|(old_key, old_value)| old_key == key && old_value == value)
+    !before.iter().any(|(old_key, old_value)| old_key == key && old_value == value)
 }
 
 pub fn validate(key: &str, value: &str) -> Result<(), String> {
@@ -236,10 +213,7 @@ pub fn validate(key: &str, value: &str) -> Result<(), String> {
             if spec.options.contains(&value) {
                 Ok(())
             } else {
-                Err(format!(
-                    "{key} must be one of {}.",
-                    spec.options.join(", ")
-                ))
+                Err(format!("{key} must be one of {}.", spec.options.join(", ")))
             }
         }
         ValueKind::Text => {
@@ -266,14 +240,7 @@ mod tests {
 
     #[test]
     fn puts_the_backslashes_back_when_saving() {
-        for line in [
-            r"minecraft\:normal",
-            r"https\://example.com/pack.zip",
-            r"hunter2",
-            r"tab\there",
-            r"back\\slash",
-            r"a\=b",
-        ] {
+        for line in [r"minecraft\:normal", r"https\://example.com/pack.zip", r"hunter2", r"tab\there", r"back\\slash", r"a\=b"] {
             assert_eq!(escape(&unescape(line)), line, "{line}");
         }
     }

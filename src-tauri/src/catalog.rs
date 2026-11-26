@@ -1,4 +1,3 @@
-
 use serde::Serialize;
 
 #[derive(Clone, Debug, Serialize, specta::Type)]
@@ -23,9 +22,27 @@ pub struct CatalogHit {
 pub fn is_loader(name: &str) -> bool {
     matches!(
         name,
-        "paper" | "folia" | "purpur" | "spigot" | "bukkit" | "fabric" | "forge" | "neoforge" | "quilt"
-            | "velocity" | "bungeecord" | "waterfall" | "sponge" | "datapack" | "rift" | "liteloader"
-            | "modloader" | "canvas" | "iris" | "optifine" | "vanilla" | "minecraft"
+        "paper"
+            | "folia"
+            | "purpur"
+            | "spigot"
+            | "bukkit"
+            | "fabric"
+            | "forge"
+            | "neoforge"
+            | "quilt"
+            | "velocity"
+            | "bungeecord"
+            | "waterfall"
+            | "sponge"
+            | "datapack"
+            | "rift"
+            | "liteloader"
+            | "modloader"
+            | "canvas"
+            | "iris"
+            | "optifine"
+            | "vanilla"
+            | "minecraft"
     )
 }
-

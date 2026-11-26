@@ -34,7 +34,11 @@ pub fn read_runs(answer: &Value) -> Result<Vec<TestRun>, String> {
             rule: one.get("rule").and_then(Value::as_str).unwrap_or_default().to_string(),
             matched: one.get("matched").and_then(Value::as_bool).unwrap_or(false),
             passed: one.get("passed").and_then(Value::as_bool).unwrap_or(false),
-            ran: one.get("ran").and_then(Value::as_array).map(|list| list.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
+            ran: one
+                .get("ran")
+                .and_then(Value::as_array)
+                .map(|list| list.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                .unwrap_or_default(),
         })
         .collect())
 }
@@ -106,7 +110,10 @@ pub fn unhex(text: &str) -> Result<Vec<u8>, String> {
     if !text.len().is_multiple_of(2) {
         return Err("The item bytes are cut short.".into());
     }
-    (0..text.len()).step_by(2).map(|at| u8::from_str_radix(&text[at..at + 2], 16).map_err(|_| "The item bytes aren't hex.".to_string())).collect()
+    (0..text.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(&text[at..at + 2], 16).map_err(|_| "The item bytes aren't hex.".to_string()))
+        .collect()
 }
 
 /// The answer file's item as pretty JSON, or why there is none.

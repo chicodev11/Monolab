@@ -1,4 +1,3 @@
-
 use crate::data_root::MonolabDirs;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -41,10 +40,8 @@ pub fn find_claude(app: &AppHandle) -> Option<PathBuf> {
 }
 
 fn folder_name(name: &str, id: &str) -> String {
-    let clean: String = name
-        .chars()
-        .map(|letter| if "<>:\"/\\|?*".contains(letter) || letter.is_control() { '_' } else { letter })
-        .collect();
+    let clean: String =
+        name.chars().map(|letter| if "<>:\"/\\|?*".contains(letter) || letter.is_control() { '_' } else { letter }).collect();
     let clean = clean.trim().trim_end_matches(['.', ' ']).to_string();
     let reserved = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "LPT1", "LPT2", "LPT3"];
     if clean.is_empty() || reserved.contains(&clean.to_ascii_uppercase().as_str()) {
@@ -56,11 +53,7 @@ fn folder_name(name: &str, id: &str) -> String {
 
 pub(crate) fn history_dir(app: &AppHandle, dir: &Path) -> Option<PathBuf> {
     let shared = crate::claude_accounts::shared_root(app).ok()?;
-    let slug: String = dir
-        .to_string_lossy()
-        .chars()
-        .map(|letter| if letter.is_ascii_alphanumeric() { letter } else { '-' })
-        .collect();
+    let slug: String = dir.to_string_lossy().chars().map(|letter| if letter.is_ascii_alphanumeric() { letter } else { '-' }).collect();
     Some(shared.join("projects").join(slug))
 }
 
@@ -84,16 +77,10 @@ fn folder_map_file(app: &AppHandle) -> Result<PathBuf, String> {
 pub(crate) fn workspace(app: &AppHandle, server: &str) -> Result<PathBuf, String> {
     let instance = crate::team_agent::instance_for(app, server)?;
     let shared = crate::team_agent::parse(server).is_some();
-    let root = app
-        .path()
-        .document_dir()
-        .map_err(|error| format!("Could not find the Documents folder: {error}"))?
-        .join("Monolab");
+    let root = app.path().document_dir().map_err(|error| format!("Could not find the Documents folder: {error}"))?.join("Monolab");
     let map_file = folder_map_file(app)?;
-    let mut map: HashMap<String, String> = std::fs::read_to_string(&map_file)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
+    let mut map: HashMap<String, String> =
+        std::fs::read_to_string(&map_file).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default();
     let base = folder_name(&instance.name, server);
     let taken = |candidate: &Path, map: &HashMap<String, String>| {
         candidate.exists() || map.iter().any(|(id, path)| id != server && Path::new(path) == candidate)
@@ -149,10 +136,7 @@ pub(crate) fn workspace(app: &AppHandle, server: &str) -> Result<PathBuf, String
 pub fn open_folder(app: &AppHandle, server: &str) -> Result<(), String> {
     let dir = workspace(app, server)?;
     let program = if cfg!(windows) { "explorer" } else { "xdg-open" };
-    std::process::Command::new(program)
-        .arg(&dir)
-        .spawn()
-        .map_err(|error| format!("Could not open Explorer: {error}"))?;
+    std::process::Command::new(program).arg(&dir).spawn().map_err(|error| format!("Could not open Explorer: {error}"))?;
     Ok(())
 }
 
@@ -188,11 +172,7 @@ Keep the source of custom plugins and mods in project folders here; only the bui
 pub(crate) fn has_history(app: &AppHandle, dir: &Path) -> bool {
     let Some(place) = history_dir(app, dir) else { return false };
     std::fs::read_dir(place)
-        .map(|entries| {
-            entries
-                .flatten()
-                .any(|entry| entry.path().extension().is_some_and(|ext| ext == "jsonl"))
-        })
+        .map(|entries| entries.flatten().any(|entry| entry.path().extension().is_some_and(|ext| ext == "jsonl")))
         .unwrap_or(false)
 }
 
@@ -217,9 +197,27 @@ pub(crate) fn mcp_config(app: &AppHandle, server: &str) -> Result<PathBuf, Strin
 
 /// Shell deletes go through delete_file instead; the rest are host tools an app chat never uses, and every listed tool is re-sent on each call.
 pub(crate) const DENIED_TOOLS: [&str; 21] = [
-    "--disallowedTools", "Bash(rm:*)", "Bash(rmdir:*)", "Bash(del:*)", "Bash(rd:*)", "NotebookEdit", "Task", "Agent", "Workflow", "CronCreate",
-    "CronDelete", "CronList", "Monitor", "PushNotification", "ScheduleWakeup", "SendMessage", "ListAgents", "DesignSync", "EnterWorktree",
-    "ExitWorktree", "ReportFindings",
+    "--disallowedTools",
+    "Bash(rm:*)",
+    "Bash(rmdir:*)",
+    "Bash(del:*)",
+    "Bash(rd:*)",
+    "NotebookEdit",
+    "Task",
+    "Agent",
+    "Workflow",
+    "CronCreate",
+    "CronDelete",
+    "CronList",
+    "Monitor",
+    "PushNotification",
+    "ScheduleWakeup",
+    "SendMessage",
+    "ListAgents",
+    "DesignSync",
+    "EnterWorktree",
+    "ExitWorktree",
+    "ReportFindings",
 ];
 
 /// The briefing plus the server's shared rules (its AGENTS.md), read at the start of a chat.

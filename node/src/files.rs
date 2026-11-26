@@ -84,9 +84,49 @@ pub fn editable_file(path: &Path) -> bool {
     let Some(extension) = path.extension().and_then(|one| one.to_str()) else { return true };
     !matches!(
         extension.to_ascii_lowercase().as_str(),
-        "jar" | "zip" | "gz" | "7z" | "rar" | "exe" | "dll" | "mca" | "dat" | "dat_old" | "nbt" | "png" | "jpg" | "jpeg" | "gif" | "webp" | "ico" | "mp3"
-            | "ogg" | "wav" | "ttf" | "otf" | "woff" | "woff2" | "pdf" | "db" | "mv" | "lock" | "class" | "so" | "dylib" | "bin" | "hprof" | "jfr"
-            | "pyc" | "tar" | "xz" | "bz2" | "zst" | "mp4" | "webm" | "pump" | "mcr"
+        "jar"
+            | "zip"
+            | "gz"
+            | "7z"
+            | "rar"
+            | "exe"
+            | "dll"
+            | "mca"
+            | "dat"
+            | "dat_old"
+            | "nbt"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "webp"
+            | "ico"
+            | "mp3"
+            | "ogg"
+            | "wav"
+            | "ttf"
+            | "otf"
+            | "woff"
+            | "woff2"
+            | "pdf"
+            | "db"
+            | "mv"
+            | "lock"
+            | "class"
+            | "so"
+            | "dylib"
+            | "bin"
+            | "hprof"
+            | "jfr"
+            | "pyc"
+            | "tar"
+            | "xz"
+            | "bz2"
+            | "zst"
+            | "mp4"
+            | "webm"
+            | "pump"
+            | "mcr"
     )
 }
 
@@ -128,7 +168,8 @@ fn escape_text(error: PathError) -> String {
 pub fn browse(root: &Path, path: &str, offset: Option<u64>, limit: Option<u64>) -> Result<BrowsePage, String> {
     let root = root.canonicalize().map_err(|error| format!("Server folder not found: {error}"))?;
     let requested = path.trim();
-    let target = if requested.is_empty() || requested == "/" { root.clone() } else { resolve_in_server(&root, requested).map_err(escape_text)? };
+    let target =
+        if requested.is_empty() || requested == "/" { root.clone() } else { resolve_in_server(&root, requested).map_err(escape_text)? };
     if !target.is_dir() {
         return Err("Not a folder.".into());
     }

@@ -31,7 +31,8 @@ pub fn root(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn safe(name: &str) -> String {
-    let out: String = name.chars().map(|one| if one.is_ascii_alphanumeric() || one == '-' || one == '_' || one == '.' { one } else { '_' }).collect();
+    let out: String =
+        name.chars().map(|one| if one.is_ascii_alphanumeric() || one == '-' || one == '_' || one == '.' { one } else { '_' }).collect();
     out.trim_matches('.').to_string()
 }
 
@@ -140,7 +141,10 @@ pub fn install(app: &AppHandle, registry: &Value, agent: &str) -> Result<(), Str
     program(&dir, cmd)?;
 
     let tell = |done: u64, total: u64, step: &str| {
-        let _ = app.emit("acp-install", AcpInstallProgress { agent: agent.to_string(), done: done as f64, total: total as f64, step: step.to_string() });
+        let _ = app.emit(
+            "acp-install",
+            AcpInstallProgress { agent: agent.to_string(), done: done as f64, total: total as f64, step: step.to_string() },
+        );
     };
     let client = crate::net::builder()
         .user_agent("Monolab")
@@ -148,7 +152,8 @@ pub fn install(app: &AppHandle, registry: &Value, agent: &str) -> Result<(), Str
         .timeout(Duration::from_secs(30 * 60))
         .build()
         .map_err(|error| error.to_string())?;
-    let mut response = client.get(url).send().and_then(|one| one.error_for_status()).map_err(|error| format!("Could not download the agent: {error}"))?;
+    let mut response =
+        client.get(url).send().and_then(|one| one.error_for_status()).map_err(|error| format!("Could not download the agent: {error}"))?;
     let total = response.content_length().unwrap_or(0);
     if total > MAX_DOWNLOAD {
         return Err("This agent's download is too big.".into());

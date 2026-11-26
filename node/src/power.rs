@@ -116,7 +116,15 @@ esac
     }
 
     fn server(root: &std::path::Path, start: &str) -> ServerConfig {
-        ServerConfig { id: "s".into(), name: "S".into(), path: root.to_path_buf(), tmux: String::new(), log: "logs/latest.log".into(), start: start.into(), stop: "stop".into() }
+        ServerConfig {
+            id: "s".into(),
+            name: "S".into(),
+            path: root.to_path_buf(),
+            tmux: String::new(),
+            log: "logs/latest.log".into(),
+            start: start.into(),
+            stop: "stop".into(),
+        }
     }
 
     #[test]
@@ -141,7 +149,12 @@ esac
             std::thread::sleep(Duration::from_millis(50));
         }
         assert!(!tmux.running("s"));
-        let told: Vec<String> = events.wait(0, &["s".into()], Duration::ZERO)["events"].as_array().unwrap().iter().map(|one| one["payload"]["status"].as_str().unwrap().to_string()).collect();
+        let told: Vec<String> = events.wait(0, &["s".into()], Duration::ZERO)["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|one| one["payload"]["status"].as_str().unwrap().to_string())
+            .collect();
         assert_eq!(told, ["running", "stopping", "stopped"]);
         assert!(power.stop(&tmux, &events, &server(&root, "x"), false, STOP_WAIT).unwrap_err().contains("not running"));
         assert!(!power.is_stopping("s"), "a refused stop leaves nothing behind");

@@ -139,10 +139,13 @@ mod tests {
     #[test]
     fn keeps_only_the_servers_this_node_hosts() {
         let teams = vec![
-            ("T1".to_string(), json!({ "servers": [
+            (
+                "T1".to_string(),
+                json!({ "servers": [
                 { "id": "S1", "instance_id": "survival", "host_device": "me" },
                 { "id": "S2", "instance_id": "creative", "host_device": "someone" },
-            ] })),
+            ] }),
+            ),
             ("T2".to_string(), json!({ "servers": [{ "id": "S3", "instance_id": "survival", "host_device": "me" }, { "id": "S4" }] })),
         ];
         let map = targets_of("me", &teams);

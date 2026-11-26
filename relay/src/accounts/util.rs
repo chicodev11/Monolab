@@ -127,8 +127,30 @@ pub fn unhex(text: &str) -> Option<Vec<u8>> {
 
 /// Names nobody may take: they'd look official.
 const RESERVED: &[&str] = &[
-    "admin", "administrator", "root", "system", "support", "help", "monolab", "mnlab", "monolink", "official", "staff", "mod",
-    "moderator", "owner", "null", "undefined", "anonymous", "everyone", "here", "server", "console", "api", "www", "invite",
+    "admin",
+    "administrator",
+    "root",
+    "system",
+    "support",
+    "help",
+    "monolab",
+    "mnlab",
+    "monolink",
+    "official",
+    "staff",
+    "mod",
+    "moderator",
+    "owner",
+    "null",
+    "undefined",
+    "anonymous",
+    "everyone",
+    "here",
+    "server",
+    "console",
+    "api",
+    "www",
+    "invite",
 ];
 
 /// Checks a handle and gives it back lowercase, or why it can't be used.

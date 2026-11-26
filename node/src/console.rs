@@ -52,11 +52,7 @@ impl Tmux {
 
     fn run(&self, args: &[&str], failed: &str) -> Result<(), String> {
         let out = self.command().args(args).output().map_err(|error| format!("Could not run tmux: {error}"))?;
-        if out.status.success() {
-            Ok(())
-        } else {
-            Err(format!("{failed}: {}", String::from_utf8_lossy(&out.stderr).trim()))
-        }
+        if out.status.success() { Ok(()) } else { Err(format!("{failed}: {}", String::from_utf8_lossy(&out.stderr).trim())) }
     }
 
     /// Opens the server's session in its folder with the config's start command (tmux runs it with
@@ -126,7 +122,13 @@ pub fn tail(server: &ServerConfig, limit: usize) -> Result<Vec<ServerLogEvent>, 
 
 /// One log line as the window shows it, colour codes removed.
 pub fn log_event(server: &str, line: &str) -> ServerLogEvent {
-    ServerLogEvent { server_id: server.to_string(), line: ansi_codes().replace_all(line, "").into_owned(), stream: "stdout".into(), noise: false, ansi: String::new() }
+    ServerLogEvent {
+        server_id: server.to_string(),
+        line: ansi_codes().replace_all(line, "").into_owned(),
+        stream: "stdout".into(),
+        noise: false,
+        ansi: String::new(),
+    }
 }
 
 /// The end of a file, from the first whole line.
@@ -157,7 +159,15 @@ mod tests {
             text.push_str(&format!("\x1b[32mline {n}\x1b[0m\n"));
         }
         std::fs::write(root.join("logs/latest.log"), text).unwrap();
-        let server = ServerConfig { id: "s".into(), name: "S".into(), path: root.clone(), tmux: String::new(), log: "logs/latest.log".into(), start: String::new(), stop: "stop".into() };
+        let server = ServerConfig {
+            id: "s".into(),
+            name: "S".into(),
+            path: root.clone(),
+            tmux: String::new(),
+            log: "logs/latest.log".into(),
+            start: String::new(),
+            stop: "stop".into(),
+        };
         let lines = tail(&server, 3).unwrap();
         assert_eq!(lines.iter().map(|one| one.line.as_str()).collect::<Vec<_>>(), ["line 17", "line 18", "line 19"]);
         assert_eq!(lines[0].server_id, "s");

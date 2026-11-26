@@ -1,4 +1,3 @@
-
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -33,47 +32,24 @@ pub fn read(path: &Path) -> Result<Pack, String> {
     let mut archive = ZipArchive::new(file).map_err(|_| "Not a zip file.".to_string())?;
 
     let manifest: serde_json::Value = {
-        let mut entry = archive
-            .by_name("manifest.json")
-            .map_err(|_| "Not a CurseForge modpack — manifest.json is missing.".to_string())?;
+        let mut entry = archive.by_name("manifest.json").map_err(|_| "Not a CurseForge modpack — manifest.json is missing.".to_string())?;
         let mut text = String::new();
-        entry
-            .read_to_string(&mut text)
-            .map_err(|error| error.to_string())?;
+        entry.read_to_string(&mut text).map_err(|error| error.to_string())?;
         serde_json::from_str(&text).map_err(|_| "Could not read manifest.json.".to_string())?
     };
 
-    let kind = manifest
-        .get("manifestType")
-        .and_then(|value| value.as_str())
-        .unwrap_or_default();
+    let kind = manifest.get("manifestType").and_then(|value| value.as_str()).unwrap_or_default();
     if !kind.is_empty() && kind != "minecraftModpack" {
         return Err("This is a different kind of CurseForge bundle, not a modpack.".into());
     }
 
-    let text = |key: &str| {
-        manifest
-            .get(key)
-            .and_then(|value| value.as_str())
-            .unwrap_or_default()
-            .to_string()
-    };
+    let text = |key: &str| manifest.get(key).and_then(|value| value.as_str()).unwrap_or_default().to_string();
 
     let minecraft = manifest.get("minecraft");
-    let game_version = minecraft
-        .and_then(|value| value.get("version"))
-        .and_then(|value| value.as_str())
-        .unwrap_or_default()
-        .to_string();
-    let loaders = minecraft
-        .and_then(|value| value.get("modLoaders"))
-        .and_then(|value| value.as_array());
+    let game_version = minecraft.and_then(|value| value.get("version")).and_then(|value| value.as_str()).unwrap_or_default().to_string();
+    let loaders = minecraft.and_then(|value| value.get("modLoaders")).and_then(|value| value.as_array());
     let loader_id = loaders
-        .and_then(|list| {
-            list.iter()
-                .find(|one| one.get("primary").and_then(|v| v.as_bool()) == Some(true))
-                .or_else(|| list.first())
-        })
+        .and_then(|list| list.iter().find(|one| one.get("primary").and_then(|v| v.as_bool()) == Some(true)).or_else(|| list.first()))
         .and_then(|one| one.get("id"))
         .and_then(|value| value.as_str())
         .unwrap_or_default();
@@ -93,10 +69,7 @@ pub fn read(path: &Path) -> Result<Pack, String> {
             Some(ModRef {
                 project,
                 file,
-                required: one
-                    .get("required")
-                    .and_then(|value| value.as_bool())
-                    .unwrap_or(true),
+                required: one.get("required").and_then(|value| value.as_bool()).unwrap_or(true),
                 url: format!("https://www.curseforge.com/projects/{project}"),
             })
         })
@@ -125,10 +98,7 @@ pub fn read(path: &Path) -> Result<Pack, String> {
     })
 }
 
-fn count_overrides<R: std::io::Read + std::io::Seek>(
-    archive: &mut ZipArchive<R>,
-    folder: &str,
-) -> (usize, usize) {
+fn count_overrides<R: std::io::Read + std::io::Seek>(archive: &mut ZipArchive<R>, folder: &str) -> (usize, usize) {
     let mut all = 0;
     let mut jars = 0;
     for index in 0..archive.len() {
@@ -145,10 +115,7 @@ fn count_overrides<R: std::io::Read + std::io::Seek>(
             continue;
         };
         all += 1;
-        let looks_like_a_mod = inside.starts_with("mods")
-            && inside
-                .extension()
-                .is_some_and(|one| one.eq_ignore_ascii_case("jar"));
+        let looks_like_a_mod = inside.starts_with("mods") && inside.extension().is_some_and(|one| one.eq_ignore_ascii_case("jar"));
         if looks_like_a_mod {
             jars += 1;
         }
@@ -212,19 +179,12 @@ pub fn write_list(pack: &Pack, folder: &Path) -> Result<PathBuf, String> {
     let path = folder.join("modpack-download-list.txt");
     let mut text = String::new();
     text.push_str(&format!("{} {}\n", pack.name, pack.version));
-    text.push_str(&format!(
-        "Minecraft {} · {} {}\n\n",
-        pack.game_version, pack.loader, pack.loader_version
-    ));
+    text.push_str(&format!("Minecraft {} · {} {}\n\n", pack.game_version, pack.loader, pack.loader_version));
     text.push_str(
         "Download each file below and put it in the mods folder.\nCurseForge lets authors block third-party downloads, so the app doesn't fetch them for you.\n\n",
     );
     for one in &pack.mods {
-        text.push_str(&format!(
-            "{}{}\n",
-            one.url,
-            if one.required { "" } else { "  (optional)" }
-        ));
+        text.push_str(&format!("{}{}\n", one.url, if one.required { "" } else { "  (optional)" }));
     }
     std::fs::write(&path, text).map_err(|error| format!("Could not write the list: {error}"))?;
     Ok(path)
@@ -317,14 +277,7 @@ mod tests {
 
     #[test]
     fn reads_a_curseforge_pack() {
-        let path = make(
-            "real",
-            REAL,
-            &[
-                ("overrides/config/jei.toml", "x"),
-                ("overrides/mods/local.jar", "x"),
-            ],
-        );
+        let path = make("real", REAL, &[("overrides/config/jei.toml", "x"), ("overrides/mods/local.jar", "x")]);
         let pack = read(&path).unwrap();
         assert_eq!(pack.name, "All the Mods 9");
         assert_eq!(pack.game_version, "1.20.1");
@@ -340,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn refuses_things_that_are_not_modpacks(){
+    fn refuses_things_that_are_not_modpacks() {
         let path = make("resource", "{\"manifestType\":\"resourcePack\",\"name\":\"something\"}", &[]);
         assert!(read(&path).is_err());
         let _ = std::fs::remove_file(path);
@@ -358,8 +311,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!("cfpack-{}-plain.zip", std::process::id()));
         let file = std::fs::File::create(&path).unwrap();
         let mut zip = zip::ZipWriter::new(file);
-        zip.start_file("modrinth.index.json", SimpleFileOptions::default())
-            .unwrap();
+        zip.start_file("modrinth.index.json", SimpleFileOptions::default()).unwrap();
         zip.write_all(b"{}").unwrap();
         zip.finish().unwrap();
         path

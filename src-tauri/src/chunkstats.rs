@@ -141,11 +141,8 @@ pub fn read_region(bytes: &[u8]) -> RegionStats {
         out.version[index] = chunk.data_version.map(f64::from);
         out.inhabited[index] = chunk.inhabited.or(old.and_then(|one| one.inhabited)).map(|ticks| ticks as f64 / 1200.0);
         out.status[index] = chunk.status.as_deref().or(old.and_then(|one| one.status.as_deref())).and_then(status_index);
-        out.block_entities[index] = chunk
-            .block_entities
-            .as_ref()
-            .or(old.and_then(|one| one.tile_entities.as_ref()))
-            .map(|list| list.len() as f64);
+        out.block_entities[index] =
+            chunk.block_entities.as_ref().or(old.and_then(|one| one.tile_entities.as_ref())).map(|list| list.len() as f64);
     }
     out
 }

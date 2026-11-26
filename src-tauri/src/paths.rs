@@ -1,4 +1,3 @@
-
 use std::path::{Component, Path, PathBuf};
 
 use crate::plain_path;
@@ -27,8 +26,8 @@ impl From<PathError> for String {
 }
 
 const RESERVED: &[&str] = &[
-    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
-    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4",
+    "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 ];
 
 fn bad_component(name: &str) -> bool {
@@ -80,11 +79,7 @@ pub fn check_relative(relative: &str) -> Result<PathBuf, PathError> {
 pub fn resolve_in_server(root: &Path, relative: &str) -> Result<PathBuf, PathError> {
     let root = root.canonicalize().map(plain_path).map_err(|_| PathError::Missing)?;
     let rel = check_relative(relative)?;
-    let candidate = root
-        .join(&rel)
-        .canonicalize()
-        .map(plain_path)
-        .map_err(|_| PathError::Missing)?;
+    let candidate = root.join(&rel).canonicalize().map(plain_path).map_err(|_| PathError::Missing)?;
     if !candidate.starts_with(&root) {
         return Err(PathError::Escape);
     }
@@ -99,12 +94,7 @@ pub fn resolve_new_in_server(root: &Path, relative: &str) -> Result<PathBuf, Pat
         let real = joined.canonicalize().map(plain_path).map_err(|_| PathError::Missing)?;
         return if real.starts_with(&root) { Ok(real) } else { Err(PathError::Escape) };
     }
-    let parent = joined
-        .parent()
-        .ok_or(PathError::Invalid)?
-        .canonicalize()
-        .map(plain_path)
-        .map_err(|_| PathError::Missing)?;
+    let parent = joined.parent().ok_or(PathError::Invalid)?.canonicalize().map(plain_path).map_err(|_| PathError::Missing)?;
     if !parent.starts_with(&root) {
         return Err(PathError::Escape);
     }
@@ -127,10 +117,7 @@ mod tests {
     }
 
     fn unix() -> u128 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
     }
 
     #[test]
@@ -145,11 +132,7 @@ mod tests {
             "C:outside",
         ];
         for bad in escapes {
-            assert_eq!(
-                resolve_in_server(&root, bad),
-                Err(PathError::Escape),
-                "should be blocked: {bad}"
-            );
+            assert_eq!(resolve_in_server(&root, bad), Err(PathError::Escape), "should be blocked: {bad}");
         }
         let invalid = [
             "%2e%2e%2fsecret.txt",
@@ -168,11 +151,7 @@ mod tests {
             "\\\\?\\C:\\Windows\\system.ini",
         ];
         for bad in invalid {
-            assert_eq!(
-                resolve_in_server(&root, bad),
-                Err(PathError::Invalid),
-                "should be blocked by format: {bad:?}"
-            );
+            assert_eq!(resolve_in_server(&root, bad), Err(PathError::Invalid), "should be blocked by format: {bad:?}");
         }
         let real = root.join("plugins").join("a.jar").canonicalize().map(plain_path).unwrap();
         for good in ["plugins/a.jar", "plugins\\a.jar", "./plugins/a.jar", "/plugins/a.jar"] {
@@ -193,14 +172,8 @@ mod tests {
         #[cfg(not(windows))]
         let made = std::os::unix::fs::symlink(base.join("outside"), &link).is_ok();
         if made {
-            assert_eq!(
-                resolve_in_server(&root, "plugins/sneaky/secret.txt"),
-                Err(PathError::Escape)
-            );
-            assert_eq!(
-                resolve_new_in_server(&root, "plugins/sneaky/new.txt"),
-                Err(PathError::Escape)
-            );
+            assert_eq!(resolve_in_server(&root, "plugins/sneaky/secret.txt"), Err(PathError::Escape));
+            assert_eq!(resolve_new_in_server(&root, "plugins/sneaky/new.txt"), Err(PathError::Escape));
         }
         let _ = fs::remove_dir_all(base);
     }
@@ -223,14 +196,8 @@ mod guard {
     #[test]
     fn nobody_checks_paths_by_string_again() {
         for file in ["lib.rs", "logs.rs", "backups.rs", "web/api.rs"] {
-            let text = std::fs::read_to_string(
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join(file),
-            )
-            .unwrap();
-            assert!(
-                !text.contains("contains(\"..\")"),
-                "{file}: use paths::resolve_in_server instead of checking for `..`."
-            );
+            let text = std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join(file)).unwrap();
+            assert!(!text.contains("contains(\"..\")"), "{file}: use paths::resolve_in_server instead of checking for `..`.");
         }
     }
 }

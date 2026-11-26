@@ -171,9 +171,12 @@ fn serve_one(node: &Node, peer: &DeviceId, grant: &Grant, command: &str, body: &
             }
             let limit = body.get("limit").and_then(Value::as_u64).unwrap_or(200).clamp(1, 1000) as usize;
             let before = body.get("before").and_then(Value::as_f64);
-            serde_json::to_value(node.log.read(text_arg(body, "server"), text_arg(body, "who"), text_arg(body, "text"), before, limit)).map_err(|error| error.to_string())?
+            serde_json::to_value(node.log.read(text_arg(body, "server"), text_arg(body, "who"), text_arg(body, "text"), before, limit))
+                .map_err(|error| error.to_string())?
         }
-        "list_instances" => Value::Array(servers.iter().filter_map(|id| config.server(id)).enumerate().map(|(at, one)| instance_view(node, one, at)).collect()),
+        "list_instances" => Value::Array(
+            servers.iter().filter_map(|id| config.server(id)).enumerate().map(|(at, one)| instance_view(node, one, at)).collect(),
+        ),
         // Console lines and status changes of the servers this grant reaches, as they happen.
         "__events" => {
             let after = body.get("after").and_then(Value::as_u64).unwrap_or(0);
@@ -194,7 +197,8 @@ fn serve_one(node: &Node, peer: &DeviceId, grant: &Grant, command: &str, body: &
         "__upload_begin" | "__upload_part" | "__upload_end" => node.uploads.request(peer, command, body)?,
         "add_server_uploads" => {
             let found = server()?;
-            let tokens: Vec<String> = body.get("uploads").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
+            let tokens: Vec<String> =
+                body.get("uploads").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
             json!(crate::transfer::add_to_server(&node.uploads, peer, &found.path, text_arg(body, "path"), &tokens)?)
         }
         "read_server_file_download" => {
@@ -214,7 +218,8 @@ fn serve_one(node: &Node, peer: &DeviceId, grant: &Grant, command: &str, body: &
         "list_backups" => serde_json::to_value(node.backups.list(&server()?.id)).map_err(|error| error.to_string())?,
         "create_backup" => {
             let found = server()?;
-            let paths: Vec<String> = body.get("paths").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
+            let paths: Vec<String> =
+                body.get("paths").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
             let worlds = body.get("worldsOnly").and_then(Value::as_bool).unwrap_or(false);
             serde_json::to_value(node.backups.create(found, text_arg(body, "note"), worlds, &paths)?).map_err(|error| error.to_string())?
         }
@@ -264,10 +269,13 @@ fn serve_one(node: &Node, peer: &DeviceId, grant: &Grant, command: &str, body: &
             let found = server()?;
             let offset = body.get("offset").and_then(Value::as_u64);
             let limit = body.get("limit").and_then(Value::as_u64);
-            serde_json::to_value(crate::files::browse(&found.path, text_arg(body, "path"), offset, limit)?).map_err(|error| error.to_string())?
+            serde_json::to_value(crate::files::browse(&found.path, text_arg(body, "path"), offset, limit)?)
+                .map_err(|error| error.to_string())?
         }
         "read_editable_file" => Value::String(crate::files::read_text(&server()?.path, text_arg(body, "path"))?),
-        "get_console_logs" => serde_json::to_value(crate::console::tail(server()?, config.console_lines)?).map_err(|error| error.to_string())?,
+        "get_console_logs" => {
+            serde_json::to_value(crate::console::tail(server()?, config.console_lines)?).map_err(|error| error.to_string())?
+        }
         "save_editable_file" | "send_console_command" => {
             let found = server()?;
             if command == "save_editable_file" {
@@ -362,19 +370,27 @@ fn instance_view(node: &Node, server: &ServerConfig, at: usize) -> Value {
 /// A setting name that holds a secret (the app's `secret_name`).
 fn secret_name(name: &str) -> bool {
     let name = name.trim().trim_matches('"').trim_matches('\'').to_ascii_lowercase();
-    ["password", "passwd", "secret", "token", "apikey", "api-key", "api_key", "private-key", "private_key", "webhook"].iter().any(|one| name.contains(one))
+    ["password", "passwd", "secret", "token", "apikey", "api-key", "api_key", "private-key", "private_key", "webhook"]
+        .iter()
+        .any(|one| name.contains(one))
 }
 
 /// What a Viewer gets back: secret values in file text and console lines replaced by asterisks
 /// (the app's `hide_secrets`).
 pub fn hide_secrets(value: &mut Value) {
     static LINE: OnceLock<regex::Regex> = OnceLock::new();
-    let line = LINE.get_or_init(|| regex::Regex::new(r#"(?m)^([ \t]*"?([A-Za-z0-9_.\-]+)"?[ \t]*[:=][ \t]*)(.+?)([ \t]*,?)\r?$"#).expect("secret line regex"));
+    let line = LINE.get_or_init(|| {
+        regex::Regex::new(r#"(?m)^([ \t]*"?([A-Za-z0-9_.\-]+)"?[ \t]*[:=][ \t]*)(.+?)([ \t]*,?)\r?$"#).expect("secret line regex")
+    });
     match value {
         Value::String(text) => {
             if line.is_match(text) {
                 let hidden = line.replace_all(text, |found: &regex::Captures| {
-                    if secret_name(&found[2]) && !found[3].trim().is_empty() { format!("{}********{}", &found[1], &found[4]) } else { found[0].to_string() }
+                    if secret_name(&found[2]) && !found[3].trim().is_empty() {
+                        format!("{}********{}", &found[1], &found[4])
+                    } else {
+                        found[0].to_string()
+                    }
                 });
                 *text = hidden.into_owned();
             }
@@ -505,7 +521,11 @@ admin_only = ["survival"]
         let save = json!({ "id": "creative", "path": "server.properties", "content": "motd=changed\n" });
         let refused = serve(&node, &GUEST, &viewer, "save_editable_file", &save).unwrap_err();
         assert!(refused.contains("not change"), "{refused}");
-        assert!(serve(&node, &GUEST, &viewer, "send_console_command", &json!({ "id": "creative", "command": "op bob" })).unwrap_err().contains("not change"));
+        assert!(
+            serve(&node, &GUEST, &viewer, "send_console_command", &json!({ "id": "creative", "command": "op bob" }))
+                .unwrap_err()
+                .contains("not change")
+        );
         assert_eq!(std::fs::read_to_string(data.join("creative/server.properties")).unwrap().lines().last(), Some("motd=hi"));
 
         // Viewers read, with secrets hidden.
@@ -519,7 +539,8 @@ admin_only = ["survival"]
         let developer = grant(Role::Developer);
         serve(&node, &GUEST, &developer, "save_editable_file", &save).unwrap();
         assert_eq!(std::fs::read_to_string(data.join("creative/server.properties")).unwrap(), "motd=changed\n");
-        let text = serve(&node, &GUEST, &developer, "read_editable_file", &json!({ "id": "survival", "path": "server.properties" })).unwrap();
+        let text =
+            serve(&node, &GUEST, &developer, "read_editable_file", &json!({ "id": "survival", "path": "server.properties" })).unwrap();
         assert!(text.as_str().unwrap().contains("hunter2"), "secrets are hidden from Viewers only");
 
         // "Commands: admins only" on survival: a Developer is refused, an Admin gets past the role check
@@ -527,7 +548,10 @@ admin_only = ["survival"]
         let command = json!({ "id": "survival", "command": "list" });
         assert!(serve(&node, &GUEST, &developer, "send_console_command", &command).unwrap_err().contains("Only admins"));
         assert_eq!(serve(&node, &GUEST, &grant(Role::Admin), "send_console_command", &command).unwrap_err(), "The server is not running.");
-        assert_eq!(serve(&node, &GUEST, &developer, "send_console_command", &json!({ "id": "creative", "command": "list" })).unwrap_err(), "The server is not running.");
+        assert_eq!(
+            serve(&node, &GUEST, &developer, "send_console_command", &json!({ "id": "creative", "command": "list" })).unwrap_err(),
+            "The server is not running."
+        );
 
         // Owner-only and admin-only app commands keep their role rule.
         assert!(serve(&node, &GUEST, &grant(Role::Admin), "trash_instance", &json!({ "id": "creative" })).unwrap_err().contains("owner"));
@@ -545,7 +569,19 @@ admin_only = ["survival"]
         let at = |name: &str| json!({ "id": "creative", "fileName": name, "kind": "plugin", "path": "server.properties" });
 
         // A Viewer looks: no power, uploads, backups or plugin changes.
-        for command in ["start_instance", "stop_instance", "restart_instance", "force_stop_instance", "__upload_begin", "add_server_uploads", "create_backup", "delete_backup", "toggle_addon", "delete_addon", "add_addon_upload"] {
+        for command in [
+            "start_instance",
+            "stop_instance",
+            "restart_instance",
+            "force_stop_instance",
+            "__upload_begin",
+            "add_server_uploads",
+            "create_backup",
+            "delete_backup",
+            "toggle_addon",
+            "delete_addon",
+            "add_addon_upload",
+        ] {
             assert!(serve(&node, &GUEST, &viewer, command, &at("a.jar")).unwrap_err().contains("not change"), "{command}");
         }
         // Downloads: a Viewer's text file has its secrets hidden.
@@ -568,10 +604,19 @@ admin_only = ["survival"]
         assert_eq!(serve(&node, &GUEST, &viewer, "addon_status", &at("")).unwrap()["supported"], false);
 
         // Backups (needs `tar`): made by a Developer, restored only by an Admin.
-        let made = serve(&node, &GUEST, &developer, "create_backup", &json!({ "id": "creative", "note": "n", "worldsOnly": false, "paths": [] })).unwrap();
+        let made =
+            serve(&node, &GUEST, &developer, "create_backup", &json!({ "id": "creative", "note": "n", "worldsOnly": false, "paths": [] }))
+                .unwrap();
         let name = made["fileName"].as_str().unwrap().to_string();
         assert_eq!(serve(&node, &GUEST, &viewer, "list_backups", &at("")).unwrap().as_array().unwrap().len(), 1);
-        serve(&node, &GUEST, &developer, "save_editable_file", &json!({ "id": "creative", "path": "server.properties", "content": "motd=changed\n" })).unwrap();
+        serve(
+            &node,
+            &GUEST,
+            &developer,
+            "save_editable_file",
+            &json!({ "id": "creative", "path": "server.properties", "content": "motd=changed\n" }),
+        )
+        .unwrap();
         assert!(serve(&node, &GUEST, &developer, "restore_backup", &at(&name)).unwrap_err().contains("Only admins"));
         let before = serve(&node, &GUEST, &grant(Role::Admin), "restore_backup", &at(&name)).unwrap();
         assert!(before["note"].as_str().unwrap().starts_with("Before restoring"));
@@ -608,11 +653,20 @@ admin_only = ["survival"]
         assert_eq!(list[0]["port"], 25570);
         assert_eq!(list[0]["status"], "stopped");
         for command in ["browse_server_files", "read_editable_file", "get_console_logs", "save_editable_file"] {
-            let refused = serve(&node, &GUEST, &owner, command, &json!({ "id": "secret", "path": "server.properties", "content": "x" })).unwrap_err();
+            let refused =
+                serve(&node, &GUEST, &owner, command, &json!({ "id": "secret", "path": "server.properties", "content": "x" })).unwrap_err();
             assert!(refused.contains("permission"), "{command}: {refused}");
         }
-        assert!(serve(&node, &GUEST, &owner, "browse_server_files", &json!({ "id": "creative", "path": "../secret" })).unwrap_err().contains("outside"));
-        assert!(serve(&node, &GUEST, &owner, "read_editable_file", &json!({ "id": "creative", "path": "/etc/hostname" })).unwrap_err().contains("outside"));
+        assert!(
+            serve(&node, &GUEST, &owner, "browse_server_files", &json!({ "id": "creative", "path": "../secret" }))
+                .unwrap_err()
+                .contains("outside")
+        );
+        assert!(
+            serve(&node, &GUEST, &owner, "read_editable_file", &json!({ "id": "creative", "path": "/etc/hostname" }))
+                .unwrap_err()
+                .contains("outside")
+        );
         let page = serve(&node, &GUEST, &owner, "browse_server_files", &json!({ "id": "creative", "path": "" })).unwrap();
         assert_eq!(page["entries"][0]["name"], "server.properties");
 

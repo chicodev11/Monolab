@@ -66,7 +66,9 @@ mod tests {
 
     #[test]
     fn offers_read_with_amounts() {
-        let data: Data = serde_json::from_str(r#"{"offers":[{"buy":"emerald","buyAmount":3,"sell":"studio:ruby","uses":5},{"buy":"","sell":"stone"}]}"#).unwrap();
+        let data: Data =
+            serde_json::from_str(r#"{"offers":[{"buy":"emerald","buyAmount":3,"sell":"studio:ruby","uses":5},{"buy":"","sell":"stone"}]}"#)
+                .unwrap();
         let list = offers(&data);
         assert_eq!(list[0].buy_amount, 3);
         assert_eq!(list[0].sell_amount, 1);

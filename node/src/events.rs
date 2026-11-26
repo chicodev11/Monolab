@@ -221,7 +221,15 @@ mod tests {
         let root = crate::files::tests::sandbox("events-log");
         std::fs::create_dir_all(root.join("logs")).unwrap();
         std::fs::write(root.join("logs/latest.log"), "old line\n").unwrap();
-        let server = ServerConfig { id: "s".into(), name: "S".into(), path: root.clone(), tmux: String::new(), log: "logs/latest.log".into(), start: String::new(), stop: "stop".into() };
+        let server = ServerConfig {
+            id: "s".into(),
+            name: "S".into(),
+            path: root.clone(),
+            tmux: String::new(),
+            log: "logs/latest.log".into(),
+            start: String::new(),
+            stop: "stop".into(),
+        };
         let mut seen = None;
         assert!(new_lines(&server, &mut seen, false).is_empty(), "the first look only notes the end");
         let append = |text: &str| {

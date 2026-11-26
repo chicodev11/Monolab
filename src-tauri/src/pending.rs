@@ -1,4 +1,3 @@
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -36,11 +35,9 @@ pub fn list(resting: &Path) -> Vec<Waiting> {
 }
 
 fn save(resting: &Path, items: &[Waiting]) -> Result<(), String> {
-    fs::create_dir_all(resting)
-        .map_err(|error| format!("Could not create the queue folder: {error}"))?;
+    fs::create_dir_all(resting).map_err(|error| format!("Could not create the queue folder: {error}"))?;
     let text = serde_json::to_string_pretty(items).map_err(|error| error.to_string())?;
-    fs::write(ledger(resting), text)
-        .map_err(|error| format!("Could not save the queue: {error}"))
+    fs::write(ledger(resting), text).map_err(|error| format!("Could not save the queue: {error}"))
 }
 
 fn safe_name(name: &str) -> String {
@@ -55,29 +52,22 @@ fn safe_name(name: &str) -> String {
 
 pub fn queue(resting: &Path, mut entry: Waiting, source: &Path) -> Result<(), String> {
     let folder = resting;
-    fs::create_dir_all(folder)
-        .map_err(|error| format!("Could not create the queue folder: {error}"))?;
+    fs::create_dir_all(folder).map_err(|error| format!("Could not create the queue folder: {error}"))?;
 
     entry.file_name = safe_name(&entry.file_name);
-    entry.replaces = if entry.replaces.is_empty() {
-        String::new()
-    } else {
-        safe_name(&entry.replaces)
-    };
+    entry.replaces = if entry.replaces.is_empty() { String::new() } else { safe_name(&entry.replaces) };
     entry.staged = format!("{}-{}", entry.id, entry.file_name);
 
     let bed = folder.join(&entry.staged);
     if fs::rename(source, &bed).is_err() {
-        fs::copy(source, &bed)
-            .map_err(|error| format!("Could not queue the downloaded file: {error}"))?;
+        fs::copy(source, &bed).map_err(|error| format!("Could not queue the downloaded file: {error}"))?;
         let _ = fs::remove_file(source);
     }
 
     let mut items = list(resting);
-    if let Some(old) = items.iter().position(|one| {
-        (!entry.replaces.is_empty() && one.replaces == entry.replaces)
-            || one.file_name == entry.file_name
-    }) {
+    if let Some(old) =
+        items.iter().position(|one| (!entry.replaces.is_empty() && one.replaces == entry.replaces) || one.file_name == entry.file_name)
+    {
         let _ = fs::remove_file(folder.join(&items[old].staged));
         items.remove(old);
     }
@@ -134,11 +124,7 @@ pub fn apply(resting: &Path, folder: &Path, keep: &Path, now: u64) -> Vec<Applie
             }
             let _ = fs::remove_file(&staged);
         }
-        done.push(Applied {
-            display_name: one.display_name,
-            from_version: one.from_version,
-            to_version: one.to_version,
-        });
+        done.push(Applied { display_name: one.display_name, from_version: one.from_version, to_version: one.to_version });
     }
 
     let _ = save(resting, &left);
@@ -198,10 +184,7 @@ mod tests {
         assert_eq!(done.len(), 1);
         assert_eq!(done[0].to_version, "1.1");
         assert!(!folder.join("mine-1.0.jar").exists());
-        assert_eq!(
-            fs::read_to_string(folder.join("mine-1.1.jar")).unwrap(),
-            "new"
-        );
+        assert_eq!(fs::read_to_string(folder.join("mine-1.1.jar")).unwrap(), "new");
         assert!(keep.join("100-mine-1.0.jar").is_file());
         assert!(list(&rest).is_empty());
         let _ = fs::remove_dir_all(home.parent().unwrap());
@@ -214,10 +197,7 @@ mod tests {
         let keep = rest.parent().unwrap().join("restore/addons");
         make(&folder.join("a-1.0.jar"), "a-old");
         make(&folder.join("b-1.0.jar"), "b-old");
-        for (id, old, new) in [
-            ("a1", "a-1.0.jar", "a-1.1.jar"),
-            ("a2", "b-1.0.jar", "b-1.1.jar"),
-        ] {
+        for (id, old, new) in [("a1", "a-1.0.jar", "a-1.1.jar"), ("a2", "b-1.0.jar", "b-1.1.jar")] {
             let fresh = home.join(format!("{id}.jar"));
             make(&fresh, "new");
             queue(&rest, waiting(id, old, new), &fresh).unwrap();
@@ -230,10 +210,7 @@ mod tests {
         assert_eq!(done.len(), 1, "working ones should be added");
         assert_eq!(done[0].display_name, "My plugin");
         assert!(folder.join("b-1.1.jar").is_file(), "b should be added");
-        assert!(
-            folder.join("a-1.0.jar").is_file(),
-            "a should stay"
-        );
+        assert!(folder.join("a-1.0.jar").is_file(), "a should stay");
         let left = list(&rest);
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].replaces, "a-1.0.jar");
@@ -248,12 +225,7 @@ mod tests {
         queue(&rest, waiting("a1", "mine-1.0.jar", "mine-1.1.jar"), &first).unwrap();
         let second = home.join("second.jar");
         make(&second, "two");
-        queue(
-            &rest,
-            waiting("a2", "mine-1.0.jar", "mine-1.2.jar"),
-            &second,
-        )
-        .unwrap();
+        queue(&rest, waiting("a2", "mine-1.0.jar", "mine-1.2.jar"), &second).unwrap();
 
         let items = list(&rest);
         assert_eq!(items.len(), 1, "only one should remain");
@@ -283,10 +255,7 @@ mod tests {
         queue(&rest, waiting("a1", "", "../../outside.jar"), &fresh).unwrap();
         apply(&rest, &folder, &keep, 100);
         assert!(!home.parent().unwrap().join("outside.jar").exists());
-        assert!(
-            folder.join("outside.jar").is_file(),
-            "only tidies the name and puts it in place"
-        );
+        assert!(folder.join("outside.jar").is_file(), "only tidies the name and puts it in place");
         let _ = fs::remove_dir_all(home.parent().unwrap());
     }
 }

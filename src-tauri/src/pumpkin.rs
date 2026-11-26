@@ -1,4 +1,3 @@
-
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -17,15 +16,12 @@ pub fn is_pumpkin(core: &str) -> bool {
 
 fn read(folder: &Path) -> Result<DocumentMut, String> {
     let path = folder.join(CONFIG);
-    let text = fs::read_to_string(&path)
-        .map_err(|error| format!("Could not read {CONFIG}: {error}"))?;
-    text.parse::<DocumentMut>()
-        .map_err(|error| format!("{CONFIG} is not valid: {error}"))
+    let text = fs::read_to_string(&path).map_err(|error| format!("Could not read {CONFIG}: {error}"))?;
+    text.parse::<DocumentMut>().map_err(|error| format!("{CONFIG} is not valid: {error}"))
 }
 
 fn write(folder: &Path, document: &DocumentMut) -> Result<(), String> {
-    fs::write(folder.join(CONFIG), document.to_string())
-        .map_err(|error| format!("Could not save {CONFIG}: {error}"))
+    fs::write(folder.join(CONFIG), document.to_string()).map_err(|error| format!("Could not save {CONFIG}: {error}"))
 }
 
 fn lookup<'a>(document: &'a DocumentMut, key: &str) -> Option<&'a Item> {
@@ -50,9 +46,7 @@ fn port_of_address(address: &str) -> Option<u16> {
 
 pub fn port(folder: &Path) -> Option<u16> {
     let document = read(folder).ok()?;
-    lookup(&document, "networking.java.address")
-        .and_then(Item::as_str)
-        .and_then(port_of_address)
+    lookup(&document, "networking.java.address").and_then(Item::as_str).and_then(port_of_address)
 }
 
 pub fn write_port(folder: &Path, port: u16) -> Result<(), String> {
@@ -71,11 +65,7 @@ pub fn write_port(folder: &Path, port: u16) -> Result<(), String> {
 pub fn level_name(folder: &Path) -> String {
     read(folder)
         .ok()
-        .and_then(|document| {
-            lookup(&document, "default_level_name")
-                .and_then(Item::as_str)
-                .map(str::to_owned)
-        })
+        .and_then(|document| lookup(&document, "default_level_name").and_then(Item::as_str).map(str::to_owned))
         .filter(|value| !value.is_empty() && !value.contains(['/', '\\', ':']))
         .unwrap_or_else(|| "world".into())
 }
@@ -86,22 +76,14 @@ pub fn rcon(folder: &Path) -> Option<(u16, String)> {
     if !enabled {
         return None;
     }
-    let port = lookup(&document, "networking.rcon.address")
-        .and_then(Item::as_str)
-        .and_then(port_of_address)
-        .unwrap_or(25575);
-    let password = lookup(&document, "networking.rcon.password")
-        .and_then(Item::as_str)
-        .unwrap_or_default()
-        .to_string();
+    let port = lookup(&document, "networking.rcon.address").and_then(Item::as_str).and_then(port_of_address).unwrap_or(25575);
+    let password = lookup(&document, "networking.rcon.password").and_then(Item::as_str).unwrap_or_default().to_string();
     Some((port, password))
 }
 
 pub fn chunk_format(text: &str) -> Option<String> {
     let document: DocumentMut = text.parse().ok()?;
-    lookup(&document, "world.chunk.type")
-        .and_then(Item::as_str)
-        .map(|kind| kind.to_ascii_lowercase())
+    lookup(&document, "world.chunk.type").and_then(Item::as_str).map(|kind| kind.to_ascii_lowercase())
 }
 
 pub fn set_favicon(folder: &Path, file_name: Option<&str>) -> Result<(), String> {
@@ -130,7 +112,9 @@ pub fn set_world_generator(text: &str, id: Option<&str>) -> Result<String, Strin
     match id {
         Some(id) => {
             let Some(world) = document.get_mut("world").and_then(Item::as_table_like_mut) else {
-                return Err(format!("{CONFIG} has no [world] settings yet. Start the server once so Pumpkin writes them, then save again."));
+                return Err(format!(
+                    "{CONFIG} has no [world] settings yet. Start the server once so Pumpkin writes them, then save again."
+                ));
             };
             if world.get("generators").is_none() {
                 world.insert("generators", Item::Table(Table::new()));
@@ -164,7 +148,8 @@ pub fn set_plugin_permission(text: &str, plugin: &str, permission: &str, allow: 
     if !allow {
         // Walking with `get_mut` would add empty tables, so look first and leave the text alone when there's nothing to take back.
         let key = format!("plugins.overrides.{plugin}.allowed_permissions");
-        let listed = lookup(&document, &key).and_then(Item::as_array).is_some_and(|list| list.iter().any(|one| one.as_str() == Some(permission)));
+        let listed =
+            lookup(&document, &key).and_then(Item::as_array).is_some_and(|list| list.iter().any(|one| one.as_str() == Some(permission)));
         if !listed {
             return Ok(text.to_string());
         }
@@ -211,7 +196,8 @@ pub enum PermissionLine {
 }
 
 pub fn permission_line(line: &str) -> Option<PermissionLine> {
-    let quoted = |text: &str, after: &str| text.split_once(after).and_then(|(_, rest)| rest.split_once('"')).map(|(name, _)| name.to_string());
+    let quoted =
+        |text: &str, after: &str| text.split_once(after).and_then(|(_, rest)| rest.split_once('"')).map(|(name, _)| name.to_string());
     if line.contains("requests the following permissions:") {
         return quoted(line, "Plugin \"").map(PermissionLine::Asks);
     }
@@ -220,7 +206,8 @@ pub fn permission_line(line: &str) -> Option<PermissionLine> {
     }
     let rest = line.trim_start().strip_prefix("- ")?;
     let (name, _) = rest.split_once(": ")?;
-    let fine = !name.is_empty() && name.len() <= 64 && name.chars().all(|one| one.is_ascii_alphanumeric() || matches!(one, '.' | '_' | '-' | ':'));
+    let fine =
+        !name.is_empty() && name.len() <= 64 && name.chars().all(|one| one.is_ascii_alphanumeric() || matches!(one, '.' | '_' | '-' | ':'));
     fine.then(|| PermissionLine::Wants(name.to_string()))
 }
 
@@ -340,33 +327,18 @@ fn kind_of(value: &Value) -> ValueKind {
 
 fn walk(table: &Table, prefix: &str, out: &mut Vec<PropertyInfo>) {
     for (name, item) in table.iter() {
-        let key = if prefix.is_empty() {
-            name.to_string()
-        } else {
-            format!("{prefix}.{name}")
-        };
+        let key = if prefix.is_empty() { name.to_string() } else { format!("{prefix}.{name}") };
         match item {
             Item::Value(value) => {
                 let Some(text) = value_text(value) else {
                     continue;
                 };
                 let (kind, options) = match choices(&key) {
-                    Some(list) => (
-                        ValueKind::Choice,
-                        list.iter().map(|one| one.to_string()).collect(),
-                    ),
+                    Some(list) => (ValueKind::Choice, list.iter().map(|one| one.to_string()).collect()),
                     None => (kind_of(value), Vec::new()),
                 };
                 let (min, max) = bounds(&key);
-                out.push(PropertyInfo {
-                    key: key.clone(),
-                    value: text,
-                    kind,
-                    options,
-                    min,
-                    max,
-                    common: COMMON.contains(&key.as_str()),
-                });
+                out.push(PropertyInfo { key: key.clone(), value: text, kind, options, min, max, common: COMMON.contains(&key.as_str()) });
             }
             Item::Table(inner) => walk(inner, &key, out),
             Item::ArrayOfTables(_) | Item::None => {}
@@ -398,14 +370,8 @@ fn set_value(document: &mut DocumentMut, key: &str, text: &str) -> Result<(), St
             "false" => false.into(),
             _ => return Err(format!("{key} only accepts true or false.")),
         },
-        Value::Integer(_) => text
-            .parse::<i64>()
-            .map(Value::from)
-            .map_err(|_| format!("{key} only accepts a whole number."))?,
-        Value::Float(_) => text
-            .parse::<f64>()
-            .map(Value::from)
-            .map_err(|_| format!("{key} only accepts a number."))?,
+        Value::Integer(_) => text.parse::<i64>().map(Value::from).map_err(|_| format!("{key} only accepts a whole number."))?,
+        Value::Float(_) => text.parse::<f64>().map(Value::from).map_err(|_| format!("{key} only accepts a number."))?,
         Value::String(_) => text.into(),
         Value::Array(_) => {
             let mut array = toml_edit::Array::new();
@@ -442,10 +408,7 @@ pub fn plugin_state(file_name: &str) -> Option<bool> {
         Some(stem) => (stem.to_string(), false),
         None => (lower, true),
     };
-    PLUGIN_EXTENSIONS
-        .iter()
-        .any(|ext| stem.ends_with(&format!(".{ext}")))
-        .then_some(enabled)
+    PLUGIN_EXTENSIONS.iter().any(|ext| stem.ends_with(&format!(".{ext}"))).then_some(enabled)
 }
 
 pub fn toggled_name(file_name: &str) -> String {
@@ -457,10 +420,7 @@ pub fn toggled_name(file_name: &str) -> String {
 
 pub fn plugin_display_name(file_name: &str) -> String {
     let stem = file_name.strip_suffix(DISABLED).unwrap_or(file_name);
-    stem.rsplit_once('.')
-        .map(|(name, _)| name)
-        .unwrap_or(stem)
-        .to_string()
+    stem.rsplit_once('.').map(|(name, _)| name).unwrap_or(stem).to_string()
 }
 
 pub fn player_lists_dir(folder: &Path) -> PathBuf {
@@ -504,8 +464,7 @@ pub fn body_of(line: &str) -> Option<&str> {
     let trimmed = line.trim_start();
     if let Some(rest) = trimmed.strip_prefix('[') {
         let (level, body) = rest.split_once("] ")?;
-        return matches!(level, "ERROR" | "WARN" | "INFO" | "DEBUG" | "TRACE")
-            .then(|| body.trim_start());
+        return matches!(level, "ERROR" | "WARN" | "INFO" | "DEBUG" | "TRACE").then(|| body.trim_start());
     }
     level_of(trimmed)?;
     let mut rest = trimmed;
@@ -532,8 +491,14 @@ mod permission_line_tests {
 
     #[test]
     fn reads_what_pumpkin_says_about_permissions() {
-        assert_eq!(permission_line("Plugin \"Chat Plus\" (1.2.0) requests the following permissions:"), Some(PermissionLine::Asks("Chat Plus".into())));
-        assert_eq!(permission_line("  - fs.write.data: Write files in the plugin's data folder"), Some(PermissionLine::Wants("fs.write.data".into())));
+        assert_eq!(
+            permission_line("Plugin \"Chat Plus\" (1.2.0) requests the following permissions:"),
+            Some(PermissionLine::Asks("Chat Plus".into()))
+        );
+        assert_eq!(
+            permission_line("  - fs.write.data: Write files in the plugin's data folder"),
+            Some(PermissionLine::Wants("fs.write.data".into()))
+        );
         assert_eq!(
             permission_line("[2026-11-21T10:00:00Z WARN  pumpkin::plugin] Permission denied for plugin \"Chat Plus\", skipping loading."),
             Some(PermissionLine::Denied("Chat Plus".into()))
@@ -591,14 +556,31 @@ allowed_permissions = []
 
     #[test]
     fn knows_the_chunk_format() {
-        assert_eq!(chunk_format("[world.chunk]
+        assert_eq!(
+            chunk_format(
+                "[world.chunk]
 type = \"pump\"
-").as_deref(), Some("pump"));
-        assert_eq!(chunk_format("[world.chunk]
+"
+            )
+            .as_deref(),
+            Some("pump")
+        );
+        assert_eq!(
+            chunk_format(
+                "[world.chunk]
 type = \"anvil\"
-").as_deref(), Some("anvil"));
-        assert_eq!(chunk_format("java_edition = true
-"), None);
+"
+            )
+            .as_deref(),
+            Some("anvil")
+        );
+        assert_eq!(
+            chunk_format(
+                "java_edition = true
+"
+            ),
+            None
+        );
     }
 
     #[test]
@@ -646,9 +628,7 @@ type = \"anvil\"
         write_port(&dir, 25599).unwrap();
         assert_eq!(port(&dir), Some(25599));
         set_favicon(&dir, Some("server-icon.png")).unwrap();
-        assert!(fs::read_to_string(dir.join(CONFIG))
-            .unwrap()
-            .contains("favicon_path = \"server-icon.png\""));
+        assert!(fs::read_to_string(dir.join(CONFIG)).unwrap().contains("favicon_path = \"server-icon.png\""));
         set_favicon(&dir, None).unwrap();
         assert!(!fs::read_to_string(dir.join(CONFIG)).unwrap().contains("favicon_path"));
         let _ = fs::remove_dir_all(&dir);
@@ -668,16 +648,18 @@ type = \"anvil\"
         assert!(!plugin_permission_allowed(&back, "monolab", "fs.write.data"));
         assert!(back.starts_with("seed = "));
         assert_eq!(set_plugin_permission(&original, "monolab", "fs.write.data", false).unwrap(), original);
-        assert!(plugin_permission_allowed("[plugins.overrides.monolab]
+        assert!(plugin_permission_allowed(
+            "[plugins.overrides.monolab]
 trusted = true
-", "monolab", "fs.write.data"));
+",
+            "monolab",
+            "fs.write.data"
+        ));
         assert!(text.contains("[plugins.overrides.monolab]"));
         assert_eq!(text.matches("fs.write.data").count(), 1);
         // The global list stays empty.
         let document: DocumentMut = text.parse().unwrap();
-        assert!(lookup(&document, "plugins.allowed_permissions")
-            .and_then(|item| item.as_array())
-            .is_some_and(|list| list.is_empty()));
+        assert!(lookup(&document, "plugins.allowed_permissions").and_then(|item| item.as_array()).is_some_and(|list| list.is_empty()));
         assert!(text.starts_with("seed = "));
         let _ = fs::remove_dir_all(&dir);
     }
@@ -724,10 +706,7 @@ trusted = true
         assert_eq!(body_of("[INFO] 5657 joined the game"), Some("5657 joined the game"));
         assert_eq!(level_of("19:33:00  INFO Started server; took 57ms"), Some("info"));
         assert_eq!(body_of("19:33:00 ERROR Failed to save level.dat: Info not found!"), Some("Failed to save level.dat: Info not found!"));
-        assert_eq!(
-            body_of("2026-08-26 15:36:37  INFO main ThreadId(01) pumpkin::server: All worlds loaded"),
-            Some("All worlds loaded")
-        );
+        assert_eq!(body_of("2026-08-26 15:36:37  INFO main ThreadId(01) pumpkin::server: All worlds loaded"), Some("All worlds loaded"));
         assert_eq!(level_of("[13:45:22] [Server thread/INFO]: hi"), None);
         assert_eq!(body_of("[13:45:22 INFO]: hi"), None);
         assert_eq!(body_of("Preparing spawn area"), None);

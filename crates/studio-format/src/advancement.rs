@@ -4,7 +4,7 @@
 
 use crate::fields::{self, Data};
 use crate::mini;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 /// The criterion only the studio's `advancement` action grants.
 pub const CRITERION: &str = "granted";
@@ -79,7 +79,13 @@ pub fn order(all: &[(String, Data)]) -> Vec<&(String, Data)> {
 /// Where each advancement of `ordered` (parents first, as [`order`] gives) sits on its tab, like the game lays out
 /// a data pack's: a child one column right of its parent, each leaf on its own row, a parent on its first child's.
 pub fn layout(ordered: &[&(String, Data)]) -> std::collections::HashMap<String, (f32, f32)> {
-    fn place(id: &str, column: f32, children: &std::collections::HashMap<String, Vec<String>>, row: &mut f32, out: &mut std::collections::HashMap<String, (f32, f32)>) {
+    fn place(
+        id: &str,
+        column: f32,
+        children: &std::collections::HashMap<String, Vec<String>>,
+        row: &mut f32,
+        out: &mut std::collections::HashMap<String, (f32, f32)>,
+    ) {
         let mine = children.get(id).cloned().unwrap_or_default();
         let first = *row;
         if mine.is_empty() {
@@ -119,7 +125,12 @@ mod tests {
 
     #[test]
     fn makes_minecraft_advancements() {
-        let root = json("first", &data(json!({ "title": "<gold>Hi", "icon": "oak_sapling", "frame": "GOAL", "toast": false })), "monolab", |name| Some(format!("minecraft:{name}")));
+        let root = json(
+            "first",
+            &data(json!({ "title": "<gold>Hi", "icon": "oak_sapling", "frame": "GOAL", "toast": false })),
+            "monolab",
+            |name| Some(format!("minecraft:{name}")),
+        );
         assert_eq!(root["display"]["icon"]["id"], "minecraft:oak_sapling");
         assert_eq!(root["display"]["frame"], "goal");
         assert_eq!(root["display"]["show_toast"], false);

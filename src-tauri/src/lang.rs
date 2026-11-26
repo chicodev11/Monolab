@@ -1,4 +1,3 @@
-
 use crate::data_root::MonolabDirs;
 use crate::off_runtime;
 use std::{collections::HashMap, fs, path::PathBuf};
@@ -14,17 +13,12 @@ fn cache_path(app: &AppHandle, version: &str) -> Option<PathBuf> {
 }
 
 fn worth_keeping(key: &str) -> bool {
-    key.starts_with("item.minecraft.")
-        || key.starts_with("block.minecraft.")
-        || key.starts_with("enchantment.minecraft.")
+    key.starts_with("item.minecraft.") || key.starts_with("block.minecraft.") || key.starts_with("enchantment.minecraft.")
 }
 
 fn item_keys(id: &str) -> [String; 2] {
     let bare = id.strip_prefix("minecraft:").unwrap_or(id);
-    [
-        format!("item.minecraft.{bare}"),
-        format!("block.minecraft.{bare}"),
-    ]
+    [format!("item.minecraft.{bare}"), format!("block.minecraft.{bare}")]
 }
 
 pub fn table(app: &AppHandle, version: &str) -> HashMap<String, String> {
@@ -52,9 +46,8 @@ fn fetch(app: &AppHandle, version: &str) -> Result<HashMap<String, String>, Stri
     let jar = crate::textures::client_jar(app, version)?;
     let file = fs::File::open(&jar).map_err(|error| error.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
-    let mut entry = archive
-        .by_name("assets/minecraft/lang/en_us.json")
-        .map_err(|_| "This version has no English language file.".to_string())?;
+    let mut entry =
+        archive.by_name("assets/minecraft/lang/en_us.json").map_err(|_| "This version has no English language file.".to_string())?;
     let mut text = String::new();
     std::io::Read::read_to_string(&mut entry, &mut text).map_err(|error| error.to_string())?;
     let table: HashMap<String, serde_json::Value> =
@@ -68,11 +61,7 @@ fn fetch(app: &AppHandle, version: &str) -> Result<HashMap<String, String>, Stri
 
 #[tauri::command(async)]
 #[specta::specta]
-pub fn item_names(
-    app: AppHandle,
-    version: String,
-    ids: Vec<String>,
-) -> Result<HashMap<String, String>, String> {
+pub fn item_names(app: AppHandle, version: String, ids: Vec<String>) -> Result<HashMap<String, String>, String> {
     let table = off_runtime(|| table(&app, &version));
     if table.is_empty() {
         return Ok(HashMap::new());
@@ -80,10 +69,7 @@ pub fn item_names(
     Ok(ids
         .into_iter()
         .filter_map(|id| {
-            let name = item_keys(&id)
-                .into_iter()
-                .find_map(|key| table.get(&key))?
-                .clone();
+            let name = item_keys(&id).into_iter().find_map(|key| table.get(&key))?.clone();
             Some((id, name))
         })
         .collect())
@@ -91,11 +77,7 @@ pub fn item_names(
 
 #[tauri::command(async)]
 #[specta::specta]
-pub fn enchantment_names(
-    app: AppHandle,
-    version: String,
-    ids: Vec<String>,
-) -> Result<HashMap<String, String>, String> {
+pub fn enchantment_names(app: AppHandle, version: String, ids: Vec<String>) -> Result<HashMap<String, String>, String> {
     let table = off_runtime(|| table(&app, &version));
     Ok(ids
         .into_iter()
@@ -115,10 +97,7 @@ mod tests {
     fn looks_in_both_item_and_block() {
         assert_eq!(
             item_keys("minecraft:netherite_sword"),
-            [
-                "item.minecraft.netherite_sword".to_string(),
-                "block.minecraft.netherite_sword".to_string()
-            ]
+            ["item.minecraft.netherite_sword".to_string(), "block.minecraft.netherite_sword".to_string()]
         );
         assert_eq!(item_keys("stone")[0], "item.minecraft.stone");
     }

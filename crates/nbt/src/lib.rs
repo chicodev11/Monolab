@@ -26,16 +26,8 @@ pub fn file_kind(name: &str) -> Option<FileKind> {
     if lower.ends_with(".mca") || lower.ends_with(".mcr") {
         return Some(FileKind::Region);
     }
-    [
-        ".dat",
-        ".dat_old",
-        ".nbt",
-        ".schem",
-        ".schematic",
-        ".litematic",
-        ".mcstructure_java",
-    ]
-    .iter()
-    .any(|ext| lower.ends_with(ext))
-    .then_some(FileKind::Document)
+    [".dat", ".dat_old", ".nbt", ".schem", ".schematic", ".litematic", ".mcstructure_java"]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
+        .then_some(FileKind::Document)
 }

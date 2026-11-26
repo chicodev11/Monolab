@@ -1,4 +1,3 @@
-
 pub const USER_AGENT: &str = "Monolab/0.1.0 (local Windows desktop app)";
 
 const HOSTS: &[&str] = &[
@@ -36,9 +35,7 @@ fn https_only() -> reqwest::redirect::Policy {
 }
 
 pub fn builder() -> reqwest::blocking::ClientBuilder {
-    reqwest::blocking::Client::builder()
-        .user_agent(USER_AGENT)
-        .redirect(https_only())
+    reqwest::blocking::Client::builder().user_agent(USER_AGENT).redirect(https_only())
 }
 
 pub fn is_private_host(host: &str) -> bool {
@@ -46,11 +43,7 @@ pub fn is_private_host(host: &str) -> bool {
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {
         return match ip {
             std::net::IpAddr::V4(v4) => v4.is_private() || v4.is_loopback() || v4.is_link_local(),
-            std::net::IpAddr::V6(v6) => {
-                v6.is_loopback()
-                    || (v6.segments()[0] & 0xfe00) == 0xfc00
-                    || (v6.segments()[0] & 0xffc0) == 0xfe80
-            }
+            std::net::IpAddr::V6(v6) => v6.is_loopback() || (v6.segments()[0] & 0xfe00) == 0xfc00 || (v6.segments()[0] & 0xffc0) == 0xfe80,
         };
     }
     host == "localhost"
@@ -63,8 +56,7 @@ pub fn is_private_host(host: &str) -> bool {
 fn https_or_lan() -> reqwest::redirect::Policy {
     reqwest::redirect::Policy::custom(|attempt| {
         let url = attempt.url();
-        let ok = url.scheme() == "https"
-            || (url.scheme() == "http" && url.host_str().is_some_and(is_private_host));
+        let ok = url.scheme() == "https" || (url.scheme() == "http" && url.host_str().is_some_and(is_private_host));
         if !ok {
             return attempt.error("Stopped: it tried to redirect to an outside address that isn't HTTPS.");
         }
@@ -76,9 +68,7 @@ fn https_or_lan() -> reqwest::redirect::Policy {
 }
 
 pub fn panel_builder() -> reqwest::ClientBuilder {
-    reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .redirect(https_or_lan())
+    reqwest::Client::builder().user_agent(USER_AGENT).redirect(https_or_lan())
 }
 
 pub fn check_download_url(url: &str) -> Result<(), String> {
@@ -87,9 +77,7 @@ pub fn check_download_url(url: &str) -> Result<(), String> {
         return Err(format!("Files are not downloaded from non-HTTPS addresses: {url}"));
     }
     let host = parsed.host_str().unwrap_or("").to_ascii_lowercase();
-    let known = HOSTS
-        .iter()
-        .any(|allowed| host == *allowed || host.ends_with(&format!(".{allowed}")));
+    let known = HOSTS.iter().any(|allowed| host == *allowed || host.ends_with(&format!(".{allowed}")));
     if !known {
         return Err(format!("Files are only downloaded from known distributors: {host}"));
     }

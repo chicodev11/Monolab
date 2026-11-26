@@ -55,7 +55,16 @@ fn keep(app: &AppHandle, saved: &Saved) -> Result<(), String> {
 
 pub fn info(app: &AppHandle) -> CloudInfo {
     let one = load(app);
-    CloudInfo { endpoint: one.endpoint, region: one.region, bucket: one.bucket, prefix: one.prefix, key_id: one.key_id, has_secret: !one.secret.is_empty(), on: one.on, last: one.last }
+    CloudInfo {
+        endpoint: one.endpoint,
+        region: one.region,
+        bucket: one.bucket,
+        prefix: one.prefix,
+        key_id: one.key_id,
+        has_secret: !one.secret.is_empty(),
+        on: one.on,
+        last: one.last,
+    }
 }
 
 /// `secret`: `None` keeps the saved one.
@@ -102,7 +111,13 @@ fn hmac(key: &[u8], data: &[u8]) -> Vec<u8> {
 /// S3's path encoding: everything but unreserved characters and `/`.
 fn encode(path: &str) -> String {
     path.bytes()
-        .map(|one| if one.is_ascii_alphanumeric() || matches!(one, b'-' | b'_' | b'.' | b'~' | b'/') { (one as char).to_string() } else { format!("%{one:02X}") })
+        .map(|one| {
+            if one.is_ascii_alphanumeric() || matches!(one, b'-' | b'_' | b'.' | b'~' | b'/') {
+                (one as char).to_string()
+            } else {
+                format!("%{one:02X}")
+            }
+        })
         .collect()
 }
 
@@ -141,7 +156,8 @@ fn upload(saved: &Saved, file: &Path, server: &str) -> Result<String, String> {
         return Err("This backup is over 5 GB, more than one upload can carry. It stays on this PC only.".into());
     }
     let name = file.file_name().and_then(|one| one.to_str()).ok_or("The backup has no file name.")?;
-    let server: String = server.chars().map(|one| if one.is_ascii_alphanumeric() || one == '-' || one == '_' { one } else { '-' }).collect();
+    let server: String =
+        server.chars().map(|one| if one.is_ascii_alphanumeric() || one == '-' || one == '_' { one } else { '-' }).collect();
     let key = [saved.prefix.as_str(), server.as_str(), name].iter().filter(|one| !one.is_empty()).copied().collect::<Vec<_>>().join("/");
     let host = saved.endpoint.trim_start_matches("https://").split('/').next().unwrap_or_default().to_string();
     let path = format!("/{}/{key}", saved.bucket);
@@ -206,7 +222,10 @@ mod tests {
     #[test]
     fn hmac_matches_rfc4231() {
         // RFC 4231 test case 2.
-        assert_eq!(hex(&hmac(b"Jefe", b"what do ya want for nothing?")), "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843");
+        assert_eq!(
+            hex(&hmac(b"Jefe", b"what do ya want for nothing?")),
+            "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+        );
     }
 
     #[test]
@@ -217,7 +236,8 @@ mod tests {
             key = hmac(&key, part.as_bytes());
         }
         assert_eq!(hex(&key), "f4780e2d9f65fa895f9c67b32ce1baf0b0d8a43505a000a1a9e090d414db404d");
-        let header = authorization("AKID", "secret", "us-west-004", "s3.example.com", "/bucket/a b.zip", &"0".repeat(64), "20261121T010203Z");
+        let header =
+            authorization("AKID", "secret", "us-west-004", "s3.example.com", "/bucket/a b.zip", &"0".repeat(64), "20261121T010203Z");
         assert!(header.starts_with("AWS4-HMAC-SHA256 Credential=AKID/20261121/us-west-004/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature="));
         assert_eq!(encode("/bucket/a b.zip"), "/bucket/a%20b.zip");
     }

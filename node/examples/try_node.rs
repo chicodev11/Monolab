@@ -26,7 +26,8 @@ async fn main() {
     let seed: [u8; 32] = relay_proto::unhex(&args[1]).and_then(|one| one.try_into().ok()).expect("seed: 64 hex letters");
     let signer = SigningKey::from_bytes(&seed);
     println!("grant key: 1:{}", relay_proto::hex(&signer.verifying_key().to_bytes()));
-    let addr: EndpointAddr = serde_json::from_str(&std::fs::read_to_string(format!("{}/addr.json", args[0])).expect("addr.json")).expect("address");
+    let addr: EndpointAddr =
+        serde_json::from_str(&std::fs::read_to_string(format!("{}/addr.json", args[0])).expect("addr.json")).expect("address");
     let mut mine = [0u8; 32];
     std::io::Read::read_exact(&mut std::fs::File::open("/dev/urandom").unwrap(), &mut mine).unwrap();
     let key = SecretKey::from_bytes(&mine);
@@ -48,7 +49,8 @@ async fn main() {
         exp: now + std::env::var("TRY_LIFE").ok().and_then(|one| one.parse().ok()).unwrap_or(LIFE_SECS),
     };
     let endpoint = Endpoint::builder(presets::N0).secret_key(key).clear_address_lookup().bind().await.expect("endpoint");
-    let connection = tokio::time::timeout(Duration::from_secs(15), endpoint.connect(addr, ALPN)).await.expect("connect timed out").expect("connect");
+    let connection =
+        tokio::time::timeout(Duration::from_secs(15), endpoint.connect(addr, ALPN)).await.expect("connect timed out").expect("connect");
     let (mut send, mut recv) = connection.open_bi().await.expect("control stream");
     let hello = json!({ "type": "hello", "grant": sign(&grant, &signer) }).to_string().into_bytes();
     let mut frame = (hello.len() as u32).to_be_bytes().to_vec();

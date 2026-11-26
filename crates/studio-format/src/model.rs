@@ -36,7 +36,10 @@ pub fn scale(data: &Data) -> f64 {
 /// role → animation name, as written.
 pub fn roles(data: &Data) -> Vec<(String, String)> {
     let Some(Value::Object(map)) = data.get("animations") else { return Vec::new() };
-    map.iter().filter_map(|(role, name)| Some((role.clone(), name.as_str()?.trim().to_string()))).filter(|(_, name)| !name.is_empty()).collect()
+    map.iter()
+        .filter_map(|(role, name)| Some((role.clone(), name.as_str()?.trim().to_string())))
+        .filter(|(_, name)| !name.is_empty())
+        .collect()
 }
 
 /// (width, height) in blocks, or `None` for no hitbox.
@@ -116,7 +119,9 @@ mod tests {
 
     #[test]
     fn fields() {
-        let one = data(json!({ "model": "dragon", "scale": 2, "animations": { "idle": "idle", "walk": " " }, "hitbox": { "width": 1, "height": 0 }, "seat": "saddle" }));
+        let one = data(
+            json!({ "model": "dragon", "scale": 2, "animations": { "idle": "idle", "walk": " " }, "hitbox": { "width": 1, "height": 0 }, "seat": "saddle" }),
+        );
         assert_eq!(asset(&one), "dragon");
         assert_eq!(scale(&one), 2.0);
         assert_eq!(roles(&one), vec![("idle".to_string(), "idle".to_string())]);

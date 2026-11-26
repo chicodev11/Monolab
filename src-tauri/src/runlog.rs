@@ -66,24 +66,14 @@ pub fn record(folder: &Path, kind: &str, detail: &str) {
     }
     if fs::metadata(&path).is_ok_and(|meta| meta.len() > 200 * 1024) {
         let kept = read(folder);
-        let text: String = kept
-            .iter()
-            .rev()
-            .take(KEEP)
-            .rev()
-            .filter_map(|one| serde_json::to_string(one).ok())
-            .map(|one| one + "\n")
-            .collect();
+        let text: String =
+            kept.iter().rev().take(KEEP).rev().filter_map(|one| serde_json::to_string(one).ok()).map(|one| one + "\n").collect();
         let _ = fs::write(&path, text);
     }
 }
 
 fn read(folder: &Path) -> Vec<RunEntry> {
-    fs::read_to_string(folder.join(FILE))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| serde_json::from_str(line).ok())
-        .collect()
+    fs::read_to_string(folder.join(FILE)).unwrap_or_default().lines().filter_map(|line| serde_json::from_str(line).ok()).collect()
 }
 
 pub fn list(folder: &Path) -> Vec<RunEntry> {

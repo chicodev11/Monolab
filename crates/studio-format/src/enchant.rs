@@ -19,7 +19,23 @@ use crate::fields::{self, Data};
 use serde_json::Value;
 
 /// What an enchantment may go on: groups of item names (by the end of the name, like the game's tags).
-pub const ITEM_GROUPS: [&str; 15] = ["sword", "axe", "pickaxe", "shovel", "hoe", "bow", "crossbow", "trident", "mace", "fishing_rod", "helmet", "chestplate", "leggings", "boots", "elytra"];
+pub const ITEM_GROUPS: [&str; 15] = [
+    "sword",
+    "axe",
+    "pickaxe",
+    "shovel",
+    "hoe",
+    "bow",
+    "crossbow",
+    "trident",
+    "mace",
+    "fishing_rod",
+    "helmet",
+    "chestplate",
+    "leggings",
+    "boots",
+    "elytra",
+];
 /// Wider groups the editor offers too.
 pub const WIDE_GROUPS: [&str; 4] = ["weapon", "tool", "armor", "any"];
 pub const ACTION_LISTS: [&str; 3] = ["hitActions", "mineActions", "hurtActions"];
@@ -40,7 +56,8 @@ pub fn chance(data: &Data) -> f64 {
 
 /// Whether an item (`minecraft:diamond_sword`) may carry it.
 pub fn fits(data: &Data, material: &str) -> bool {
-    let groups: Vec<String> = fields::lines(data, "items").iter().map(|one| one.trim().to_ascii_lowercase()).filter(|one| !one.is_empty()).collect();
+    let groups: Vec<String> =
+        fields::lines(data, "items").iter().map(|one| one.trim().to_ascii_lowercase()).filter(|one| !one.is_empty()).collect();
     if groups.is_empty() {
         return true;
     }
@@ -64,14 +81,22 @@ fn in_group(group: &str, bare: &str) -> bool {
 /// `II` for 2: roman numerals up to 10, the number past it (like the game).
 pub fn numeral(level: u32) -> String {
     const ROMAN: [&str; 10] = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
-    if (1..=10).contains(&level) { ROMAN[level as usize - 1].to_string() } else { level.to_string() }
+    if (1..=10).contains(&level) {
+        ROMAN[level as usize - 1].to_string()
+    } else {
+        level.to_string()
+    }
 }
 
 /// The lore line for one enchantment: its name (MiniMessage) and level, grey unless the name has its own colour.
 pub fn lore_line(data: &Data, id: &str, level: u32) -> String {
     let name = fields::text(data, "name", id);
     let shown = if max_level(data) == 1 && level == 1 { name.clone() } else { format!("{name} {}", numeral(level)) };
-    if name.trim_start().starts_with('<') { shown } else { format!("<gray>{shown}") }
+    if name.trim_start().starts_with('<') {
+        shown
+    } else {
+        format!("<gray>{shown}")
+    }
 }
 
 /// `id=level;id=level` read back, in order, levels at least 1.
@@ -154,7 +179,10 @@ mod tests {
         assert_eq!(write(&with(&list, "burn", 4)), "lifesteal=2;burn=4;x=3");
         assert_eq!(write(&with(&list, "lifesteal", 0)), "burn=1;x=3");
         assert_eq!(write(&with(&list, "new", 1)), "lifesteal=2;burn=1;x=3;new=1");
-        assert_eq!(on_item(&data(json!({ "enchantments": { "sharpness": 5, "studio:lifesteal": 2 } }))), vec![("lifesteal".to_string(), 2)]);
+        assert_eq!(
+            on_item(&data(json!({ "enchantments": { "sharpness": 5, "studio:lifesteal": 2 } }))),
+            vec![("lifesteal".to_string(), 2)]
+        );
         assert_eq!(problems(&data(json!({ "items": ["hat"], "hitActions": [{}] }))).len(), 1);
         assert_eq!(problems(&data(json!({}))).len(), 1);
         assert!((chance(&data(json!({ "chance": 25 }))) - 0.25).abs() < 1e-9);

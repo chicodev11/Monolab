@@ -12,7 +12,9 @@
 
 use pumpkin_plugin_api::persistent_data::PersistentDataHolder;
 use pumpkin_plugin_api::world::{Entity, World};
-use pumpkin_plugin_api::{DisplayTransformation, EntityDisplayExt, EntityType, ItemDisplayMode, ItemStack, Player, Quaternionf, Server, Vector3f};
+use pumpkin_plugin_api::{
+    DisplayTransformation, EntityDisplayExt, EntityType, ItemDisplayMode, ItemStack, Player, Quaternionf, Server, Vector3f,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
@@ -48,11 +50,18 @@ fn floats(value: Option<&Value>) -> Vec<f32> {
 impl Rig {
     pub fn parse(text: &str) -> Rig {
         let Ok(Value::Object(root)) = serde_json::from_str::<Value>(text) else { return Rig::missing() };
-        let items = root.get("parts").and_then(Value::as_array).into_iter().flatten().map(|one| one.get("item").and_then(Value::as_str).unwrap_or_default().to_string()).collect();
+        let items = root
+            .get("parts")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|one| one.get("item").and_then(Value::as_str).unwrap_or_default().to_string())
+            .collect();
         let mut animations = HashMap::new();
         for (name, one) in root.get("animations").and_then(Value::as_object).into_iter().flatten() {
             let frames = one.get("frames").and_then(Value::as_array).into_iter().flatten().map(|frame| floats(Some(frame))).collect();
-            animations.insert(name.clone(), Animation { looping: one.get("loop").and_then(Value::as_str).unwrap_or("once").to_string(), frames });
+            animations
+                .insert(name.clone(), Animation { looping: one.get("loop").and_then(Value::as_str).unwrap_or("once").to_string(), frames });
         }
         let seat = floats(root.get("seat"));
         Rig {
@@ -60,7 +69,13 @@ impl Rig {
             rest: floats(root.get("rest")),
             animations,
             seat: (seat.len() == 3).then(|| [seat[0], seat[1], seat[2]]),
-            problems: root.get("problems").and_then(Value::as_array).into_iter().flatten().filter_map(|one| one.as_str().map(str::to_string)).collect(),
+            problems: root
+                .get("problems")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|one| one.as_str().map(str::to_string))
+                .collect(),
         }
     }
 
@@ -89,7 +104,11 @@ pub fn pose(frame: &[f32], part: usize) -> DisplayTransformation {
     let whole = frame.len() >= at + 10;
     DisplayTransformation {
         translation: Vector3f { x: get(0, 0.0), y: get(1, 0.0), z: get(2, 0.0) },
-        left_rotation: if whole { Quaternionf { x: get(3, 0.0), y: get(4, 0.0), z: get(5, 0.0), w: get(6, 1.0) } } else { Quaternionf { x: 0.0, y: 0.0, z: 0.0, w: 1.0 } },
+        left_rotation: if whole {
+            Quaternionf { x: get(3, 0.0), y: get(4, 0.0), z: get(5, 0.0), w: get(6, 1.0) }
+        } else {
+            Quaternionf { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+        },
         scale: if whole { Vector3f { x: get(7, 1.0), y: get(8, 1.0), z: get(9, 1.0) } } else { Vector3f { x: 1.0, y: 1.0, z: 1.0 } },
         right_rotation: Quaternionf { x: 0.0, y: 0.0, z: 0.0, w: 1.0 },
     }
@@ -130,7 +149,9 @@ pub struct Instance {
 impl Instance {
     fn resolve(&self, name: &str) -> Option<String> {
         let by_role = self.roles.iter().find(|(role, _)| role == name).map(|(_, one)| one.clone());
-        by_role.filter(|one| self.rig.animations.contains_key(one)).or_else(|| self.rig.animations.contains_key(name).then(|| name.to_string()))
+        by_role
+            .filter(|one| self.rig.animations.contains_key(one))
+            .or_else(|| self.rig.animations.contains_key(name).then(|| name.to_string()))
     }
 
     fn idle(&self) -> Option<String> {
@@ -194,7 +215,8 @@ impl Instance {
             let may = !permission.is_empty() && player.has_permission(permission.clone()).await;
             for one in self.parts.iter().chain(&self.hitbox) {
                 // The calls take their own handle of the entity.
-                let handle = || one.as_display().map(|display| display.get_entity()).or_else(|| one.as_interaction().map(|box_| box_.get_entity()));
+                let handle =
+                    || one.as_display().map(|display| display.get_entity()).or_else(|| one.as_interaction().map(|box_| box_.get_entity()));
                 let Some(seen) = handle() else { continue };
                 if player.can_see_entity(seen) != may
                     && let Some(again) = handle()
@@ -322,7 +344,13 @@ impl Models {
 
     /// Every studio tick (20 a second) with the enabled `model` files. Returns (id, problem) lines new since the
     /// last reload, for the file's status.
-    pub async fn tick(&mut self, server: &Server, root: &Path, rows: &[(String, Data)], world_named: impl Fn(&str) -> Option<World>) -> Vec<(String, String)> {
+    pub async fn tick(
+        &mut self,
+        server: &Server,
+        root: &Path,
+        rows: &[(String, Data)],
+        world_named: impl Fn(&str) -> Option<World>,
+    ) -> Vec<(String, String)> {
         self.ticks += 1;
         let mut problems = Vec::new();
         if self.ticks % 20 == 1 || self.dirty {
@@ -354,7 +382,8 @@ impl Models {
                 false
             });
             // Leftovers: tagged entities no live copy owns (from before a restart, or a removed file).
-            let owned: Vec<u32> = self.placed.values().chain(self.riders.values().map(|one| &one.instance)).flat_map(Instance::ids).collect();
+            let owned: Vec<u32> =
+                self.placed.values().chain(self.riders.values().map(|one| &one.instance)).flat_map(Instance::ids).collect();
             for world in server.get_all_worlds() {
                 for entity in world.get_entities() {
                     if !owned.contains(&entity.get_id()) && entity.get_string(TAG, KEY).await.is_some() {
@@ -421,7 +450,10 @@ impl Models {
     pub fn play_on(&mut self, model: &str, animation: &str) {
         let now = self.ticks;
         self.placed.values_mut().filter(|one| one.model == model).for_each(|one| one.play(animation, now));
-        self.riders.values_mut().filter(|one| one.gone_at.is_none() && one.instance.model == model).for_each(|one| one.instance.play(animation, now));
+        self.riders
+            .values_mut()
+            .filter(|one| one.gone_at.is_none() && one.instance.model == model)
+            .for_each(|one| one.instance.play(animation, now));
     }
 
     // ---------- M5: models on mobs ----------
@@ -447,7 +479,19 @@ impl Models {
                 own.add_passenger(display.get_entity()).await;
             }
         }
-        let mut instance = Instance { model: id.to_string(), rig, roles: rules::roles(data), parts, hitbox: None, seat: None, playing: None, started: self.ticks, shown: None, walking: false, permission };
+        let mut instance = Instance {
+            model: id.to_string(),
+            rig,
+            roles: rules::roles(data),
+            parts,
+            hitbox: None,
+            seat: None,
+            playing: None,
+            started: self.ticks,
+            shown: None,
+            walking: false,
+            permission,
+        };
         instance.playing = instance.base();
         self.riders.insert(mob.get_id(), Rider { instance, mob: own, last: Some((x, y, z, yaw)), gone_at: None, ends_at: None });
         Ok(())
@@ -535,32 +579,44 @@ pub async fn spawn(world: &World, id: &str, rig: Arc<Rig>, data: &Data, (x, y, z
     let hitbox = match rules::hitbox(data) {
         None => None,
         Some((width, height)) => {
-        let entity = world.spawn_entity(EntityType::Interaction, (x, y, z)).await;
-        entity.set_saves_to_disk(false);
-        entity.set_visible_by_default(!hidden);
-        entity.set_string(TAG, KEY, id).await;
-        if let Some(interaction) = entity.as_interaction() {
-            interaction.set_width(width as f32);
-            interaction.set_height(height as f32);
-            interaction.set_response(true);
-        }
-        Some(entity)
+            let entity = world.spawn_entity(EntityType::Interaction, (x, y, z)).await;
+            entity.set_saves_to_disk(false);
+            entity.set_visible_by_default(!hidden);
+            entity.set_string(TAG, KEY, id).await;
+            if let Some(interaction) = entity.as_interaction() {
+                interaction.set_width(width as f32);
+                interaction.set_height(height as f32);
+                interaction.set_response(true);
+            }
+            Some(entity)
         }
     };
     let seat = match rig.seat {
         None => None,
         Some([sx, sy, sz]) => {
-        // The rig is in model space; turn the seat by the model's yaw like the displays turn.
-        let turn = f64::from(-yaw).to_radians();
-        let (sx, sy, sz) = (f64::from(sx), f64::from(sy), f64::from(sz));
-        let (dx, dz) = (sx * turn.cos() + sz * turn.sin(), -sx * turn.sin() + sz * turn.cos());
-        let entity = world.spawn_entity(EntityType::ItemDisplay, (x + dx, y + sy, z + dz)).await;
-        entity.set_saves_to_disk(false);
-        entity.set_string(TAG, KEY, id).await;
-        Some(entity)
+            // The rig is in model space; turn the seat by the model's yaw like the displays turn.
+            let turn = f64::from(-yaw).to_radians();
+            let (sx, sy, sz) = (f64::from(sx), f64::from(sy), f64::from(sz));
+            let (dx, dz) = (sx * turn.cos() + sz * turn.sin(), -sx * turn.sin() + sz * turn.cos());
+            let entity = world.spawn_entity(EntityType::ItemDisplay, (x + dx, y + sy, z + dz)).await;
+            entity.set_saves_to_disk(false);
+            entity.set_string(TAG, KEY, id).await;
+            Some(entity)
         }
     };
-    Instance { model: id.to_string(), rig, roles: rules::roles(data), parts, hitbox, seat, playing: None, started: 0, shown: None, walking: false, permission }
+    Instance {
+        model: id.to_string(),
+        rig,
+        roles: rules::roles(data),
+        parts,
+        hitbox,
+        seat,
+        playing: None,
+        started: 0,
+        shown: None,
+        walking: false,
+        permission,
+    }
 }
 
 /// One item display per part, at rest. `hidden`: nobody sees them until shown (permission-only models).
@@ -595,8 +651,10 @@ mod tests {
 
     #[test]
     fn reads_the_rig() {
-        let rig = Rig::parse(r#"{"parts":[{"bone":"a","item":"monolab:model/x/p0"}],"rest":[0,1,0,0,0,0,1,1,1,1],
-            "animations":{"spin":{"loop":"loop","frames":[[0],[1],[2],[0]]},"pop":{"loop":"once","frames":[[0],[1]]}},"seat":[0,2,0],"problems":[]}"#);
+        let rig = Rig::parse(
+            r#"{"parts":[{"bone":"a","item":"monolab:model/x/p0"}],"rest":[0,1,0,0,0,0,1,1,1,1],
+            "animations":{"spin":{"loop":"loop","frames":[[0],[1],[2],[0]]},"pop":{"loop":"once","frames":[[0],[1]]}},"seat":[0,2,0],"problems":[]}"#,
+        );
         assert_eq!(rig.items, vec!["monolab:model/x/p0".to_string()]);
         assert_eq!(rig.seat, Some([0.0, 2.0, 0.0]));
         let spin = &rig.animations["spin"];

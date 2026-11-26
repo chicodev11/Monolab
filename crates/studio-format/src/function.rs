@@ -40,7 +40,10 @@ fn expand_into(steps: &[Value], actions_of: &dyn Fn(&str) -> Option<Vec<Value>>,
 
 /// A function file's steps.
 pub fn actions(data: &Data) -> Vec<Value> {
-    data.get("actions").and_then(Value::as_array).map(|list| list.iter().filter(|one| one.is_object()).cloned().collect()).unwrap_or_default()
+    data.get("actions")
+        .and_then(Value::as_array)
+        .map(|list| list.iter().filter(|one| one.is_object()).cloned().collect())
+        .unwrap_or_default()
 }
 
 pub fn problems(id: &str, data: &Data) -> Vec<String> {
@@ -49,7 +52,10 @@ pub fn problems(id: &str, data: &Data) -> Vec<String> {
     if list.is_empty() {
         out.push("A function needs \"actions\": the steps it runs.".into());
     }
-    if list.iter().any(|one| one.get("type").and_then(Value::as_str) == Some("function") && one.get("function").and_then(Value::as_str) == Some(id)) {
+    if list
+        .iter()
+        .any(|one| one.get("type").and_then(Value::as_str) == Some("function") && one.get("function").and_then(Value::as_str) == Some(id))
+    {
         out.push("It runs itself; that stops after 8 rounds.".into());
     }
     out
@@ -69,7 +75,12 @@ mod tests {
             "loop" => Some(looping.clone()),
             _ => None,
         };
-        let steps = vec![json!({ "type": "title" }), json!({ "type": "function", "function": "greet" }), json!({ "type": "function", "function": "gone" }), json!({ "type": "heal" })];
+        let steps = vec![
+            json!({ "type": "title" }),
+            json!({ "type": "function", "function": "greet" }),
+            json!({ "type": "function", "function": "gone" }),
+            json!({ "type": "heal" }),
+        ];
         let out = expand(&steps, &lookup, 200);
         let types: Vec<&str> = out.iter().map(|one| one["type"].as_str().unwrap()).collect();
         // title, message, then "loop" 7 deep (sound each), then heal.

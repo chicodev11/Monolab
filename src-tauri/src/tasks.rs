@@ -1,4 +1,3 @@
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize, specta::Type)]
@@ -113,8 +112,7 @@ pub fn tidy(mut task: Task) -> Result<Task, String> {
             task.interval_minutes = task.interval_minutes.clamp(1, 60 * 24 * 30);
         }
         "daily" | "weekly" => {
-            parse_daily(&task.daily_time)
-                .ok_or("Enter the time in 24‑hour format (e.g. 04:30).")?;
+            parse_daily(&task.daily_time).ok_or("Enter the time in 24‑hour format (e.g. 04:30).")?;
             if task.schedule == "weekly" {
                 task.weekdays.retain(|day| *day < 7);
                 task.weekdays.sort_unstable();
@@ -134,7 +132,13 @@ fn legacy_marks(minutes: u32) -> Vec<u32> {
     let mut left = minutes;
     while left > 0 {
         out.push(left * 60);
-        left -= if left > 5 { left - 5 } else if left > 1 { left - 1 } else { 1 };
+        left -= if left > 5 {
+            left - 5
+        } else if left > 1 {
+            left - 1
+        } else {
+            1
+        };
     }
     out
 }
@@ -160,7 +164,11 @@ fn time_left(task: &Task, seconds: u32) -> String {
 
 pub fn warn_text(task: &Task, seconds: u32) -> String {
     let template = if task.message.trim().is_empty() {
-        if task.kind == "stop" { "The server stops in {time}." } else { "The server restarts in {time}." }
+        if task.kind == "stop" {
+            "The server stops in {time}."
+        } else {
+            "The server restarts in {time}."
+        }
     } else {
         task.message.trim()
     };
@@ -312,20 +320,13 @@ mod tests {
 
     #[test]
     fn strips_the_leading_slash() {
-        let task = tidy(Task {
-            command: "/say hi".into(),
-            ..sample("command", "interval")
-        })
-        .expect("should be fixable");
+        let task = tidy(Task { command: "/say hi".into(), ..sample("command", "interval") }).expect("should be fixable");
         assert_eq!(task.command, "say hi");
     }
 
     #[test]
     fn refuses_an_empty_command() {
-        let result = tidy(Task {
-            command: "   ".into(),
-            ..sample("command", "interval")
-        });
+        let result = tidy(Task { command: "   ".into(), ..sample("command", "interval") });
         assert!(result.is_err());
     }
 

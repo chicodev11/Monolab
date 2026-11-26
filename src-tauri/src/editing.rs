@@ -95,7 +95,8 @@ pub fn people(server: &str) -> Vec<(String, Vec<String>)> {
                 .iter()
                 .filter(|((one, _), _)| one == server)
                 .map(|((_, path), people)| {
-                    let mut live: Vec<String> = people.iter().filter(|(_, at)| now.duration_since(**at) < OPEN_FOR).map(|(name, _)| name.clone()).collect();
+                    let mut live: Vec<String> =
+                        people.iter().filter(|(_, at)| now.duration_since(**at) < OPEN_FOR).map(|(name, _)| name.clone()).collect();
                     live.sort();
                     (path.clone(), live)
                 })

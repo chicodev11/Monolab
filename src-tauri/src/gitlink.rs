@@ -108,7 +108,13 @@ fn git(dir: &Path, args: &[&str]) -> Result<Output, String> {
         .current_dir(dir)
         .env("GIT_TERMINAL_PROMPT", "0")
         .output()
-        .map_err(|error| if error.kind() == std::io::ErrorKind::NotFound { "Git isn't installed. Get it from git-scm.com, then try again.".to_string() } else { format!("Couldn't run git: {error}") })
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                "Git isn't installed. Get it from git-scm.com, then try again.".to_string()
+            } else {
+                format!("Couldn't run git: {error}")
+            }
+        })
 }
 
 /// Runs git on this PC and gives its output, or its error text.
@@ -142,7 +148,11 @@ impl Place {
             return Err("Git works for servers on this PC and SSH servers, not panel servers.".into());
         }
         if !instance.remote_host.is_empty() {
-            return Ok(Place::Ssh { app: app.clone(), host: instance.remote_host, folder: instance.path.trim_end_matches('/').to_string() });
+            return Ok(Place::Ssh {
+                app: app.clone(),
+                host: instance.remote_host,
+                folder: instance.path.trim_end_matches('/').to_string(),
+            });
         }
         Ok(Place::Here(PathBuf::from(instance.path)))
     }
@@ -151,7 +161,11 @@ impl Place {
     fn shell(app: &AppHandle, host: &str, command: &str, long: bool) -> Result<crate::remote::Output, String> {
         tauri::async_runtime::block_on(async {
             let conn = crate::remote::connect(app, host).await?;
-            if long { conn.run_long(command).await } else { conn.run(command).await }
+            if long {
+                conn.run_long(command).await
+            } else {
+                conn.run(command).await
+            }
         })
     }
 
@@ -168,7 +182,11 @@ impl Place {
         match self {
             Place::Here(dir) => {
                 let out = git(dir, args)?;
-                Ok(Ran { ok: out.status.success(), out: String::from_utf8_lossy(&out.stdout).into_owned(), err: String::from_utf8_lossy(&out.stderr).into_owned() })
+                Ok(Ran {
+                    ok: out.status.success(),
+                    out: String::from_utf8_lossy(&out.stdout).into_owned(),
+                    err: String::from_utf8_lossy(&out.stderr).into_owned(),
+                })
             }
             Place::Ssh { app, host, folder } => {
                 let out = Self::shell(app, host, &Self::ssh_git(folder, args), long)?;
@@ -220,7 +238,11 @@ impl Place {
                 let at = format!("{folder}/{relative}");
                 let command = format!("printf %s {} > {}", crate::remote::quote(text), crate::remote::quote(&at));
                 let out = Self::shell(app, host, &command, false)?;
-                if out.code == 0 { Ok(()) } else { Err(format!("Couldn't write {relative}: {}", out.stderr.trim())) }
+                if out.code == 0 {
+                    Ok(())
+                } else {
+                    Err(format!("Couldn't write {relative}: {}", out.stderr.trim()))
+                }
             }
         }
     }
@@ -230,7 +252,10 @@ impl Place {
         match self {
             Place::Here(dir) => world_folders(dir),
             Place::Ssh { app, host, folder } => {
-                let command = format!("cd {} && for d in */; do [ -f \"$d/level.dat\" ] && printf '%s\\n' \"${{d%/}}\"; done; true", crate::remote::quote(folder));
+                let command = format!(
+                    "cd {} && for d in */; do [ -f \"$d/level.dat\" ] && printf '%s\\n' \"${{d%/}}\"; done; true",
+                    crate::remote::quote(folder)
+                );
                 Self::shell(app, host, &command, false)
                     .map(|out| out.stdout.lines().map(str::trim).filter(|one| !one.is_empty()).map(str::to_string).collect())
                     .unwrap_or_default()
@@ -314,7 +339,15 @@ fn commit_all(place: &Place, message: &str) -> Result<bool, String> {
 #[specta::specta]
 pub fn git_state(app: AppHandle, id: String) -> Result<GitState, String> {
     let place = Place::of(&app, &id)?;
-    let empty = |installed: bool| GitState { installed, repo: false, branch: String::new(), remote: String::new(), changes: vec![], ahead: 0, behind: 0 };
+    let empty = |installed: bool| GitState {
+        installed,
+        repo: false,
+        branch: String::new(),
+        remote: String::new(),
+        changes: vec![],
+        ahead: 0,
+        behind: 0,
+    };
     if !place.installed() {
         return Ok(empty(false));
     }
@@ -470,7 +503,9 @@ pub fn git_set_remote(app: AppHandle, id: String, url: String) -> Result<(), Str
 }
 
 fn remote_ok(url: &str) -> bool {
-    (url.starts_with("https://") || url.starts_with("git@") || url.starts_with("ssh://")) && !url.contains(char::is_whitespace) && !url.starts_with('-')
+    (url.starts_with("https://") || url.starts_with("git@") || url.starts_with("ssh://"))
+        && !url.contains(char::is_whitespace)
+        && !url.starts_with('-')
 }
 
 #[tauri::command(async)]
@@ -480,7 +515,11 @@ pub fn git_push(app: AppHandle, id: String) -> Result<String, String> {
     let branch = place.run(&["rev-parse", "--abbrev-ref", "HEAD"])?.trim().to_string();
     let ran = place.git_ran(&["push", "-u", "origin", &branch], true)?;
     let text = format!("{}{}", ran.out, ran.err).trim().to_string();
-    if ran.ok { Ok(text) } else { Err(text) }
+    if ran.ok {
+        Ok(text)
+    } else {
+        Err(text)
+    }
 }
 
 /// Pulls from the remote (fast-forward only, so nothing is merged behind the user's back).
@@ -511,12 +550,21 @@ fn save_repos(app: &AppHandle, repos: &[DevRepo]) -> Result<(), String> {
 /// A folder name from a repository address: `https://github.com/me/cool-plugin.git` → `cool-plugin`.
 fn repo_name(url: &str) -> String {
     let last = url.trim_end_matches('/').rsplit(['/', ':']).next().unwrap_or("repo");
-    let name: String = last.trim_end_matches(".git").chars().filter(|one| one.is_ascii_alphanumeric() || matches!(one, '-' | '_' | '.')).collect();
-    if name.is_empty() || name.starts_with('.') { "repo".into() } else { name }
+    let name: String =
+        last.trim_end_matches(".git").chars().filter(|one| one.is_ascii_alphanumeric() || matches!(one, '-' | '_' | '.')).collect();
+    if name.is_empty() || name.starts_with('.') {
+        "repo".into()
+    } else {
+        name
+    }
 }
 
 fn guess_build(dir: &Path) -> &'static str {
-    if dir.join("gradlew").exists() || dir.join("gradlew.bat").exists() || dir.join("build.gradle").exists() || dir.join("build.gradle.kts").exists() {
+    if dir.join("gradlew").exists()
+        || dir.join("gradlew.bat").exists()
+        || dir.join("build.gradle").exists()
+        || dir.join("build.gradle.kts").exists()
+    {
         "gradle"
     } else if dir.join("pom.xml").exists() {
         "maven"
@@ -655,7 +703,11 @@ pub async fn dev_repo_build(app: AppHandle, state: State<'_, AppState>, repo: St
         _ if windows => ("cmd".into(), vec!["/C".into(), found.command.clone()]),
         _ => ("sh".into(), vec!["-c".into(), found.command.clone()]),
     };
-    log.push_str(&format!("$ {} {}\n", Path::new(&program).file_name().map(|one| one.to_string_lossy().to_string()).unwrap_or_default(), args.join(" ")));
+    log.push_str(&format!(
+        "$ {} {}\n",
+        Path::new(&program).file_name().map(|one| one.to_string_lossy().to_string()).unwrap_or_default(),
+        args.join(" ")
+    ));
     let build_dir = dir.clone();
     let out = tauri::async_runtime::spawn_blocking(move || hidden_command(&program).args(&args).current_dir(&build_dir).output())
         .await
@@ -667,11 +719,8 @@ pub async fn dev_repo_build(app: AppHandle, state: State<'_, AppState>, repo: St
     if !out.status.success() {
         return Ok(BuildResult { ok: false, jar: String::new(), log });
     }
-    let places: Vec<PathBuf> = if found.output.is_empty() {
-        vec![dir.join("build").join("libs"), dir.join("target")]
-    } else {
-        vec![dir.join(&found.output)]
-    };
+    let places: Vec<PathBuf> =
+        if found.output.is_empty() { vec![dir.join("build").join("libs"), dir.join("target")] } else { vec![dir.join(&found.output)] };
     let Some(jar) = places.iter().find_map(|place| newest_jar(place)) else {
         log.push_str("\nThe build worked but no .jar was found. Set the jar folder.");
         return Ok(BuildResult { ok: false, jar: String::new(), log });
@@ -698,14 +747,23 @@ mod tests {
         let got: Vec<(&str, &str)> = all.iter().map(|one| (one.path.as_str(), one.state.as_str())).collect();
         assert_eq!(
             got,
-            [("server.properties", "changed"), ("plugins/Foo/config.yml", "new"), ("new.yml", "renamed"), ("ops.json", "deleted"), ("bukkit.yml", "added")]
+            [
+                ("server.properties", "changed"),
+                ("plugins/Foo/config.yml", "new"),
+                ("new.yml", "renamed"),
+                ("ops.json", "deleted"),
+                ("bukkit.yml", "added")
+            ]
         );
     }
 
     #[test]
     fn ssh_commands_are_quoted() {
         let line = Place::ssh_git("/home/u/my server", &["commit", "-m", "it's done; rm -rf /"]);
-        assert_eq!(line, r#"cd '/home/u/my server' && GIT_TERMINAL_PROMPT=0 git -c core.quotepath=off -c color.ui=never 'commit' '-m' 'it'\''s done; rm -rf /'"#);
+        assert_eq!(
+            line,
+            r#"cd '/home/u/my server' && GIT_TERMINAL_PROMPT=0 git -c core.quotepath=off -c color.ui=never 'commit' '-m' 'it'\''s done; rm -rf /'"#
+        );
     }
 
     /// A real history on this PC: change, commit, read the status and log back, put the file back.

@@ -39,7 +39,9 @@ pub struct Backups {
 
 /// The backup's name in its folder: what this node made, nothing else.
 fn backup_name(name: &str) -> Result<&str, String> {
-    let ok = name.ends_with(".tar.gz") && !name.starts_with('.') && name.chars().all(|one| one.is_ascii_alphanumeric() || matches!(one, '-' | '_' | '.'));
+    let ok = name.ends_with(".tar.gz")
+        && !name.starts_with('.')
+        && name.chars().all(|one| one.is_ascii_alphanumeric() || matches!(one, '-' | '_' | '.'));
     if ok { Ok(name) } else { Err("Unknown backup.".into()) }
 }
 
@@ -71,8 +73,16 @@ impl Backups {
                 let name = entry.file_name().to_str()?.to_string();
                 backup_name(&name).ok()?;
                 let meta = entry.metadata().ok()?;
-                let side: Side = fs::read_to_string(folder.join(format!("{name}.json"))).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default();
-                let made = meta.modified().ok().and_then(|when| when.duration_since(std::time::UNIX_EPOCH).ok()).map(|gap| gap.as_secs()).unwrap_or(0);
+                let side: Side = fs::read_to_string(folder.join(format!("{name}.json")))
+                    .ok()
+                    .and_then(|text| serde_json::from_str(&text).ok())
+                    .unwrap_or_default();
+                let made = meta
+                    .modified()
+                    .ok()
+                    .and_then(|when| when.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|gap| gap.as_secs())
+                    .unwrap_or(0);
                 Some(BackupFile {
                     file_name: name,
                     size_mib: meta.len() as f64 / 1024.0 / 1024.0,
@@ -108,7 +118,11 @@ impl Backups {
             vec![".".into()]
         };
         let folder = self.folder(&server.id);
-        fs::DirBuilder::new().recursive(true).mode(0o700).create(&folder).map_err(|error| format!("Could not make the backup folder: {error}"))?;
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(&folder)
+            .map_err(|error| format!("Could not make the backup folder: {error}"))?;
         let now = crate::serve::unix_now();
         let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
         let mut name = format!("{}-{stamp}.tar.gz", server.id);
@@ -163,7 +177,12 @@ impl Backups {
             return Err("Unknown backup.".into());
         }
         // A tar made elsewhere could hold `../` or absolute names; this node's own never do, but check.
-        let listed = Command::new(&self.tar).arg("-tzf").arg(&path).stdin(Stdio::null()).output().map_err(|error| format!("Could not run tar: {error}"))?;
+        let listed = Command::new(&self.tar)
+            .arg("-tzf")
+            .arg(&path)
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|error| format!("Could not run tar: {error}"))?;
         if !listed.status.success() {
             return Err("The backup can't be read.".into());
         }
@@ -188,7 +207,11 @@ impl Backups {
             .output()
             .map_err(|error| format!("Could not run tar: {error}"))?;
         if !out.status.success() {
-            return Err(format!("Restoring failed part way: {}. The folder as it was is in {}.", String::from_utf8_lossy(&out.stderr).trim(), before.file_name));
+            return Err(format!(
+                "Restoring failed part way: {}. The folder as it was is in {}.",
+                String::from_utf8_lossy(&out.stderr).trim(),
+                before.file_name
+            ));
         }
         Ok(before)
     }
@@ -199,7 +222,15 @@ mod tests {
     use super::*;
 
     fn server(root: &Path) -> ServerConfig {
-        ServerConfig { id: "s".into(), name: "S".into(), path: root.to_path_buf(), tmux: String::new(), log: "logs/latest.log".into(), start: String::new(), stop: "stop".into() }
+        ServerConfig {
+            id: "s".into(),
+            name: "S".into(),
+            path: root.to_path_buf(),
+            tmux: String::new(),
+            log: "logs/latest.log".into(),
+            start: String::new(),
+            stop: "stop".into(),
+        }
     }
 
     #[test]

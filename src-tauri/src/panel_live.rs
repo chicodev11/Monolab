@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -34,21 +33,16 @@ pub fn start_watcher(app: AppHandle) {
                 }
             }
             first = false;
-            let instances: Vec<ServerInstance> = crate::load_instances(&app)
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|one| !one.panel_host.is_empty())
-                .collect();
+            let instances: Vec<ServerInstance> =
+                crate::load_instances(&app).unwrap_or_default().into_iter().filter(|one| !one.panel_host.is_empty()).collect();
             if instances.is_empty() {
                 continue;
             }
             let mut apis: HashMap<String, Option<Arc<panel::Api>>> = HashMap::new();
             let mut asks = Vec::new();
             for one in &instances {
-                let api = apis
-                    .entry(one.panel_host.clone())
-                    .or_insert_with(|| panel::api(&app, &one.panel_host).ok().map(Arc::new))
-                    .clone();
+                let api =
+                    apis.entry(one.panel_host.clone()).or_insert_with(|| panel::api(&app, &one.panel_host).ok().map(Arc::new)).clone();
                 let target = target_of(one);
                 let id = one.id.clone();
                 asks.push(async move {
@@ -78,7 +72,12 @@ pub fn start_watcher(app: AppHandle) {
                                     if crate::runlog::take_asked(&id) {
                                         crate::note_run(&app, &id, "stop", "");
                                     } else {
-                                        crate::note_run(&app, &id, "crash", "Stopped without a stop request (crash or stopped outside the app)");
+                                        crate::note_run(
+                                            &app,
+                                            &id,
+                                            "crash",
+                                            "Stopped without a stop request (crash or stopped outside the app)",
+                                        );
                                     }
                                 } else if before == "offline" && up(&stats.state) {
                                     crate::runlog::started(&id);
@@ -118,11 +117,7 @@ pub fn ensure_console(app: &AppHandle, instance: &ServerInstance) {
     let instance = instance.clone();
     tauri::async_runtime::spawn(async move {
         let result = run_console(&app, &instance).await;
-        app.state::<AppState>()
-            .panel_sockets
-            .lock()
-            .expect("panel state poisoned")
-            .remove(&instance.id);
+        app.state::<AppState>().panel_sockets.lock().expect("panel state poisoned").remove(&instance.id);
         if let Err(error) = result {
             eprintln!("[panel] {} console disconnected: {error}", instance.name);
         }
@@ -134,24 +129,18 @@ async fn run_console(app: &AppHandle, instance: &ServerInstance) -> Result<(), S
     let api = panel::api(app, &instance.panel_host)?;
     let target = target_of(instance);
     let (socket, token) = api.socket(&target).await?;
-    let mut request = socket
-        .as_str()
-        .into_client_request()
-        .map_err(|error| format!("The console address is invalid: {error}"))?;
-    request.headers_mut().insert(
-        "Origin",
-        host.url.parse().map_err(|_| "Could not put the panel address in the request header.".to_string())?,
-    );
+    let mut request = socket.as_str().into_client_request().map_err(|error| format!("The console address is invalid: {error}"))?;
+    request
+        .headers_mut()
+        .insert("Origin", host.url.parse().map_err(|_| "Could not put the panel address in the request header.".to_string())?);
     let connector = if socket.starts_with("wss://") {
         use rustls_platform_verifier::BuilderVerifierExt;
-        let config = rustls::ClientConfig::builder_with_provider(Arc::new(
-            rustls::crypto::aws_lc_rs::default_provider(),
-        ))
-        .with_safe_default_protocol_versions()
-        .map_err(|error| error.to_string())?
-        .with_platform_verifier()
-        .map_err(|error| error.to_string())?
-        .with_no_client_auth();
+        let config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
+            .with_safe_default_protocol_versions()
+            .map_err(|error| error.to_string())?
+            .with_platform_verifier()
+            .map_err(|error| error.to_string())?
+            .with_no_client_auth();
         Some(tokio_tungstenite::Connector::Rustls(Arc::new(config)))
     } else {
         let url = reqwest::Url::parse(&socket).map_err(|_| "Could not read the console address.".to_string())?;
@@ -160,20 +149,13 @@ async fn run_console(app: &AppHandle, instance: &ServerInstance) -> Result<(), S
         }
         Some(tokio_tungstenite::Connector::Plain)
     };
-    let (mut stream, _) = tokio::time::timeout(
-        Duration::from_secs(15),
-        tokio_tungstenite::connect_async_tls_with_config(request, None, false, connector),
-    )
-    .await
-    .map_err(|_| "Timed out connecting to the console.".to_string())?
-    .map_err(|error| format!("Could not connect to the console: {error}"))?;
-    let say = |event: &str, args: serde_json::Value| {
-        Message::text(serde_json::json!({ "event": event, "args": args }).to_string())
-    };
-    stream
-        .send(say("auth", serde_json::json!([token])))
-        .await
-        .map_err(|error| error.to_string())?;
+    let (mut stream, _) =
+        tokio::time::timeout(Duration::from_secs(15), tokio_tungstenite::connect_async_tls_with_config(request, None, false, connector))
+            .await
+            .map_err(|_| "Timed out connecting to the console.".to_string())?
+            .map_err(|error| format!("Could not connect to the console: {error}"))?;
+    let say = |event: &str, args: serde_json::Value| Message::text(serde_json::json!({ "event": event, "args": args }).to_string());
+    stream.send(say("auth", serde_json::json!([token]))).await.map_err(|error| error.to_string())?;
     let state = app.state::<AppState>();
     let logs = state.logs.clone();
     let mut checkup = tokio::time::interval(Duration::from_secs(30));
@@ -201,18 +183,10 @@ async fn run_console(app: &AppHandle, instance: &ServerInstance) -> Result<(), S
         };
         let Ok(value) = serde_json::from_str::<serde_json::Value>(text.as_str()) else { continue };
         let event = value.get("event").and_then(|one| one.as_str()).unwrap_or("");
-        let first_arg = value
-            .pointer("/args/0")
-            .and_then(|one| one.as_str())
-            .unwrap_or("")
-            .to_string();
+        let first_arg = value.pointer("/args/0").and_then(|one| one.as_str()).unwrap_or("").to_string();
         match event {
             "auth success" => {
-                let first = state
-                    .panel_backlog
-                    .lock()
-                    .expect("panel state poisoned")
-                    .insert(instance.id.clone());
+                let first = state.panel_backlog.lock().expect("panel state poisoned").insert(instance.id.clone());
                 if first {
                     let _ = stream.send(say("send logs", serde_json::json!([null]))).await;
                 }
@@ -239,10 +213,7 @@ async fn run_console(app: &AppHandle, instance: &ServerInstance) -> Result<(), S
             }
             "status" => {
                 let mut live = state.panel_live.lock().expect("panel state poisoned");
-                let one = live.entry(instance.id.clone()).or_insert(PanelLive {
-                    stats: PanelStats::default(),
-                    at: Instant::now(),
-                });
+                let one = live.entry(instance.id.clone()).or_insert(PanelLive { stats: PanelStats::default(), at: Instant::now() });
                 one.stats.state = first_arg.clone();
                 one.at = Instant::now();
             }
@@ -265,10 +236,7 @@ async fn run_console(app: &AppHandle, instance: &ServerInstance) -> Result<(), S
             }
             "token expiring" => {
                 let (_, fresh) = api.socket(&target).await?;
-                stream
-                    .send(say("auth", serde_json::json!([fresh])))
-                    .await
-                    .map_err(|error| error.to_string())?;
+                stream.send(say("auth", serde_json::json!([fresh]))).await.map_err(|error| error.to_string())?;
             }
             "token expired" | "jwt error" => return Err(format!("token expired ({event})")),
             _ => {}
@@ -296,8 +264,7 @@ mod real_tests {
     #[ignore]
     fn reads_a_real_panel() {
         let dir = std::path::PathBuf::from(std::env::var("APPDATA").unwrap()).join("com.monolab.desktop");
-        let hosts: Vec<panel::PanelHost> =
-            serde_json::from_str(&std::fs::read_to_string(dir.join("panel-hosts.json")).unwrap()).unwrap();
+        let hosts: Vec<panel::PanelHost> = serde_json::from_str(&std::fs::read_to_string(dir.join("panel-hosts.json")).unwrap()).unwrap();
         let secrets: HashMap<String, String> = crate::store::read_secret(&dir.join("panel-secrets.json")).unwrap().unwrap();
         let host = hosts.first().expect("registered panel");
         let api = panel::Api::new(
@@ -374,8 +341,10 @@ mod real_tests {
             let connector = if socket.starts_with("wss://") {
                 use rustls_platform_verifier::BuilderVerifierExt;
                 let config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
-                    .with_safe_default_protocol_versions().unwrap()
-                    .with_platform_verifier().unwrap()
+                    .with_safe_default_protocol_versions()
+                    .unwrap()
+                    .with_platform_verifier()
+                    .unwrap()
                     .with_no_client_auth();
                 Some(tokio_tungstenite::Connector::Rustls(Arc::new(config)))
             } else {

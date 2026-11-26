@@ -3,7 +3,7 @@
 
 use fastnbt::Value as Nbt;
 use std::collections::HashMap;
-use studio_format::structure::{MOST_BLOCKS, Structure};
+use studio_format::structure::{Structure, MOST_BLOCKS};
 
 fn int(value: Option<&Nbt>) -> Option<i64> {
     match value? {
@@ -69,7 +69,10 @@ fn vanilla(root: &HashMap<String, Nbt>) -> Result<Structure, String> {
         };
         let props: Vec<String> = compound(entry.get("Properties"))
             .map(|map| {
-                let mut pairs: Vec<String> = map.iter().filter_map(|(key, value)| if let Nbt::String(value) = value { Some(format!("{key}={value}")) } else { None }).collect();
+                let mut pairs: Vec<String> = map
+                    .iter()
+                    .filter_map(|(key, value)| if let Nbt::String(value) = value { Some(format!("{key}={value}")) } else { None })
+                    .collect();
                 pairs.sort();
                 pairs
             })
@@ -102,7 +105,8 @@ fn sponge(root: &HashMap<String, Nbt>) -> Result<Structure, String> {
         Some(blocks) => (compound(blocks.get("Palette")), blocks.get("Data")),
         None => (compound(root.get("Palette")), root.get("BlockData")),
     };
-    let palette_map = palette_map.ok_or("The .schem file has no palette. Old MCEdit .schematic files aren't supported; save it again with WorldEdit as .schem.")?;
+    let palette_map = palette_map
+        .ok_or("The .schem file has no palette. Old MCEdit .schematic files aren't supported; save it again with WorldEdit as .schem.")?;
     let mut palette = vec![String::from("air"); palette_map.len()];
     for (state, index) in palette_map {
         let Some(index) = int(Some(index)) else { continue };
@@ -131,7 +135,8 @@ fn sponge(root: &HashMap<String, Nbt>) -> Result<Structure, String> {
                 return Err("The .schem block data is broken.".into());
             }
         }
-        let (x, z, y) = ((index % i64::from(w)) as i32, ((index / i64::from(w)) % i64::from(l)) as i32, (index / (i64::from(w) * i64::from(l))) as i32);
+        let (x, z, y) =
+            ((index % i64::from(w)) as i32, ((index / i64::from(w)) % i64::from(l)) as i32, (index / (i64::from(w) * i64::from(l))) as i32);
         index += 1;
         if (value as usize) < palette.len() && !is_air(&palette[value as usize]) && y < h {
             blocks.push((x, y, z, value));
@@ -157,9 +162,17 @@ mod tests {
         props.insert("facing".to_string(), Nbt::String("east".into()));
         let palette = Nbt::List(vec![
             Nbt::Compound(HashMap::from([("Name".to_string(), Nbt::String("minecraft:air".into()))])),
-            Nbt::Compound(HashMap::from([("Name".to_string(), Nbt::String("minecraft:oak_stairs".into())), ("Properties".to_string(), Nbt::Compound(props))])),
+            Nbt::Compound(HashMap::from([
+                ("Name".to_string(), Nbt::String("minecraft:oak_stairs".into())),
+                ("Properties".to_string(), Nbt::Compound(props)),
+            ])),
         ]);
-        let block = |x: i32, state: i32| Nbt::Compound(HashMap::from([("pos".to_string(), Nbt::List(vec![Nbt::Int(x), Nbt::Int(0), Nbt::Int(0)])), ("state".to_string(), Nbt::Int(state))]));
+        let block = |x: i32, state: i32| {
+            Nbt::Compound(HashMap::from([
+                ("pos".to_string(), Nbt::List(vec![Nbt::Int(x), Nbt::Int(0), Nbt::Int(0)])),
+                ("state".to_string(), Nbt::Int(state)),
+            ]))
+        };
         let root = Nbt::Compound(HashMap::from([
             ("size".to_string(), Nbt::List(vec![Nbt::Int(2), Nbt::Int(1), Nbt::Int(1)])),
             ("palette".to_string(), palette),
@@ -177,7 +190,13 @@ mod tests {
                 ("Width".to_string(), Nbt::Short(2)),
                 ("Height".to_string(), Nbt::Short(1)),
                 ("Length".to_string(), Nbt::Short(2)),
-                ("Blocks".to_string(), Nbt::Compound(HashMap::from([("Palette".to_string(), Nbt::Compound(sponge_palette)), ("Data".to_string(), Nbt::ByteArray(fastnbt::ByteArray::new(vec![1, 0, 0, 1])))]))),
+                (
+                    "Blocks".to_string(),
+                    Nbt::Compound(HashMap::from([
+                        ("Palette".to_string(), Nbt::Compound(sponge_palette)),
+                        ("Data".to_string(), Nbt::ByteArray(fastnbt::ByteArray::new(vec![1, 0, 0, 1]))),
+                    ])),
+                ),
             ])),
         )]));
         let read = super::read(nbt_bytes(&schem), "hut.schem").unwrap();

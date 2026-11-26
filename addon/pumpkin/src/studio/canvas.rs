@@ -83,7 +83,14 @@ pub fn after(data: &Map<String, Value>) -> Option<&'static str> {
 /// - `fill`: MiniMessage with this player's placeholders filled in (glyphs are swapped here).
 /// - `allowed`: whether this player may use a button or area (its `permission`).
 /// - `hidden`: elements whose `if` doesn't hold for this player; `pressed`: a button just clicked.
-pub fn body(id: &str, data: &Map<String, Value>, mut fill: impl FnMut(&str) -> String, allowed: impl Fn(&Map<String, Value>) -> bool, hidden: HashSet<usize>, pressed: Option<usize>) -> Option<DialogBody> {
+pub fn body(
+    id: &str,
+    data: &Map<String, Value>,
+    mut fill: impl FnMut(&str) -> String,
+    allowed: impl Fn(&Map<String, Value>) -> bool,
+    hidden: HashSet<usize>,
+    pressed: Option<usize>,
+) -> Option<DialogBody> {
     let canvas = canvas::canvas_of(data)?;
     let table = glyphs();
     let options = canvas::Options { shadow_off: true, hidden, pressed };
@@ -113,7 +120,14 @@ pub fn clicked(data: &Map<String, Value>, at: &str) -> Option<(usize, Map<String
 /// Every canvas element with its index and `if` conditions, for working out which to hide.
 pub fn conditions(data: &Map<String, Value>) -> Vec<(usize, Value)> {
     let Some(canvas) = canvas::canvas_of(data) else { return Vec::new() };
-    canvas::elements(canvas).into_iter().enumerate().take(canvas::MOST_ELEMENTS).filter_map(|(at, one)| one.get("if").filter(|value| value.as_array().is_some_and(|list| !list.is_empty())).map(|value| (at, value.clone()))).collect()
+    canvas::elements(canvas)
+        .into_iter()
+        .enumerate()
+        .take(canvas::MOST_ELEMENTS)
+        .filter_map(|(at, one)| {
+            one.get("if").filter(|value| value.as_array().is_some_and(|list| !list.is_empty())).map(|value| (at, value.clone()))
+        })
+        .collect()
 }
 
 #[cfg(test)]

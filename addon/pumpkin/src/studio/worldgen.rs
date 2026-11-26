@@ -28,7 +28,8 @@ impl StudioGenerator {
             None if name.contains('[') => {
                 // A structure's block with its properties; without them when Pumpkin doesn't know those.
                 let (block, props) = studio_format::structure::split_state(name);
-                pumpkin_plugin_api::world::resolve_block_state(&block, &props).or_else(|| pumpkin_plugin_api::world::resolve_block_state(&block, &[]))
+                pumpkin_plugin_api::world::resolve_block_state(&block, &props)
+                    .or_else(|| pumpkin_plugin_api::world::resolve_block_state(&block, &[]))
             }
             None => pumpkin_plugin_api::world::resolve_block_state(&format!("minecraft:{name}"), &[]),
         };

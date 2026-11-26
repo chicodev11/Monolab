@@ -187,7 +187,10 @@ fn rewrite_json_files(root: &Path, old: &Path, new: &Path) {
     let Ok(entries) = fs::read_dir(root) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
-        let wanted = path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("json") || ext.eq_ignore_ascii_case("txt"));
+        let wanted = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json") || ext.eq_ignore_ascii_case("txt"));
         if !wanted || !path.is_file() {
             continue;
         }
@@ -244,10 +247,7 @@ fn replace_whole(text: &str, from: &str, to: &str) -> String {
 
 fn env_home() -> Option<PathBuf> {
     let first = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-    std::env::var_os(first)
-        .or_else(|| std::env::var_os("HOME"))
-        .map(PathBuf::from)
-        .filter(|path| !path.as_os_str().is_empty())
+    std::env::var_os(first).or_else(|| std::env::var_os("HOME")).map(PathBuf::from).filter(|path| !path.as_os_str().is_empty())
 }
 
 /// Tauri's app data folder, worked out the way Tauri does, for when there's no app handle.

@@ -46,7 +46,8 @@ pub const FEATURES: [&str; 5] = ["ore", "tree", "boulder", "patch", "structure"]
 /// `clamp` (input, min, max), `abs` (input), `power` (input, exponent; keeps the sign), `terrace` (input, steps),
 /// `remap` (input, from, to), `climate` (which: warmth or wetness, -1..1), `distance` (x, z, radius: 1 in the middle,
 /// 0 at the radius, lower beyond).
-pub const SHAPES: [&str; 13] = ["noise", "constant", "add", "multiply", "min", "max", "clamp", "abs", "power", "terrace", "remap", "climate", "distance"];
+pub const SHAPES: [&str; 13] =
+    ["noise", "constant", "add", "multiply", "min", "max", "clamp", "abs", "power", "terrace", "remap", "climate", "distance"];
 pub const MODES: [&str; 2] = ["custom", "vanilla"];
 pub const TERRAINS: [&str; 3] = ["normal", "amplified", "large_biomes"];
 /// How deep a shape may nest, and how many nodes it may have.
@@ -150,7 +151,11 @@ fn perlin2(seed: i64, x: f64, z: f64) -> f64 {
     let (ix, iz) = (x0 as i32, z0 as i32);
     let (u, v) = (fade(fx), fade(fz));
     let a = lerp(u, grad2(hash(seed, ix, 0, iz), fx, fz), grad2(hash(seed, ix.wrapping_add(1), 0, iz), fx - 1.0, fz));
-    let b = lerp(u, grad2(hash(seed, ix, 0, iz.wrapping_add(1)), fx, fz - 1.0), grad2(hash(seed, ix.wrapping_add(1), 0, iz.wrapping_add(1)), fx - 1.0, fz - 1.0));
+    let b = lerp(
+        u,
+        grad2(hash(seed, ix, 0, iz.wrapping_add(1)), fx, fz - 1.0),
+        grad2(hash(seed, ix.wrapping_add(1), 0, iz.wrapping_add(1)), fx - 1.0, fz - 1.0),
+    );
     (lerp(v, a, b) * 0.9).clamp(-1.0, 1.0)
 }
 
@@ -159,7 +164,14 @@ fn perlin3(seed: i64, x: f64, y: f64, z: f64) -> f64 {
     let (fx, fy, fz) = (x - x0, y - y0, z - z0);
     let (ix, iy, iz) = (x0 as i32, y0 as i32, z0 as i32);
     let (u, v, w) = (fade(fx), fade(fy), fade(fz));
-    let g = |dx: i32, dy: i32, dz: i32| grad3(hash(seed, ix.wrapping_add(dx), iy.wrapping_add(dy), iz.wrapping_add(dz)), fx - f64::from(dx), fy - f64::from(dy), fz - f64::from(dz));
+    let g = |dx: i32, dy: i32, dz: i32| {
+        grad3(
+            hash(seed, ix.wrapping_add(dx), iy.wrapping_add(dy), iz.wrapping_add(dz)),
+            fx - f64::from(dx),
+            fy - f64::from(dy),
+            fz - f64::from(dz),
+        )
+    };
     let x00 = lerp(u, g(0, 0, 0), g(1, 0, 0));
     let x10 = lerp(u, g(0, 1, 0), g(1, 1, 0));
     let x01 = lerp(u, g(0, 0, 1), g(1, 0, 1));
@@ -324,7 +336,11 @@ impl Shape {
             }
             Shape::Remap(one, (a, b), (c, d)) => {
                 let value = one.value(x, z, temperature, humidity);
-                if (b - a).abs() < 1e-12 { *c } else { c + (value - a) / (b - a) * (d - c) }
+                if (b - a).abs() < 1e-12 {
+                    *c
+                } else {
+                    c + (value - a) / (b - a) * (d - c)
+                }
             }
             Shape::Climate { wet } => (if *wet { humidity } else { temperature }) * 2.0 - 1.0,
             Shape::Distance { x: cx, z: cz, radius } => {
@@ -363,12 +379,29 @@ enum Cave {
 
 #[derive(Clone, Debug)]
 enum FeatureKind {
-    Ore { block: String, y: (i32, i32), size: i32 },
-    Tree { trunk: String, leaves: String, height: (i32, i32) },
-    Boulder { block: String, size: i32 },
-    Patch { block: String },
+    Ore {
+        block: String,
+        y: (i32, i32),
+        size: i32,
+    },
+    Tree {
+        trunk: String,
+        leaves: String,
+        height: (i32, i32),
+    },
+    Boulder {
+        block: String,
+        size: i32,
+    },
+    Patch {
+        block: String,
+    },
     /// A studio structure (`structures/<id>.json`, given with `add_structure`), its middle on the ground.
-    Structure { id: String, rotation: String, lift: i32 },
+    Structure {
+        id: String,
+        rotation: String,
+        lift: i32,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -507,7 +540,9 @@ impl Generator {
     pub fn new(data: &Data, seed: i64) -> Self {
         let warp_data = data.get("warp").and_then(Value::as_object).cloned().unwrap_or_default();
         let warp = match text(&warp_data, "type", "none").as_str() {
-            "spiral" => Warp::Spiral { strength: num(&warp_data, "strength", 1.0), x: num(&warp_data, "x", 0.0), z: num(&warp_data, "z", 0.0) },
+            "spiral" => {
+                Warp::Spiral { strength: num(&warp_data, "strength", 1.0), x: num(&warp_data, "x", 0.0), z: num(&warp_data, "z", 0.0) }
+            }
             "domain" => Warp::Domain { scale: num(&warp_data, "scale", 256.0).max(1.0), amount: num(&warp_data, "amount", 64.0) },
             _ => Warp::None,
         };
@@ -549,8 +584,12 @@ impl Generator {
         };
         let caves = objects(data, "caves")
             .filter_map(|one| match text(one, "type", "").as_str() {
-                "spaghetti" => Some(Cave::Spaghetti { scale: num(one, "scale", 64.0).max(4.0), width: num(one, "width", 0.07).clamp(0.0, 1.0) }),
-                "cheese" => Some(Cave::Cheese { scale: num(one, "scale", 96.0).max(4.0), threshold: num(one, "threshold", 0.55).clamp(-1.0, 1.0) }),
+                "spaghetti" => {
+                    Some(Cave::Spaghetti { scale: num(one, "scale", 64.0).max(4.0), width: num(one, "width", 0.07).clamp(0.0, 1.0) })
+                }
+                "cheese" => {
+                    Some(Cave::Cheese { scale: num(one, "scale", 96.0).max(4.0), threshold: num(one, "threshold", 0.55).clamp(-1.0, 1.0) })
+                }
                 _ => None,
             })
             .collect();
@@ -564,7 +603,11 @@ impl Generator {
                     }
                     "tree" => {
                         let (from, to) = range(one, "height", (4.0, 6.0));
-                        FeatureKind::Tree { trunk: short(&text(one, "trunk", "oak_log")), leaves: short(&text(one, "leaves", "oak_leaves")), height: (from.max(1.0) as i32, to.clamp(1.0, 32.0) as i32) }
+                        FeatureKind::Tree {
+                            trunk: short(&text(one, "trunk", "oak_log")),
+                            leaves: short(&text(one, "leaves", "oak_leaves")),
+                            height: (from.max(1.0) as i32, to.clamp(1.0, 32.0) as i32),
+                        }
                     }
                     "boulder" => FeatureKind::Boulder { block: short(&text(one, "block", "mossy_cobblestone")), size: size.min(6) },
                     "patch" => FeatureKind::Patch { block: short(&text(one, "block", "short_grass")) },
@@ -575,7 +618,15 @@ impl Generator {
                     },
                     _ => return None,
                 };
-                let biomes = one.get("biomes").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(short).filter(|one| !one.is_empty()).collect();
+                let biomes = one
+                    .get("biomes")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .map(short)
+                    .filter(|one| !one.is_empty())
+                    .collect();
                 Some(Feature { kind, per_chunk: num(one, "per_chunk", 1.0).clamp(0.0, 64.0), biomes })
             })
             .collect();
@@ -598,7 +649,12 @@ impl Generator {
             fallback_surface,
             caves,
             features,
-            keep: Keep { structures: flag("structures", false), mobs: flag("mobs", true), carvers: flag("carvers", false), decorations: flag("decorations", false) },
+            keep: Keep {
+                structures: flag("structures", false),
+                mobs: flag("mobs", true),
+                carvers: flag("carvers", false),
+                decorations: flag("decorations", false),
+            },
             structures: HashMap::new(),
             shape,
             blend: num(data, "blend", 0.05).clamp(0.0, 0.5),
@@ -632,7 +688,10 @@ impl Generator {
     pub fn vanilla_biome(&self, x: i32, z: i32) -> Option<&str> {
         let (temperature, humidity) = self.climate_at(f64::from(x), f64::from(z));
         let within = |value: f64, (from, to): (f64, f64)| value >= from && value <= to;
-        self.biomes.iter().find(|rule| within(temperature, rule.temperature) && within(humidity, rule.humidity)).map(|rule| rule.biome.as_str())
+        self.biomes
+            .iter()
+            .find(|rule| within(temperature, rule.temperature) && within(humidity, rule.humidity))
+            .map(|rule| rule.biome.as_str())
     }
 
     /// The lift and stretch the biome rules give a climate, each rule fading into the next across `blend`.
@@ -649,7 +708,11 @@ impl Generator {
 
     /// The structure ids the features use, for the add-ons to read and hand over with `add_structure`.
     pub fn structure_ids(&self) -> Vec<String> {
-        let mut out: Vec<String> = self.features.iter().filter_map(|one| if let FeatureKind::Structure { id, .. } = &one.kind { Some(id.clone()) } else { None }).collect();
+        let mut out: Vec<String> = self
+            .features
+            .iter()
+            .filter_map(|one| if let FeatureKind::Structure { id, .. } = &one.kind { Some(id.clone()) } else { None })
+            .collect();
         out.sort();
         out.dedup();
         out
@@ -695,7 +758,14 @@ impl Generator {
             None => {
                 let mut sum = 0.0;
                 for (index, layer) in self.layers.iter().enumerate() {
-                    sum += layer.amount * fbm(layer.noise, self.seed.wrapping_add(1000 * (index as i64 + 1)), wx / layer.scale, wz / layer.scale, layer.octaves);
+                    sum += layer.amount
+                        * fbm(
+                            layer.noise,
+                            self.seed.wrapping_add(1000 * (index as i64 + 1)),
+                            wx / layer.scale,
+                            wz / layer.scale,
+                            layer.octaves,
+                        );
                 }
                 sum
             }
@@ -748,7 +818,8 @@ impl Generator {
             return y <= column.height;
         }
         let (wx, wz) = self.warped(f64::from(x), f64::from(z));
-        let density = f64::from(column.height - y) / 16.0 + self.overhangs * perlin3(self.seed.wrapping_add(21), wx / 48.0, f64::from(y) / 32.0, wz / 48.0);
+        let density = f64::from(column.height - y) / 16.0
+            + self.overhangs * perlin3(self.seed.wrapping_add(21), wx / 48.0, f64::from(y) / 32.0, wz / 48.0);
         density > 0.0
     }
 
@@ -804,9 +875,17 @@ impl Generator {
                 continue;
             }
             let block = if depth == 0 {
-                if wet || y < self.sea - 1 { surface.underwater.as_str() } else { surface.top.as_str() }
+                if wet || y < self.sea - 1 {
+                    surface.underwater.as_str()
+                } else {
+                    surface.top.as_str()
+                }
             } else if depth <= surface.depth {
-                if wet { surface.underwater.as_str() } else { surface.under.as_str() }
+                if wet {
+                    surface.underwater.as_str()
+                } else {
+                    surface.under.as_str()
+                }
             } else {
                 self.stone.as_str()
             };
@@ -931,7 +1010,13 @@ impl Generator {
                 }
                 let (w, d, blocks) = &turned[quarter as usize];
                 let (sx, sy, sz) = (x - w / 2, self.top_y(x, z, column) + 1 + lift, z - d / 2);
-                out.extend(blocks.iter().map(|(dx, dy, dz, state)| Place { x: sx + dx, y: sy + dy, z: sz + dz, block: state.clone(), only: Only::Any }));
+                out.extend(blocks.iter().map(|(dx, dy, dz, state)| Place {
+                    x: sx + dx,
+                    y: sy + dy,
+                    z: sz + dz,
+                    block: state.clone(),
+                    only: Only::Any,
+                }));
             }
         }
     }
@@ -944,7 +1029,9 @@ impl Generator {
         }
         for feature in &self.features {
             match &feature.kind {
-                FeatureKind::Ore { block, .. } | FeatureKind::Boulder { block, .. } | FeatureKind::Patch { block } => names.push(block.clone()),
+                FeatureKind::Ore { block, .. } | FeatureKind::Boulder { block, .. } | FeatureKind::Patch { block } => {
+                    names.push(block.clone())
+                }
                 FeatureKind::Tree { trunk, leaves, .. } => names.extend([trunk.clone(), leaves.clone()]),
                 FeatureKind::Structure { .. } => {}
             }
@@ -993,7 +1080,9 @@ pub fn problems(data: &Data) -> Vec<String> {
     for feature in objects(data, "features") {
         known(feature.get("type").and_then(Value::as_str), &FEATURES, "feature");
     }
-    if objects(data, "features").any(|one| one.get("type").and_then(Value::as_str) == Some("structure") && text(one, "structure", "").trim().is_empty()) {
+    if objects(data, "features")
+        .any(|one| one.get("type").and_then(Value::as_str) == Some("structure") && text(one, "structure", "").trim().is_empty())
+    {
         out.push("A structure feature needs a structure.".into());
     }
     if let Some((count, deepest)) = shape_size {
@@ -1049,7 +1138,11 @@ pub fn preview(generator: &Generator, x: i32, z: i32, size: u32, step: u32) -> V
 
 fn fields_choice(data: &Data, key: &str, list: &[&str], fallback: &str) -> String {
     let value = text(data, key, fallback);
-    if list.contains(&value.trim()) { value.trim().to_string() } else { fallback.to_string() }
+    if list.contains(&value.trim()) {
+        value.trim().to_string()
+    } else {
+        fallback.to_string()
+    }
 }
 
 #[cfg(test)]
@@ -1091,7 +1184,9 @@ mod tests {
 
     #[test]
     fn columns_are_built_bottom_up() {
-        let flat = data(json!({ "layers": [], "base": 70, "height": 0, "sea": 63, "surface": [{ "top": "grass_block", "under": "dirt", "depth": 2 }] }));
+        let flat = data(
+            json!({ "layers": [], "base": 70, "height": 0, "sea": 63, "surface": [{ "top": "grass_block", "under": "dirt", "depth": 2 }] }),
+        );
         let runs = Generator::new(&flat, 1).runs(0, 0, -64, 320);
         assert_eq!(runs[0], Run { from: -64, to: -64, block: "bedrock".into() });
         assert_eq!(runs.last().unwrap(), &Run { from: 70, to: 70, block: "grass_block".into() });
@@ -1187,7 +1282,6 @@ mod parity {
             assert_eq!(vanilla.vanilla_biome(x, z), want[index], "{x} {z}");
         }
     }
-
 }
 
 #[cfg(test)]
@@ -1201,12 +1295,15 @@ mod structure_tests {
 
     #[test]
     fn structure_features() {
-        let spec = data(json!({ "height": 0, "base": 70, "sea": 0, "layers": [], "features": [{ "type": "structure", "structure": "hut", "per_chunk": 1, "rotation": "90" }] }));
+        let spec = data(
+            json!({ "height": 0, "base": 70, "sea": 0, "layers": [], "features": [{ "type": "structure", "structure": "hut", "per_chunk": 1, "rotation": "90" }] }),
+        );
         let mut generator = Generator::new(&spec, 1);
         assert_eq!(generator.structure_ids(), vec!["hut".to_string()]);
         let hut = Structure { size: (3, 2, 1), palette: vec!["oak_stairs[facing=north]".into()], blocks: vec![(0, 0, 0, 0), (2, 1, 0, 0)] };
         assert!(generator.add_structure("hut", &hut));
-        let found: Vec<Place> = (-3..=3).flat_map(|cx| (-3..=3).map(move |cz| (cx, cz))).flat_map(|(cx, cz)| generator.features(cx, cz, -64, 320)).collect();
+        let found: Vec<Place> =
+            (-3..=3).flat_map(|cx| (-3..=3).map(move |cz| (cx, cz))).flat_map(|(cx, cz)| generator.features(cx, cz, -64, 320)).collect();
         assert!(!found.is_empty());
         assert!(found.iter().all(|one| one.block == "oak_stairs[facing=east]"));
         assert!(generator.block_names().contains(&"oak_stairs[facing=east]".to_string()));
@@ -1227,22 +1324,34 @@ mod shape_tests {
 
     #[test]
     fn shapes_make_the_ground() {
-        let flat = data(json!({ "base": 64, "height": 10, "shape": { "type": "add", "inputs": [{ "type": "constant", "value": 0.5 }, { "type": "constant", "value": 0.3 }] } }));
+        let flat = data(
+            json!({ "base": 64, "height": 10, "shape": { "type": "add", "inputs": [{ "type": "constant", "value": 0.5 }, { "type": "constant", "value": 0.3 }] } }),
+        );
         assert_eq!(Generator::new(&flat, 1).column(5, 5).height, 72);
-        let clamped = data(json!({ "base": 64, "height": 10, "shape": { "type": "clamp", "min": -0.2, "max": 0.2, "input": { "type": "constant", "value": 3 } } }));
+        let clamped = data(
+            json!({ "base": 64, "height": 10, "shape": { "type": "clamp", "min": -0.2, "max": 0.2, "input": { "type": "constant", "value": 3 } } }),
+        );
         assert_eq!(Generator::new(&clamped, 1).column(0, 0).height, 66);
-        let terrace = data(json!({ "base": 0, "height": 100, "shape": { "type": "terrace", "steps": 4, "input": { "type": "constant", "value": 0.5 } } }));
+        let terrace = data(
+            json!({ "base": 0, "height": 100, "shape": { "type": "terrace", "steps": 4, "input": { "type": "constant", "value": 0.5 } } }),
+        );
         assert_eq!(Generator::new(&terrace, 1).column(0, 0).height, 50);
         let island = data(json!({ "base": 0, "height": 100, "shape": { "type": "distance", "radius": 100 } }));
         let made = Generator::new(&island, 1);
         assert_eq!(made.column(0, 0).height, 100);
         assert_eq!(made.column(50, 0).height, 50);
-        let remap = data(json!({ "base": 0, "height": 100, "shape": { "type": "remap", "from": [0, 1], "to": [1, 3], "input": { "type": "constant", "value": 0.5 } } }));
+        let remap = data(
+            json!({ "base": 0, "height": 100, "shape": { "type": "remap", "from": [0, 1], "to": [1, 3], "input": { "type": "constant", "value": 0.5 } } }),
+        );
         assert_eq!(Generator::new(&remap, 1).column(0, 0).height, 200);
-        let power = data(json!({ "base": 0, "height": 100, "shape": { "type": "power", "exponent": 2, "input": { "type": "constant", "value": -0.5 } } }));
+        let power = data(
+            json!({ "base": 0, "height": 100, "shape": { "type": "power", "exponent": 2, "input": { "type": "constant", "value": -0.5 } } }),
+        );
         assert_eq!(Generator::new(&power, 1).column(0, 0).height, -25);
         // The same noise as a layer and as a node gives hills, and two noise nodes don't share a seed.
-        let noisy = data(json!({ "shape": { "type": "add", "inputs": [{ "type": "noise", "scale": 64 }, { "type": "noise", "scale": 64, "amount": -1 }] } }));
+        let noisy = data(
+            json!({ "shape": { "type": "add", "inputs": [{ "type": "noise", "scale": 64 }, { "type": "noise", "scale": 64, "amount": -1 }] } }),
+        );
         let made = Generator::new(&noisy, 3);
         assert!((0..40).any(|i| made.column(i * 37, i * 11).height != 68));
         assert!(problems(&data(json!({ "shape": { "type": "spin" } }))).iter().any(|one| one.contains("node")));
@@ -1250,8 +1359,10 @@ mod shape_tests {
 
     #[test]
     fn biome_ground_blends_across_edges() {
-        let spec = |blend: f64| data(json!({ "layers": [], "base": 64, "height": 0, "blend": blend, "climate": 64,
-            "biomes": [{ "biome": "desert", "temperature": [0.5, 1], "offset": 40 }] }));
+        let spec = |blend: f64| {
+            data(json!({ "layers": [], "base": 64, "height": 0, "blend": blend, "climate": 64,
+            "biomes": [{ "biome": "desert", "temperature": [0.5, 1], "offset": 40 }] }))
+        };
         let (hard, soft) = (Generator::new(&spec(0.0), 7), Generator::new(&spec(0.2), 7));
         let mut steps_hard = 0;
         let mut steps_soft = 0;

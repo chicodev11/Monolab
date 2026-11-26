@@ -146,7 +146,10 @@ pub(crate) fn instance_for(app: &AppHandle, server: &str) -> Result<crate::Serve
                     .ok_or("This server isn't shared with you any more.")?;
                 let field = |key: &str| one[key].as_str().unwrap_or_default().to_string();
                 let found = (field("name"), field("core"), field("version"));
-                known().lock().unwrap_or_else(|poison| poison.into_inner()).insert(server.to_string(), (Instant::now(), found.0.clone(), found.1.clone(), found.2.clone()));
+                known()
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner())
+                    .insert(server.to_string(), (Instant::now(), found.0.clone(), found.1.clone(), found.2.clone()));
                 found
             }
             // The host is away: what was heard before still names the chat folder.
@@ -190,7 +193,9 @@ so say what you want to change and why before you call a tool that changes somet
 /// they can't be read right now.
 pub fn rules_note(app: &AppHandle, server: &str) -> String {
     let text = match parse(server) {
-        Some(_) => call(app, server, "read_server_agents_md", json!({ "id": parse(server).map(|one| one.instance).unwrap_or_default() })).ok().and_then(|value| value.as_str().map(str::to_string)),
+        Some(_) => call(app, server, "read_server_agents_md", json!({ "id": parse(server).map(|one| one.instance).unwrap_or_default() }))
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_string)),
         None => read_rules(app, server).ok(),
     };
     briefing_rules(&text.unwrap_or_default())
@@ -382,7 +387,8 @@ pub fn gate(app: &AppHandle, grant: &Grant, command: &str, body: &Value, chat: &
 
 fn ask_host(app: &AppHandle, grant: &Grant, command: &str, body: &Value, key: ChatKey) -> Result<(), String> {
     let text = |name: &str| body.get(name).and_then(Value::as_str).unwrap_or_default().to_string();
-    let server_name = crate::load_instances(app).unwrap_or_default().into_iter().find(|one| one.id == key.2).map(|one| one.name).unwrap_or_default();
+    let server_name =
+        crate::load_instances(app).unwrap_or_default().into_iter().find(|one| one.id == key.2).map(|one| one.name).unwrap_or_default();
     let mut path = text("path");
     if !text("name").is_empty() && matches!(command, "create_server_file" | "create_server_folder") {
         path = if path.is_empty() { text("name") } else { format!("{}/{}", path.trim_end_matches('/'), text("name")) };
@@ -517,11 +523,21 @@ pub fn save_server_agents_md(app: AppHandle, id: String, content: String) -> Res
     }
     let instance = crate::instance_by_id(&app, &id)?;
     if instance.panel_host.is_empty() && instance.remote_host.is_empty() {
-        std::fs::write(std::path::Path::new(&instance.path).join(RULES_FILE), &content).map_err(|error| format!("Could not save AGENTS.md: {error}"))?;
+        std::fs::write(std::path::Path::new(&instance.path).join(RULES_FILE), &content)
+            .map_err(|error| format!("Could not save AGENTS.md: {error}"))?;
     } else {
         // Same as reading: this command runs on a runtime thread, so the wait happens on a thread of its own.
         let (app, id, content) = (app.clone(), id.clone(), content.clone());
-        crate::off_runtime(move || tauri::async_runtime::block_on(crate::save_editable_file(app.clone(), tauri::Manager::state(&app), id, RULES_FILE.into(), content, None)))?;
+        crate::off_runtime(move || {
+            tauri::async_runtime::block_on(crate::save_editable_file(
+                app.clone(),
+                tauri::Manager::state(&app),
+                id,
+                RULES_FILE.into(),
+                content,
+                None,
+            ))
+        })?;
     }
     crate::record_audit(&app, &id, "File", "Shared AGENTS.md saved", &format!("{} characters", content.chars().count()));
     Ok(())
@@ -604,10 +620,22 @@ mod tests {
     #[test]
     fn reads_pass_and_writes_wait_for_the_host() {
         let body = json!({ "id": "s", "path": "server.properties" });
-        for read in ["list_instances", "get_console_logs", "read_editable_file", "browse_server_files", "scan_addons", "read_server_agents_md"] {
+        for read in
+            ["list_instances", "get_console_logs", "read_editable_file", "browse_server_files", "scan_addons", "read_server_agents_md"]
+        {
             assert_eq!(decide(true, false, Role::Developer, read, &body, false), Gate::Pass, "{read}");
         }
-        for write in ["save_editable_file", "send_console_command", "install_addon", "toggle_addon", "delete_addon", "save_world_settings", "save_server_properties", "start_instance", "trash_server_path"] {
+        for write in [
+            "save_editable_file",
+            "send_console_command",
+            "install_addon",
+            "toggle_addon",
+            "delete_addon",
+            "save_world_settings",
+            "save_server_properties",
+            "start_instance",
+            "trash_server_path",
+        ] {
             assert_eq!(decide(true, false, Role::Developer, write, &body, false), Gate::Ask, "{write}");
         }
         // Commands both lists name (rewind) change things, so they wait too.
@@ -651,7 +679,10 @@ mod tests {
         // The shared AGENTS.md: everyone's agent reads it, only an admin's may change it.
         assert_eq!(decide(true, false, Role::Viewer, "read_server_agents_md", &body, false), Gate::Pass);
         assert!(matches!(decide(true, false, Role::Developer, "save_server_agents_md", &body, false), Gate::Refuse(_)));
-        assert!(matches!(decide(true, false, Role::Developer, "save_editable_file", &json!({ "id": "s", "path": "/AGENTS.md" }), true), Gate::Refuse(_)));
+        assert!(matches!(
+            decide(true, false, Role::Developer, "save_editable_file", &json!({ "id": "s", "path": "/AGENTS.md" }), true),
+            Gate::Refuse(_)
+        ));
         assert_eq!(decide(true, false, Role::Admin, "save_server_agents_md", &body, false), Gate::Ask);
     }
 

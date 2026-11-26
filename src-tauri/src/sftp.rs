@@ -1,4 +1,3 @@
-
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -52,18 +51,11 @@ fn is_cancelled(job: &str) -> bool {
 }
 
 fn secs(time: std::io::Result<std::time::SystemTime>) -> u64 {
-    time.ok()
-        .and_then(|one| one.duration_since(UNIX_EPOCH).ok())
-        .map(|one| one.as_secs())
-        .unwrap_or(0)
+    time.ok().and_then(|one| one.duration_since(UNIX_EPOCH).ok()).map(|one| one.as_secs()).unwrap_or(0)
 }
 
 fn sort(rows: &mut [FileRow]) {
-    rows.sort_by(|a, b| {
-        b.directory
-            .cmp(&a.directory)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
+    rows.sort_by(|a, b| b.directory.cmp(&a.directory).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
 }
 
 fn parent_of(path: &str, root: &str) -> Option<String> {
@@ -73,7 +65,13 @@ fn parent_of(path: &str, root: &str) -> Option<String> {
     }
     let cut = trimmed.rfind(['/', '\\'])?;
     let up = &trimmed[..cut];
-    Some(if up.is_empty() { "/".into() } else if up.ends_with(':') { format!("{up}\\") } else { up.to_string() })
+    Some(if up.is_empty() {
+        "/".into()
+    } else if up.ends_with(':') {
+        format!("{up}\\")
+    } else {
+        up.to_string()
+    })
 }
 
 fn join(dir: &str, name: &str, windows: bool) -> String {
@@ -137,11 +135,7 @@ pub async fn list(app: &AppHandle, side: &Side, path: &str) -> Result<Listing, S
             local_list(&path)
         }
         Side::Ssh { host_id } => {
-            let at = if path.trim().is_empty() {
-                crate::remote::server_root(app, host_id).await?
-            } else {
-                path.to_string()
-            };
+            let at = if path.trim().is_empty() { crate::remote::server_root(app, host_id).await? } else { path.to_string() };
             let mut entries = crate::remote::list_dir(app, host_id, "/", &at).await?;
             sort(&mut entries);
             Ok(Listing { parent: parent_of(&at, "/"), path: at, entries })
@@ -175,9 +169,7 @@ pub async fn make_dir(app: &AppHandle, side: &Side, dir: &str, name: &str) -> Re
         Side::Ssh { host_id } => {
             let conn = crate::remote::connect(app, host_id).await?;
             let sftp = conn.sftp().await?;
-            sftp.create_dir(join(dir, &name, false))
-                .await
-                .map_err(|error| format!("Cannot create the folder: {error}"))
+            sftp.create_dir(join(dir, &name, false)).await.map_err(|error| format!("Cannot create the folder: {error}"))
         }
         Side::Panel { instance_id } => {
             let (api, target) = panel_side(app, instance_id)?;
@@ -200,10 +192,7 @@ pub async fn rename(app: &AppHandle, side: &Side, dir: &str, from: &str, to: &st
         Side::Ssh { host_id } => {
             let conn = crate::remote::connect(app, host_id).await?;
             let q = crate::remote::quote;
-            conn.run(&format!("mv -n {} {}", q(&join(dir, &from, false)), q(&join(dir, &to, false))))
-                .await?
-                .ok()
-                .map(|_| ())
+            conn.run(&format!("mv -n {} {}", q(&join(dir, &from, false)), q(&join(dir, &to, false)))).await?.ok().map(|_| ())
         }
         Side::Panel { instance_id } => {
             let (api, target) = panel_side(app, instance_id)?;
@@ -277,20 +266,13 @@ pub async fn delete(app: &AppHandle, side: &Side, dir: &str, names: &[String]) -
                 return Err("Cannot delete from here. Delete from a deeper folder.".into());
             }
             let conn = crate::remote::connect(app, host_id).await?;
-            let list = names
-                .iter()
-                .map(|name| crate::remote::quote(&join(dir, name, false)))
-                .collect::<Vec<_>>()
-                .join(" ");
+            let list = names.iter().map(|name| crate::remote::quote(&join(dir, name, false))).collect::<Vec<_>>().join(" ");
             conn.run(&format!("rm -rf -- {list}")).await?.ok().map(|_| ())
         }
         Side::Panel { instance_id } => {
             let (api, target) = panel_side(app, instance_id)?;
             let dir = dir.trim_matches('/');
-            let whole: Vec<String> = names
-                .iter()
-                .map(|name| if dir.is_empty() { name.clone() } else { format!("{dir}/{name}") })
-                .collect();
+            let whole: Vec<String> = names.iter().map(|name| if dir.is_empty() { name.clone() } else { format!("{dir}/{name}") }).collect();
             api.delete(&target, &whole).await
         }
     }
@@ -421,16 +403,7 @@ pub async fn transfer(
 fn tell(app: &AppHandle, job: &str, file: &str, sent: u64, total: u64, index: u32, count: u32, stage: &str, note: &str) {
     let _ = app.emit(
         "sftp-progress",
-        Progress {
-            job: job.into(),
-            file: file.into(),
-            sent,
-            total,
-            index,
-            count,
-            stage: stage.into(),
-            note: note.into(),
-        },
+        Progress { job: job.into(), file: file.into(), sent, total, index, count, stage: stage.into(), note: note.into() },
     );
 }
 
@@ -551,7 +524,8 @@ async fn upload(app: &AppHandle, job: &str, from_dir: &str, names: &[String], to
                     tell(app, job, &item.relative, 0, item.size, index, count, "skipped", "Something with the same name is already there.");
                     continue;
                 }
-                let (dir, name) = whole.rsplit_once('/').map(|(a, b)| (a.to_string(), b.to_string())).unwrap_or((String::new(), whole.clone()));
+                let (dir, name) =
+                    whole.rsplit_once('/').map(|(a, b)| (a.to_string(), b.to_string())).unwrap_or((String::new(), whole.clone()));
                 tell(app, job, &item.relative, 0, item.size, index, count, "running", "");
                 let sent = match std::fs::read(&item.from) {
                     Ok(bytes) => api.upload(&target, &dir, &name, bytes).await,
@@ -577,7 +551,14 @@ async fn upload(app: &AppHandle, job: &str, from_dir: &str, names: &[String], to
     Ok(out)
 }
 
-async fn download(app: &AppHandle, job: &str, from: &Side, from_dir: &str, names: &[String], to_dir: &str) -> Result<TransferResult, String> {
+async fn download(
+    app: &AppHandle,
+    job: &str,
+    from: &Side,
+    from_dir: &str,
+    names: &[String],
+    to_dir: &str,
+) -> Result<TransferResult, String> {
     if to_dir.trim().is_empty() {
         return Err("Open a local folder to receive into first.".into());
     }

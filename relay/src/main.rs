@@ -29,7 +29,9 @@ async fn main() {
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--api" => api = args.next().and_then(|one| one.parse().ok()).unwrap_or_else(|| fail("--api needs an address like 127.0.0.1:8080")),
+            "--api" => {
+                api = args.next().and_then(|one| one.parse().ok()).unwrap_or_else(|| fail("--api needs an address like 127.0.0.1:8080"))
+            }
             "--public-url" => public_url = Some(args.next().unwrap_or_else(|| fail("--public-url needs an address like https://mnlab.cc"))),
             "--data" => data = args.next().map(PathBuf::from).unwrap_or_else(|| fail("--data needs a folder")),
             "--fake-sign-in" => fake_sign_in = true,
@@ -56,7 +58,8 @@ async fn main() {
     if fake_sign_in && !local {
         fail("--fake-sign-in only works with a localhost --public-url. Anyone could sign in as anyone.");
     }
-    let client_id = std::env::var("MONOLAB_DISCORD_CLIENT_ID").ok().filter(|one| !one.is_empty()).unwrap_or_else(|| DISCORD_CLIENT_ID.into());
+    let client_id =
+        std::env::var("MONOLAB_DISCORD_CLIENT_ID").ok().filter(|one| !one.is_empty()).unwrap_or_else(|| DISCORD_CLIENT_ID.into());
     let discord = match std::env::var("MONOLAB_DISCORD_CLIENT_SECRET") {
         Ok(client_secret) if !client_secret.is_empty() => Some(relay::accounts::oauth::Discord { client_id, client_secret }),
         _ => None,
@@ -64,7 +67,12 @@ async fn main() {
     if discord.is_none() && !fake_sign_in {
         fail("Set MONOLAB_DISCORD_CLIENT_SECRET (in /etc/monolab-relay/env), or use --fake-sign-in on this machine.");
     }
-    let admins = std::env::var("MONOLAB_ADMIN_USERS").unwrap_or_default().split(',').map(|one| one.trim().to_string()).filter(|one| !one.is_empty()).collect();
+    let admins = std::env::var("MONOLAB_ADMIN_USERS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|one| one.trim().to_string())
+        .filter(|one| !one.is_empty())
+        .collect();
     let config = relay::accounts::Config {
         listen: api,
         data,
@@ -74,7 +82,8 @@ async fn main() {
         updates_url: Some(relay::accounts::app::UPDATES_URL.into()),
         admins,
     };
-    let accounts = relay::accounts::start(config).await.unwrap_or_else(|error| fail(&format!("Couldn't start the account server: {error}")));
+    let accounts =
+        relay::accounts::start(config).await.unwrap_or_else(|error| fail(&format!("Couldn't start the account server: {error}")));
     println!("account server listening on {}", accounts.addr);
     let _ = tokio::signal::ctrl_c().await;
     println!("stopping");
@@ -90,7 +99,8 @@ async fn notify(api: SocketAddr) {
         target.set_ip(std::net::Ipv4Addr::LOCALHOST.into());
     }
     let url = format!("http://{target}/v2/admin/notify-updates");
-    let client = reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build().unwrap_or_else(|error| fail(&error.to_string()));
+    let client =
+        reqwest::Client::builder().timeout(std::time::Duration::from_secs(10)).build().unwrap_or_else(|error| fail(&error.to_string()));
     match client.post(&url).send().await {
         Ok(response) if response.status().as_u16() == 204 => println!("The account server is reading the release list now."),
         Ok(response) => fail(&format!("The account server at {target} answered {}.", response.status())),

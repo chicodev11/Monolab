@@ -135,7 +135,8 @@ pub fn verify_signature(bytes: &[u8], signature: &str, pubkey: &str) -> Result<(
         .or_else(|_| minisign_verify::PublicKey::from_base64(key_text.lines().last().unwrap_or_default().trim()))
         .map_err(|error| format!("The updater key is malformed: {error}"))?;
     let signature_text = decode_text(signature).map_err(|error| format!("The update list's signature is malformed: {error}"))?;
-    let signature = minisign_verify::Signature::decode(&signature_text).map_err(|error| format!("The update list's signature is malformed: {error}"))?;
+    let signature = minisign_verify::Signature::decode(&signature_text)
+        .map_err(|error| format!("The update list's signature is malformed: {error}"))?;
     key.verify(bytes, &signature, true).map_err(|error| format!("The update list's signature doesn't match: {error}"))
 }
 
@@ -156,7 +157,11 @@ fn forks_dir() -> Option<PathBuf> {
 }
 
 fn exe(name: &str) -> String {
-    if cfg!(windows) { format!("{name}.exe") } else { name.to_string() }
+    if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    }
 }
 
 /// Plain file names only: what the add-on release holds, nothing that could leave the folder.
@@ -173,7 +178,9 @@ fn safe_url_name(name: &str) -> bool {
 
 /// The add-on version a file name carries, whatever kind of server it's for.
 fn version_in_file(name: &str) -> Option<u32> {
-    [AddonKind::Paper, AddonKind::NeoForge, AddonKind::Fabric, AddonKind::Pumpkin].into_iter().find_map(|kind| events::addon_version_in_name(kind, name))
+    [AddonKind::Paper, AddonKind::NeoForge, AddonKind::Fabric, AddonKind::Pumpkin]
+        .into_iter()
+        .find_map(|kind| events::addon_version_in_name(kind, name))
 }
 
 fn record_name(version: u32) -> String {
@@ -246,7 +253,9 @@ impl Addons {
     /// The version and file name a server of `kind` on `game` gets; `None` when nothing is built for it.
     pub fn pick(&self, kind: AddonKind, game: &str) -> Option<(u32, String)> {
         let addons = self.addons.clone();
-        choose(kind, game, events::ADDON_VERSION, &self.downloaded, self.fork, |name| addons.as_ref().is_some_and(|dir| dir.join(name).is_file()))
+        choose(kind, game, events::ADDON_VERSION, &self.downloaded, self.fork, |name| {
+            addons.as_ref().is_some_and(|dir| dir.join(name).is_file())
+        })
     }
 
     /// Where the file `name` is: the downloaded folder first, then the app's resources.
@@ -261,7 +270,14 @@ impl Addons {
 /// Per kind and game version: the highest downloaded version newer than the bundled one whose file
 /// for this server is there (and, for Pumpkin, whose `minFork` this PC's fork meets); else the
 /// bundled version's file.
-fn choose(kind: AddonKind, game: &str, bundled: u32, downloaded: &[AddonEntry], fork: u32, present: impl Fn(&str) -> bool) -> Option<(u32, String)> {
+fn choose(
+    kind: AddonKind,
+    game: &str,
+    bundled: u32,
+    downloaded: &[AddonEntry],
+    fork: u32,
+    present: impl Fn(&str) -> bool,
+) -> Option<(u32, String)> {
     for entry in downloaded.iter().filter(|entry| entry.version > bundled) {
         let Some(name) = events::jar_name(kind, game, entry.version) else { continue };
         let Some(file) = entry.files.get(&name) else { continue };
@@ -289,7 +305,9 @@ fn have_fork() -> u32 {
 
 fn http() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(|| reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).user_agent("Monolab").build().expect("http client"))
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).user_agent("Monolab").build().expect("http client")
+    })
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -627,7 +645,11 @@ pub fn hello(app: &AppHandle) -> Value {
 
 async fn session(app: &AppHandle) -> Result<(), String> {
     let base = crate::monolink_account::server();
-    let url = if let Some(rest) = base.strip_prefix("https://") { format!("wss://{rest}/v2/app") } else { format!("ws://{}/v2/app", base.trim_start_matches("http://")) };
+    let url = if let Some(rest) = base.strip_prefix("https://") {
+        format!("wss://{rest}/v2/app")
+    } else {
+        format!("ws://{}/v2/app", base.trim_start_matches("http://"))
+    };
     let connector = if url.starts_with("wss://") {
         use rustls_platform_verifier::BuilderVerifierExt;
         let config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
@@ -640,10 +662,11 @@ async fn session(app: &AppHandle) -> Result<(), String> {
     } else {
         tokio_tungstenite::Connector::Plain
     };
-    let (socket, _) = tokio::time::timeout(Duration::from_secs(15), tokio_tungstenite::connect_async_tls_with_config(url, None, false, Some(connector)))
-        .await
-        .map_err(|_| "timeout".to_string())?
-        .map_err(|error| error.to_string())?;
+    let (socket, _) =
+        tokio::time::timeout(Duration::from_secs(15), tokio_tungstenite::connect_async_tls_with_config(url, None, false, Some(connector)))
+            .await
+            .map_err(|_| "timeout".to_string())?
+            .map_err(|error| error.to_string())?;
     let (mut sink, mut source) = socket.split();
     let hello = {
         let app = app.clone();
@@ -772,7 +795,10 @@ mod tests {
             min_app: "1.0.0".into(),
             notes: String::new(),
             base: "https://example.invalid/".into(),
-            files: files.iter().map(|(name, min_fork)| (name.to_string(), AddonFile { sha256: "00".into(), size: 1, min_fork: *min_fork })).collect(),
+            files: files
+                .iter()
+                .map(|(name, min_fork)| (name.to_string(), AddonFile { sha256: "00".into(), size: 1, min_fork: *min_fork }))
+                .collect(),
         }
     }
 

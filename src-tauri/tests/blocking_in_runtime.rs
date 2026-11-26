@@ -1,14 +1,10 @@
-
 use std::{
     sync::mpsc,
     time::{Duration, Instant},
 };
 
 fn build_and_drop_client() {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .expect("client should build");
+    let client = reqwest::blocking::Client::builder().timeout(Duration::from_secs(5)).build().expect("client should build");
     drop(client);
 }
 
@@ -41,8 +37,6 @@ fn off_runtime_keeps_the_command_responsive() {
         off_runtime(build_and_drop_client);
         let _ = tx.send(started.elapsed());
     });
-    let took = rx
-        .recv_timeout(Duration::from_secs(10))
-        .expect("wrapped in off_runtime the command should finish");
+    let took = rx.recv_timeout(Duration::from_secs(10)).expect("wrapped in off_runtime the command should finish");
     println!("off_runtime took {took:?}");
 }

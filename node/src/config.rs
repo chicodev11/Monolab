@@ -137,7 +137,8 @@ impl Config {
             if server.stop.trim().is_empty() {
                 return Err(format!("Server \"{}\": stop is empty (Minecraft servers stop with `stop`).", server.id));
             }
-            crate::files::check_relative(&server.log).map_err(|_| format!("Server \"{}\": log must be a path inside the server folder.", server.id))?;
+            crate::files::check_relative(&server.log)
+                .map_err(|_| format!("Server \"{}\": log must be a path inside the server folder.", server.id))?;
         }
         let mut teams = HashSet::new();
         for team in &self.teams {

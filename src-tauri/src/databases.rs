@@ -329,9 +329,7 @@ fn certificate_refused(error: &mysql_async::Error) -> bool {
 
 async fn peek_certificate(address: &str, port: u16) -> Result<db_tls::Peek, String> {
     let address = address.to_string();
-    tokio::task::spawn_blocking(move || db_tls::peek(&address, port, WAIT))
-        .await
-        .map_err(|error| error.to_string())?
+    tokio::task::spawn_blocking(move || db_tls::peek(&address, port, WAIT)).await.map_err(|error| error.to_string())?
 }
 
 fn changed_certificate(now: &str) -> String {
@@ -357,8 +355,11 @@ async fn dial_with(
 ) -> Result<(mysql_async::Conn, bool, Option<String>), String> {
     // Both rustls backends are in the build, so the driver can't pick one by itself.
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-    let no_tls = |error: &mysql_async::Error| matches!(error, mysql_async::Error::Driver(mysql_async::DriverError::NoClientSslFlagFromServer));
-    let plain = move || async move { connect(address, port, reach, Trust::Plain).await.map(|conn| (conn, false, None)).map_err(|error| plain_error(&error)) };
+    let no_tls =
+        |error: &mysql_async::Error| matches!(error, mysql_async::Error::Driver(mysql_async::DriverError::NoClientSslFlagFromServer));
+    let plain = move || async move {
+        connect(address, port, reach, Trust::Plain).await.map(|conn| (conn, false, None)).map_err(|error| plain_error(&error))
+    };
     let checked = move |keep: Option<String>| async move {
         connect(address, port, reach, Trust::Checked).await.map(|conn| (conn, true, keep)).map_err(|error| plain_error(&error))
     };
@@ -372,9 +373,11 @@ async fn dial_with(
         return match peek_certificate(address, port).await? {
             db_tls::Peek::Certificate(now) if now == pinned => checked(None).await,
             db_tls::Peek::Certificate(now) => Err(changed_certificate(&now)),
-            db_tls::Peek::NoEncryption => Err("This database used to encrypt the connection and now offers no encryption. The password was not sent. \
+            db_tls::Peek::NoEncryption => {
+                Err("This database used to encrypt the connection and now offers no encryption. The password was not sent. \
                  If its settings were changed on purpose, remove this database from the app and add it again."
-                .into()),
+                    .into())
+            }
         };
     }
     match connect(address, port, reach, Trust::Strict).await {
@@ -412,14 +415,18 @@ async fn open(app: &AppHandle, reach: &Reach) -> Result<Link, String> {
             _tunnel: tunnel,
         })
     };
-    tokio::time::timeout(WAIT, dial).await.map_err(|_| "The database did not answer in time. Check the address, port and firewall.".to_string())?
+    tokio::time::timeout(WAIT, dial)
+        .await
+        .map_err(|_| "The database did not answer in time. Check the address, port and firewall.".to_string())?
 }
 
 fn plain_error(error: &mysql_async::Error) -> String {
     match error {
         mysql_async::Error::Server(server) => match server.code {
             1045 => "The database refused this username or password.".into(),
-            1044 | 1142 | 1227 | 1410 => "This database account doesn't have permission. It needs to be able to create databases and users.".into(),
+            1044 | 1142 | 1227 | 1410 => {
+                "This database account doesn't have permission. It needs to be able to create databases and users.".into()
+            }
             1049 => "This database doesn't exist on the host.".into(),
             1130 => "The database doesn't accept connections from this computer. Allow this address on the database host.".into(),
             1007 => "A database with this name already exists on the host.".into(),
@@ -447,7 +454,8 @@ fn host_reach(app: &AppHandle, host: &DbHost) -> Result<Reach, String> {
 
 async fn version_of(app: &AppHandle, reach: &Reach) -> Result<(String, bool), String> {
     let mut link = open(app, reach).await?;
-    let version: Option<String> = bounded(async { link.conn.query_first("SELECT VERSION()").await.map_err(|error| plain_error(&error)) }).await?;
+    let version: Option<String> =
+        bounded(async { link.conn.query_first("SELECT VERSION()").await.map_err(|error| plain_error(&error)) }).await?;
     let plain = link.plain;
     link.close().await;
     Ok((version.unwrap_or_default(), plain))
@@ -606,7 +614,8 @@ async fn make_database(conn: &mut mysql_async::Conn, database: &str, username: &
 }
 
 async fn change_password(conn: &mut mysql_async::Conn, username: &str, remote: &str, password: &str) -> Result<(), String> {
-    run_all(conn, &[format!("ALTER USER {}@{} IDENTIFIED BY {}", text_literal(username), text_literal(remote), text_literal(password))]).await
+    run_all(conn, &[format!("ALTER USER {}@{} IDENTIFIED BY {}", text_literal(username), text_literal(remote), text_literal(password))])
+        .await
 }
 
 async fn drop_database(conn: &mut mysql_async::Conn, database: &str, username: &str, remote: &str) -> Result<(), String> {
@@ -899,7 +908,8 @@ fn sqlite_names(conn: &rusqlite::Connection) -> Result<Vec<String>, String> {
     let mut query = conn
         .prepare("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name")
         .map_err(sqlite_error)?;
-    let names = query.query_map([], |row| row.get::<_, String>(0)).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
+    let names =
+        query.query_map([], |row| row.get::<_, String>(0)).map_err(sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(sqlite_error)?;
     Ok(names)
 }
 
@@ -1114,7 +1124,9 @@ mod tests {
         user.query_drop("CREATE TABLE `od``d` (id INT, name VARCHAR(20), data BLOB, at DATETIME)").await.unwrap();
         user.query_drop("CREATE TABLE empty_one (only_column TEXT)").await.unwrap();
         for at in 0..(PAGE + 3) {
-            user.query_drop(format!("INSERT INTO `od``d` VALUES ({at}, IF({at} = 0, NULL, 'n{at}'), x'00ff', '2026-11-04 12:00:00')")).await.unwrap();
+            user.query_drop(format!("INSERT INTO `od``d` VALUES ({at}, IF({at} = 0, NULL, 'n{at}'), x'00ff', '2026-11-04 12:00:00')"))
+                .await
+                .unwrap();
         }
         let names = mysql_table_names(&mut user).await.unwrap();
         assert_eq!(names, vec!["empty_one", "od`d"]);

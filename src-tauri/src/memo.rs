@@ -11,7 +11,11 @@ pub fn as_text(doc: &Value, pictures_dir: &Path) -> String {
             .filter_map(|one| one.as_str())
             .map(|name| pictures_dir.join(name).to_string_lossy().into_owned())
             .collect();
-        if list.is_empty() { String::new() } else { format!(" (pictures: {})", list.join(", ")) }
+        if list.is_empty() {
+            String::new()
+        } else {
+            format!(" (pictures: {})", list.join(", "))
+        }
     };
     let mut out = Vec::new();
     let todos = doc["todos"].as_array().cloned().unwrap_or_default();
@@ -28,19 +32,30 @@ pub fn as_text(doc: &Value, pictures_dir: &Path) -> String {
                 tags.push(who.to_string());
             }
             let tags = if tags.is_empty() { String::new() } else { format!(" [{}]", tags.join(" ")) };
-            out.push(format!("- [{mark}] {}{tags} (id {}){}", one["text"].as_str().unwrap_or(""), one["id"].as_str().unwrap_or(""), pictures(&one["images"])));
+            out.push(format!(
+                "- [{mark}] {}{tags} (id {}){}",
+                one["text"].as_str().unwrap_or(""),
+                one["id"].as_str().unwrap_or(""),
+                pictures(&one["images"])
+            ));
         }
     }
     let mut memos = doc["memos"].as_array().cloned().unwrap_or_default();
     // The first version kept one note in `notes` and `images`.
-    if doc.get("memos").is_none() && (doc["notes"].as_str().is_some_and(|one| !one.trim().is_empty()) || doc["images"].as_array().is_some_and(|one| !one.is_empty())) {
+    if doc.get("memos").is_none()
+        && (doc["notes"].as_str().is_some_and(|one| !one.trim().is_empty()) || doc["images"].as_array().is_some_and(|one| !one.is_empty()))
+    {
         memos.push(json!({ "title": "", "text": doc["notes"], "images": doc["images"] }));
     }
     for one in &memos {
         let title = one["title"].as_str().filter(|one| !one.trim().is_empty()).unwrap_or("(untitled memo)");
         out.push(format!("\n## {title}{}\n{}", pictures(&one["images"]), one["text"].as_str().unwrap_or("").trim()));
     }
-    if out.is_empty() { "The Memo tab is empty.".into() } else { out.join("\n").trim().to_string() }
+    if out.is_empty() {
+        "The Memo tab is empty.".into()
+    } else {
+        out.join("\n").trim().to_string()
+    }
 }
 
 /// A to-do's board column (F3): `todo`, `doing` or `done`. Files from before the board only have `done`.
@@ -86,12 +101,19 @@ pub fn apply_todo(doc: &mut Value, change: &TodoChange, stamp: u128) -> Result<S
         }
         "done" | "open" | "status" | "assign" => {
             let wanted = change.todo.ok_or("Give the to-do id from read_memo.")?;
-            let one = list.iter_mut().find(|one| one["id"].as_str() == Some(wanted)).ok_or_else(|| format!("There is no to-do with id {wanted}."))?;
+            let one = list
+                .iter_mut()
+                .find(|one| one["id"].as_str() == Some(wanted))
+                .ok_or_else(|| format!("There is no to-do with id {wanted}."))?;
             let text = one["text"].as_str().unwrap_or("").to_string();
             let said = if change.action == "assign" {
                 let who = change.assignee.unwrap_or("").trim();
                 one["assignee"] = Value::String(who.to_string());
-                if who.is_empty() { format!("\"{text}\" is no one's now.") } else { format!("Gave \"{text}\" to {who}.") }
+                if who.is_empty() {
+                    format!("\"{text}\" is no one's now.")
+                } else {
+                    format!("Gave \"{text}\" to {who}.")
+                }
             } else {
                 let column = match change.action {
                     "done" => "done",
@@ -120,7 +142,10 @@ mod tests {
     #[test]
     fn lists_todos_memos_and_the_old_single_note() {
         let dir = Path::new("pics");
-        let text = super::as_text(&json!({ "todos": [{ "id": "a", "text": "Fix spawn", "done": true, "images": ["1.png"] }], "notes": "old note" }), dir);
+        let text = super::as_text(
+            &json!({ "todos": [{ "id": "a", "text": "Fix spawn", "done": true, "images": ["1.png"] }], "notes": "old note" }),
+            dir,
+        );
         assert!(text.contains("- [x] Fix spawn (id a) (pictures: "));
         assert!(text.contains("1.png"));
         assert!(text.contains("## (untitled memo)\nold note"));
@@ -147,9 +172,11 @@ mod tests {
     #[test]
     fn update_todo_assigns() {
         let mut doc = json!({ "todos": [{ "id": "a", "text": "Golem model", "done": false, "images": [] }] });
-        let assign = super::TodoChange { action: "assign", todo: Some("a"), words: None, status: None, assignee: Some("@amy"), by: "@amy's AI" };
+        let assign =
+            super::TodoChange { action: "assign", todo: Some("a"), words: None, status: None, assignee: Some("@amy"), by: "@amy's AI" };
         super::apply_todo(&mut doc, &assign, 1).unwrap();
-        let doing = super::TodoChange { action: "status", todo: Some("a"), words: None, status: Some("doing"), assignee: None, by: "@amy's AI" };
+        let doing =
+            super::TodoChange { action: "status", todo: Some("a"), words: None, status: Some("doing"), assignee: None, by: "@amy's AI" };
         super::apply_todo(&mut doc, &doing, 2).unwrap();
         assert_eq!(doc["todos"][0]["assignee"], "@amy");
         assert_eq!(doc["todos"][0]["status"], "doing");

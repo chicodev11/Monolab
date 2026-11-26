@@ -30,7 +30,8 @@ pub fn resolve(roots: &[PathBuf], path: &str, new: bool) -> Result<PathBuf, Stri
         for base in [root, &real] {
             let Ok(relative) = wanted.strip_prefix(base) else { continue };
             let relative = relative.to_string_lossy().to_string();
-            let found = if new { crate::paths::resolve_new_in_server(root, &relative) } else { crate::paths::resolve_in_server(root, &relative) };
+            let found =
+                if new { crate::paths::resolve_new_in_server(root, &relative) } else { crate::paths::resolve_in_server(root, &relative) };
             return found.map_err(String::from);
         }
     }
@@ -165,7 +166,8 @@ pub fn create(owner: &str, roots: &[PathBuf], params: &Value) -> Result<Value, S
     if terminals().lock().expect("terminals poisoned").keys().filter(|(who, _)| who == owner).count() >= MAX_TERMINALS {
         return Err("Too many terminals are open. Release one first.".into());
     }
-    let args: Vec<String> = params["args"].as_array().map(|list| list.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
+    let args: Vec<String> =
+        params["args"].as_array().map(|list| list.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
     let cwd = match params["cwd"].as_str().filter(|one| !one.trim().is_empty()) {
         Some(dir) => resolve(roots, dir, false)?,
         None => roots.first().cloned().ok_or(OUTSIDE)?,
@@ -379,9 +381,15 @@ mod tests {
         let id = made["terminalId"].clone();
         let exit = wait_for_exit("t1", &json!({ "terminalId": id })).unwrap();
         assert_eq!(exit["exitCode"], 0);
-        // The readers may finish a moment after the process.
-        std::thread::sleep(Duration::from_millis(300));
-        let got = output("t1", &json!({ "terminalId": id })).unwrap();
+        // The readers may finish a moment after the process; on a busy machine that moment can be long.
+        let mut got = output("t1", &json!({ "terminalId": id })).unwrap();
+        for _ in 0..50 {
+            if got["output"].as_str().unwrap_or("").contains("hello-acp") {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+            got = output("t1", &json!({ "terminalId": id })).unwrap();
+        }
         assert!(got["output"].as_str().unwrap().contains("hello-acp"));
         assert!(got.get("exitStatus").is_some());
         assert!(output("other", &json!({ "terminalId": id })).is_err());

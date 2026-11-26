@@ -97,7 +97,14 @@ mod tests {
     fn saves_lists_and_deletes() {
         let root = std::env::temp_dir().join(format!("monolab-acp-chats-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
-        let chat = |id: &str, updated: f64| AcpChat { id: id.into(), agent: "gemini".into(), title: format!("chat {id}"), updated, session_id: "s1".into(), lines: "[]".into() };
+        let chat = |id: &str, updated: f64| AcpChat {
+            id: id.into(),
+            agent: "gemini".into(),
+            title: format!("chat {id}"),
+            updated,
+            session_id: "s1".into(),
+            lines: "[]".into(),
+        };
         save(&root, "server/1", &chat("a1", 10.0)).unwrap();
         save(&root, "server/1", &chat("b2", 20.0)).unwrap();
         let listed = list(&root, "server/1");

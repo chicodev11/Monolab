@@ -1,9 +1,7 @@
-
 use std::path::Path;
 
 pub fn jvm_arguments(text: &str) -> Result<Vec<String>, String> {
-    let tokens = shell_words::split(text.trim())
-        .map_err(|_| "A quote in the JVM arguments is not closed.".to_string())?;
+    let tokens = shell_words::split(text.trim()).map_err(|_| "A quote in the JVM arguments is not closed.".to_string())?;
     for token in &tokens {
         check_jvm_argument(token)?;
     }
@@ -13,9 +11,7 @@ pub fn jvm_arguments(text: &str) -> Result<Vec<String>, String> {
 fn check_jvm_argument(token: &str) -> Result<(), String> {
     let allowed = token.starts_with("-X") || token.starts_with("-D");
     if !allowed {
-        return Err(format!(
-            "Only JVM arguments starting with -X, -XX: or -D are allowed: {token}"
-        ));
+        return Err(format!("Only JVM arguments starting with -X, -XX: or -D are allowed: {token}"));
     }
     let lower = token.to_ascii_lowercase();
     const FORBIDDEN: &[&str] = &[
@@ -31,9 +27,7 @@ fn check_jvm_argument(token: &str) -> Result<(), String> {
         "-xx:vmoptionsfile",
         "-xx:logfile",
     ];
-    if FORBIDDEN.iter().any(|bad| lower.starts_with(bad))
-        || (lower.starts_with("-xlog") && lower.contains("file="))
-    {
+    if FORBIDDEN.iter().any(|bad| lower.starts_with(bad)) || (lower.starts_with("-xlog") && lower.contains("file=")) {
         return Err(format!("That JVM argument is blocked for security: {token}"));
     }
     if token.contains(['\n', '\r', '\0']) {
@@ -51,11 +45,7 @@ pub fn console_line(text: &str) -> Result<String, String> {
 }
 
 pub fn verify_java(path: &Path, ask: impl Fn(&Path) -> Option<u32>) -> Result<(), String> {
-    let name = path
-        .file_stem()
-        .and_then(|one| one.to_str())
-        .map(|one| one.to_ascii_lowercase())
-        .unwrap_or_default();
+    let name = path.file_stem().and_then(|one| one.to_str()).map(|one| one.to_ascii_lowercase()).unwrap_or_default();
     if name != "java" && name != "javaw" {
         return Err("The Java executable must be java.exe.".into());
     }
@@ -106,10 +96,7 @@ mod tests {
                      -XX:MaxTenuringThreshold=1 -Dusing.aikars.flags=https://mcflags.emc.gs \
                      -Daikars.new.flags=true";
         assert_eq!(jvm_arguments(aikar).unwrap().len(), 20);
-        assert_eq!(
-            jvm_arguments("-Dname=\"a b\" -Xss1M").unwrap(),
-            vec!["-Dname=a b".to_string(), "-Xss1M".to_string()]
-        );
+        assert_eq!(jvm_arguments("-Dname=\"a b\" -Xss1M").unwrap(), vec!["-Dname=a b".to_string(), "-Xss1M".to_string()]);
         assert!(jvm_arguments("").unwrap().is_empty());
         assert!(jvm_arguments("-Dopen=\"unclosed").is_err());
     }
@@ -139,12 +126,9 @@ mod tests {
 }
 
 pub fn custom_command(text: &str) -> Result<(String, Vec<String>), String> {
-    let tokens = shell_words::split(text.trim())
-        .map_err(|_| "A quote in the start command is not closed.".to_string())?;
+    let tokens = shell_words::split(text.trim()).map_err(|_| "A quote in the start command is not closed.".to_string())?;
     let mut tokens = tokens.into_iter();
-    let program = tokens
-        .next()
-        .ok_or("The start command is empty. Turn off 'Custom' to use the automatic one.")?;
+    let program = tokens.next().ok_or("The start command is empty. Turn off 'Custom' to use the automatic one.")?;
     let rest: Vec<String> = tokens.collect();
     if rest.iter().any(|token| token.contains(['\n', '\r', '\0'])) {
         return Err("The start command cannot contain line breaks.".into());

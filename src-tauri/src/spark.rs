@@ -1,4 +1,3 @@
-
 use crate::addons;
 use serde::Serialize;
 use std::path::Path;
@@ -35,9 +34,7 @@ fn bundled_in(core: &str, version: &str) -> bool {
 
 pub fn info(core: &str, version: &str, server: &Path) -> SparkInfo {
     let has_jar = matches!(core, "Paper" | "Purpur" | "Folia" | "Leaf" | "NeoForge" | "Fabric" | "Forge")
-        && addons::scan(server)
-            .iter()
-            .any(|one| one.enabled && one.mod_id.eq_ignore_ascii_case(MOD_ID));
+        && addons::scan(server).iter().any(|one| one.enabled && one.mod_id.eq_ignore_ascii_case(MOD_ID));
     info_with(core, version, has_jar)
 }
 
@@ -50,12 +47,7 @@ pub fn info_with(core: &str, version: &str, has_jar: bool) -> SparkInfo {
     let bundled = bundled_in(core, version);
     let installable = matches!(core, "NeoForge" | "Fabric" | "Forge");
     let installed = bundled || has_jar;
-    SparkInfo {
-        available: installed,
-        bundled,
-        installable,
-        report: None,
-    }
+    SparkInfo { available: installed, bundled, installable, report: None }
 }
 
 pub fn report_url(line: &str) -> Option<String> {
@@ -84,10 +76,7 @@ mod tests {
 
     #[test]
     fn picks_the_result_url_out_of_a_console_line() {
-        assert_eq!(
-            report_url("[12:00:01 INFO]: [⚡] https://spark.lucko.me/AbCdEf12").as_deref(),
-            Some("https://spark.lucko.me/AbCdEf12")
-        );
+        assert_eq!(report_url("[12:00:01 INFO]: [⚡] https://spark.lucko.me/AbCdEf12").as_deref(), Some("https://spark.lucko.me/AbCdEf12"));
         assert_eq!(
             report_url("[12:00:01 INFO]: [⚡] Profiler results: https://spark.lucko.me/xyz. Done").as_deref(),
             Some("https://spark.lucko.me/xyz")

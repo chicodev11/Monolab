@@ -19,13 +19,13 @@ use studio_format::{BOSSBAR_COLORS, BOSSBAR_STYLES, HOLOGRAM_BILLBOARDS, KINDS, 
 pub mod blocks;
 pub mod canvas;
 mod held;
-mod tests_tool;
 pub mod mobs;
 pub mod models;
 pub mod pack;
 pub mod play;
 pub mod quests;
 pub mod structures;
+mod tests_tool;
 pub mod worldgen;
 
 /// The feature tick runs every this many server ticks; files are rechecked every 4th.
@@ -163,7 +163,12 @@ impl Studio {
                     continue;
                 }
                 let Ok(meta) = entry.metadata() else { continue };
-                let modified = meta.modified().ok().and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok()).map(|at| at.as_millis() as u64).unwrap_or(0);
+                let modified = meta
+                    .modified()
+                    .ok()
+                    .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|at| at.as_millis() as u64)
+                    .unwrap_or(0);
                 let stamp = modified ^ meta.len();
                 seen.insert(path.clone(), stamp);
                 if self.stamps.get(&path) != Some(&stamp) {
@@ -179,7 +184,12 @@ impl Studio {
         let rigs = fs::read_dir(pack.join("models")).into_iter().flatten().flatten().map(|entry| entry.path());
         for path in std::iter::once(pack.join("ids.json")).chain(rigs) {
             let Ok(meta) = fs::metadata(&path) else { continue };
-            let modified = meta.modified().ok().and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok()).map(|at| at.as_millis() as u64).unwrap_or(0);
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|at| at.as_millis() as u64)
+                .unwrap_or(0);
             let stamp = modified ^ meta.len();
             if self.stamps.get(&path) != Some(&stamp) {
                 changed = true;
@@ -460,7 +470,8 @@ impl Studio {
     /// displays to the files: take over one per file, remove extras and leftovers, make what is missing in a
     /// loaded chunk.
     async fn refresh_holograms(&mut self, server: &Server) {
-        let wanted: Vec<(String, Data)> = self.active_rows("hologram").into_iter().map(|(id, data)| (id.to_string(), data.clone())).collect();
+        let wanted: Vec<(String, Data)> =
+            self.active_rows("hologram").into_iter().map(|(id, data)| (id.to_string(), data.clone())).collect();
         let values = values(server, None);
         let texts: Vec<String> = wanted.iter().map(|(_, data)| fields::lines(data, "lines").join("<newline>")).collect();
         let texts: Vec<String> = texts.iter().map(|text| self.vars_in(text, None)).collect();
@@ -593,7 +604,9 @@ impl Studio {
     /// Whether this is the player's first join since the add-on came; remembered in `studio/data/seen.txt`.
     fn first_time(&mut self, uuid: &str) -> bool {
         let file = self.root.join("data").join("seen.txt");
-        let seen = self.seen.get_or_insert_with(|| fs::read_to_string(&file).map(|text| text.lines().map(str::to_string).collect()).unwrap_or_default());
+        let seen = self
+            .seen
+            .get_or_insert_with(|| fs::read_to_string(&file).map(|text| text.lines().map(str::to_string).collect()).unwrap_or_default());
         if !seen.insert(uuid.to_string()) {
             return false;
         }
@@ -614,7 +627,8 @@ impl Studio {
         let new_minute = minute != self.announce_minute;
         self.announce_minute = minute.clone();
         let day = crate::local_weekday();
-        let rows: Vec<(String, Data)> = self.active_rows("announcement").into_iter().map(|(id, data)| (id.to_string(), data.clone())).collect();
+        let rows: Vec<(String, Data)> =
+            self.active_rows("announcement").into_iter().map(|(id, data)| (id.to_string(), data.clone())).collect();
         for (id, one) in &rows {
             let all = announcement_lines(one);
             if all.is_empty() {
@@ -673,7 +687,9 @@ impl Studio {
             }
         });
         for (id, uuid) in ready {
-            let Some((_, one)) = rows.iter().find(|(row, data)| *row == id && announcement::schedule(data) == "after-join") else { continue };
+            let Some((_, one)) = rows.iter().find(|(row, data)| *row == id && announcement::schedule(data) == "after-join") else {
+                continue;
+            };
             let Some((player, who)) = players.iter().find(|(_, who)| who.uuid == uuid) else { continue };
             let all = announcement_lines(one);
             if all.is_empty() || !shows(one, player, &who.world) {
@@ -793,9 +809,13 @@ fn bar_division(name: &str) -> BossBarDivision {
 
 fn read(kind: &str, path: &Path) -> Loaded {
     let id = stem(path);
-    let checked = fs::read_to_string(path).map_err(|error| format!("Could not read the file: {error}")).and_then(|text| studio_format::check(&id, &text));
+    let checked = fs::read_to_string(path)
+        .map_err(|error| format!("Could not read the file: {error}"))
+        .and_then(|text| studio_format::check(&id, &text));
     match checked {
-        Ok(_) if !PUMPKIN_KINDS.contains(&kind) => Loaded { kind: kind.into(), id, data: None, error: Some("Pumpkin servers don't run this kind yet.".into()) },
+        Ok(_) if !PUMPKIN_KINDS.contains(&kind) => {
+            Loaded { kind: kind.into(), id, data: None, error: Some("Pumpkin servers don't run this kind yet.".into()) }
+        }
         Ok(data) => Loaded { kind: kind.into(), id, data: Some(data), error: None },
         Err(error) => Loaded { kind: kind.into(), id, data: None, error: Some(error) },
     }
@@ -925,6 +945,10 @@ mod tests {
     fn line_entries_are_unique_and_invisible() {
         let names: HashSet<String> = (0..MOST_LINES).map(|at| line_names(at).0).collect();
         assert_eq!(names.len(), MOST_LINES);
-        assert!(names.iter().all(|one| mini::plain(one).chars().all(|letter| letter == '\u{a7}' || letter.is_ascii_hexdigit() || letter == 'r')));
+        assert!(
+            names
+                .iter()
+                .all(|one| mini::plain(one).chars().all(|letter| letter == '\u{a7}' || letter.is_ascii_hexdigit() || letter == 'r'))
+        );
     }
 }

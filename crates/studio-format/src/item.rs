@@ -32,9 +32,27 @@ pub const MOST_FRAMES: usize = 3;
 /// Vanilla armor trim patterns and materials (1.21.5). Other `namespace:path` ids are taken as they are (a pattern a
 /// datapack or the Pumpkin fork registered).
 pub const TRIM_PATTERNS: [&str; 18] = [
-    "sentry", "dune", "coast", "wild", "ward", "eye", "vex", "tide", "snout", "rib", "spire", "wayfinder", "shaper", "silence", "raiser", "host", "flow", "bolt",
+    "sentry",
+    "dune",
+    "coast",
+    "wild",
+    "ward",
+    "eye",
+    "vex",
+    "tide",
+    "snout",
+    "rib",
+    "spire",
+    "wayfinder",
+    "shaper",
+    "silence",
+    "raiser",
+    "host",
+    "flow",
+    "bolt",
 ];
-pub const TRIM_MATERIALS: [&str; 11] = ["quartz", "iron", "netherite", "redstone", "copper", "gold", "emerald", "diamond", "lapis", "amethyst", "resin"];
+pub const TRIM_MATERIALS: [&str; 11] =
+    ["quartz", "iron", "netherite", "redstone", "copper", "gold", "emerald", "diamond", "lapis", "amethyst", "resin"];
 /// How long a set effect lasts each time it is given (seconds): given again every second while the set is worn, and
 /// long enough that night vision doesn't flicker.
 pub const SET_EFFECT_SECONDS: u32 = 15;
@@ -64,14 +82,31 @@ pub fn look(data: &Data) -> Option<Look> {
     if texture.is_empty() && model.is_empty() {
         return None;
     }
-    let pulling = fields::lines(look, "pulling").into_iter().map(|one| one.trim().to_string()).filter(|one| !one.is_empty()).take(MOST_FRAMES).collect();
+    let pulling = fields::lines(look, "pulling")
+        .into_iter()
+        .map(|one| one.trim().to_string())
+        .filter(|one| !one.is_empty())
+        .take(MOST_FRAMES)
+        .collect();
     Some(Look { texture, model, handheld: look.get("handheld").and_then(Value::as_bool), pulling })
 }
 
 /// Tools and weapons are held like one when the item doesn't say.
 pub fn handheld_material(material: &str) -> bool {
     let bare = material.trim().trim_start_matches("minecraft:");
-    ["_sword", "_axe", "_pickaxe", "_shovel", "_hoe", "_spear"].iter().any(|end| bare.ends_with(end)) || matches!(bare, "stick" | "blaze_rod" | "breeze_rod" | "bone" | "fishing_rod" | "carrot_on_a_stick" | "warped_fungus_on_a_stick" | "mace" | "trident")
+    ["_sword", "_axe", "_pickaxe", "_shovel", "_hoe", "_spear"].iter().any(|end| bare.ends_with(end))
+        || matches!(
+            bare,
+            "stick"
+                | "blaze_rod"
+                | "breeze_rod"
+                | "bone"
+                | "fishing_rod"
+                | "carrot_on_a_stick"
+                | "warped_fungus_on_a_stick"
+                | "mace"
+                | "trident"
+        )
 }
 
 /// The object under `key`, when there is one.
@@ -96,7 +131,11 @@ pub const MOST_TOOL_RULES: usize = 16;
 
 fn block_name(raw: &str) -> String {
     let clean = raw.trim().to_ascii_lowercase();
-    if clean.contains(':') { clean } else { format!("minecraft:{clean}") }
+    if clean.contains(':') {
+        clean
+    } else {
+        format!("minecraft:{clean}")
+    }
 }
 
 pub fn tool_rules(data: &Data) -> Vec<ToolRule> {
@@ -105,8 +144,13 @@ pub fn tool_rules(data: &Data) -> Vec<ToolRule> {
         .filter_map(Value::as_object)
         .take(MOST_TOOL_RULES)
         .filter_map(|one| {
-            let blocks: Vec<String> = fields::lines(one, "blocks").iter().filter(|name| !name.trim().is_empty()).map(|name| block_name(name)).collect();
-            (!blocks.is_empty()).then(|| ToolRule { blocks, speed: float(one, "speed", 6.0, 0.0, 1000.0), drops: one.get("drops").and_then(Value::as_bool) != Some(false) })
+            let blocks: Vec<String> =
+                fields::lines(one, "blocks").iter().filter(|name| !name.trim().is_empty()).map(|name| block_name(name)).collect();
+            (!blocks.is_empty()).then(|| ToolRule {
+                blocks,
+                speed: float(one, "speed", 6.0, 0.0, 1000.0),
+                drops: one.get("drops").and_then(Value::as_bool) != Some(false),
+            })
         })
         .collect()
 }
@@ -120,7 +164,8 @@ pub fn digs_studio_block(item: &Data, id: &str, block_tool: &str) -> Option<(f64
     }
     let tool = part(item, "tool")?;
     let kind = block_tool.trim();
-    (!kind.is_empty() && fields::lines(tool, "mines").iter().any(|one| one.trim() == kind)).then(|| (float(tool, "speed", 6.0, 0.0, 1000.0), true))
+    (!kind.is_empty() && fields::lines(tool, "mines").iter().any(|one| one.trim() == kind))
+        .then(|| (float(tool, "speed", 6.0, 0.0, 1000.0), true))
 }
 
 /// One effect a full armor set gives.
@@ -192,14 +237,19 @@ pub struct Trim {
 
 fn namespaced(name: &str) -> String {
     let clean = name.trim().to_ascii_lowercase();
-    if clean.contains(':') { clean } else { format!("minecraft:{clean}") }
+    if clean.contains(':') {
+        clean
+    } else {
+        format!("minecraft:{clean}")
+    }
 }
 
 pub fn trim(data: &Data) -> Option<Trim> {
     let trim = part(part(data, "equip")?, "trim")?;
     let pattern = fields::text(trim, "pattern", "");
     let material = fields::text(trim, "material", "");
-    (!pattern.trim().is_empty() && !material.trim().is_empty()).then(|| Trim { pattern: namespaced(&pattern), material: namespaced(&material) })
+    (!pattern.trim().is_empty() && !material.trim().is_empty())
+        .then(|| Trim { pattern: namespaced(&pattern), material: namespaced(&material) })
 }
 
 /// What is wrong with the M1 fields, for the file's status. Empty = fine.
@@ -248,7 +298,10 @@ pub fn problems(data: &Data) -> Vec<String> {
                 if name.is_empty() {
                     out.push(format!("\"equip.trim\" needs a {key}."));
                 } else if !name.contains(':') && !known.contains(&name.as_str()) {
-                    out.push(format!("\"equip.trim.{key}\" isn't a vanilla one: {}; another needs its namespace (like mypack:{name}).", known.join(", ")));
+                    out.push(format!(
+                        "\"equip.trim.{key}\" isn't a vanilla one: {}; another needs its namespace (like mypack:{name}).",
+                        known.join(", ")
+                    ));
                 }
             }
         }
@@ -264,7 +317,12 @@ pub fn problems(data: &Data) -> Vec<String> {
             for rule in rules.iter().filter_map(Value::as_object) {
                 for name in fields::lines(rule, "blocks").iter().map(|one| block_name(one)) {
                     let (space, path) = name.split_once(':').unwrap_or(("minecraft", &name));
-                    if !matches!(space, "minecraft" | "studio") || path.is_empty() || !path.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == b'_' || one == b'-' || one == b'/' || one == b'.') {
+                    if !matches!(space, "minecraft" | "studio")
+                        || path.is_empty()
+                        || !path.bytes().all(|one| {
+                            one.is_ascii_lowercase() || one.is_ascii_digit() || one == b'_' || one == b'-' || one == b'/' || one == b'.'
+                        })
+                    {
                         out.push(format!("\"tool.rules\": {name} isn't a block name (like obsidian, or studio:ruby_ore)."));
                     }
                 }
@@ -307,7 +365,9 @@ mod tests {
 
     #[test]
     fn tool_rules_for_blocks() {
-        let pick = data(json!({ "tool": { "mines": ["pickaxe"], "speed": 9, "rules": [{ "blocks": ["Obsidian", "studio:ruby_ore"], "speed": 30 }, { "blocks": [] }] } }));
+        let pick = data(
+            json!({ "tool": { "mines": ["pickaxe"], "speed": 9, "rules": [{ "blocks": ["Obsidian", "studio:ruby_ore"], "speed": 30 }, { "blocks": [] }] } }),
+        );
         let rules = tool_rules(&pick);
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].blocks, vec!["minecraft:obsidian", "studio:ruby_ore"]);
@@ -321,7 +381,9 @@ mod tests {
 
     #[test]
     fn armor_sets_and_trims() {
-        let helmet = data(json!({ "equip": { "slot": "head", "set": "ruby", "setEffects": [{ "effect": "minecraft:speed", "level": 1 }, { "effect": "haste" }], "trim": { "pattern": "sentry", "material": "gold" } } }));
+        let helmet = data(
+            json!({ "equip": { "slot": "head", "set": "ruby", "setEffects": [{ "effect": "minecraft:speed", "level": 1 }, { "effect": "haste" }], "trim": { "pattern": "sentry", "material": "gold" } } }),
+        );
         let boots = data(json!({ "equip": { "slot": "feet", "set": " ruby ", "setEffects": [{ "effect": "speed", "level": 2 }] } }));
         let other = data(json!({ "equip": { "slot": "chest" } }));
         let sets = armor_sets([("helmet", &helmet), ("boots", &boots), ("shirt", &other)]);

@@ -1,4 +1,3 @@
-
 use argon2::{
     password_hash::{phc::PasswordHash, PasswordHasher, PasswordVerifier},
     Argon2,
@@ -111,15 +110,11 @@ const IP_TRIES: u32 = 30;
 /// After [`MAX_TRIES`] wrong passwords, one try per account name this often.
 const NAME_WAIT: Duration = Duration::from_secs(5);
 
-const DECOY_HASH: &str =
-    "$argon2id$v=19$m=19456,t=2,p=1$jAY3KZxbc2chhi0relMV9A$SfZqMCtHgTHjHN2XCCo/PZklRp/kuDTfRWaq054M9es";
+const DECOY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$jAY3KZxbc2chhi0relMV9A$SfZqMCtHgTHjHN2XCCo/PZklRp/kuDTfRWaq054M9es";
 
 fn digest(token: &str) -> String {
     use sha2::{Digest, Sha256};
-    Sha256::digest(token.as_bytes())
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    Sha256::digest(token.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[derive(Clone, Default, Deserialize, Serialize, specta::Type)]
@@ -152,8 +147,6 @@ impl Account {
     pub fn may(&self, server_id: &str) -> bool {
         self.is_admin() || self.servers.iter().any(|one| one == server_id)
     }
-
-
 }
 
 #[derive(Clone, Debug)]
@@ -224,11 +217,8 @@ impl Guard {
         }
         let found = accounts.iter().find(|one| one.name == name);
         let against = found.map(|account| account.hash.as_str()).unwrap_or(DECOY_HASH);
-        let verified = PasswordHash::new(against).is_ok_and(|parsed| {
-            Argon2::default()
-                .verify_password(password.as_bytes(), &parsed)
-                .is_ok()
-        });
+        let verified =
+            PasswordHash::new(against).is_ok_and(|parsed| Argon2::default().verify_password(password.as_bytes(), &parsed).is_ok());
         let ok = found.is_some() && verified;
         if !ok {
             let mut tries = self.tries.lock().expect("auth poisoned");
@@ -287,7 +277,12 @@ impl Guard {
                     row.server = one.server.clone();
                     row.seconds_ago = ago;
                 }
-                None => out.push(Online { name: one.account.name.clone(), role: one.account.role.clone(), server: one.server.clone(), seconds_ago: ago }),
+                None => out.push(Online {
+                    name: one.account.name.clone(),
+                    role: one.account.role.clone(),
+                    server: one.server.clone(),
+                    seconds_ago: ago,
+                }),
             }
         }
         out.sort_by(|a, b| a.name.cmp(&b.name));
@@ -345,7 +340,10 @@ pub fn new_invite(server: &str, role: &str, now: u64, custom: &[CustomRole]) -> 
     }
     let token = super::make_key();
     let hashed = digest(&token);
-    Ok((token, Invite { id: hashed[..12].to_string(), digest: hashed, server: server.into(), role: role.into(), expires: now + INVITE_LIFE_SECS }))
+    Ok((
+        token,
+        Invite { id: hashed[..12].to_string(), digest: hashed, server: server.into(), role: role.into(), expires: now + INVITE_LIFE_SECS },
+    ))
 }
 
 /// The live invite a token belongs to, if any.
@@ -360,13 +358,20 @@ pub fn find_invite<'a>(invites: &'a [Invite], token: &str, now: u64) -> Option<&
 /// Uses an invite: makes a new account, or gives an existing account (right password) the server too.
 /// An invite only ever raises an existing account: its role changes only when the invite's role has
 /// everything the old one had and more. Admins stay Admins.
-pub fn accept_invite(accounts: &mut Vec<Account>, invite: &Invite, name: &str, password: &str, custom: &[CustomRole]) -> Result<(), String> {
+pub fn accept_invite(
+    accounts: &mut Vec<Account>,
+    invite: &Invite,
+    name: &str,
+    password: &str,
+    custom: &[CustomRole],
+) -> Result<(), String> {
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 32 || name.chars().any(|one| one.is_control()) {
         return Err("Pick a name of 1 to 32 characters.".into());
     }
     if let Some(found) = accounts.iter_mut().find(|one| one.name == name) {
-        let verified = PasswordHash::new(&found.hash).is_ok_and(|parsed| Argon2::default().verify_password(password.as_bytes(), &parsed).is_ok());
+        let verified =
+            PasswordHash::new(&found.hash).is_ok_and(|parsed| Argon2::default().verify_password(password.as_bytes(), &parsed).is_ok());
         if !verified {
             return Err("That name is taken. If it's yours, enter its password.".into());
         }
@@ -381,7 +386,12 @@ pub fn accept_invite(accounts: &mut Vec<Account>, invite: &Invite, name: &str, p
     if password.chars().count() < 8 {
         return Err("Passwords must be at least 8 characters.".into());
     }
-    accounts.push(Account { name: name.into(), hash: Guard::hash(password)?, role: invite.role.clone(), servers: vec![invite.server.clone()] });
+    accounts.push(Account {
+        name: name.into(),
+        hash: Guard::hash(password)?,
+        role: invite.role.clone(),
+        servers: vec![invite.server.clone()],
+    });
     Ok(())
 }
 
@@ -437,7 +447,11 @@ mod collab_tests {
     }
 
     fn helper() -> CustomRole {
-        CustomRole { id: "role:abc".into(), name: "Helper".into(), perms: vec!["console.view".into(), "console.send".into(), "power".into()] }
+        CustomRole {
+            id: "role:abc".into(),
+            name: "Helper".into(),
+            perms: vec!["console.view".into(), "console.send".into(), "power".into()],
+        }
     }
 
     #[test]
@@ -504,12 +518,7 @@ mod tests {
 
     fn accounts() -> Vec<Account> {
         vec![
-            Account {
-                name: "na".into(),
-                hash: Guard::hash("longpassword12").unwrap(),
-                role: ADMIN.into(),
-                servers: Vec::new(),
-            },
+            Account { name: "na".into(), hash: Guard::hash("longpassword12").unwrap(), role: ADMIN.into(), servers: Vec::new() },
             Account {
                 name: "friend".into(),
                 hash: Guard::hash("friendpassword").unwrap(),
@@ -544,11 +553,7 @@ mod tests {
         assert!(admin.may("server1") && admin.may("server2"), "admins can do everything");
         assert!(manager.may("server1"), "assigned servers should work");
         assert!(!manager.may("server2"), "unassigned servers should be refused");
-        let empty = Account {
-            role: MANAGER.into(),
-            servers: Vec::new(),
-            ..manager.clone()
-        };
+        let empty = Account { role: MANAGER.into(), servers: Vec::new(), ..manager.clone() };
         assert!(!empty.may("server1"));
     }
 
@@ -563,12 +568,11 @@ mod tests {
             }
             start.elapsed()
         };
+        // Warm up first so the first hash (cold caches) doesn't count against either side.
+        let _ = time("na");
         let known = time("na");
         let unknown = time("nobody");
-        assert!(
-            unknown * 2 > known,
-            "unknown names answer too fast: known {known:?}, unknown {unknown:?}"
-        );
+        assert!(unknown * 2 > known, "unknown names answer too fast: known {known:?}, unknown {unknown:?}");
     }
 
     #[test]
@@ -645,12 +649,8 @@ mod secret_tests {
 
     #[test]
     fn debug_never_prints_the_hash() {
-        let account = Account {
-            name: "na".into(),
-            hash: "$argon2id$v=19$m=19456,t=2,p=1$abc$def".into(),
-            role: ADMIN.into(),
-            servers: Vec::new(),
-        };
+        let account =
+            Account { name: "na".into(), hash: "$argon2id$v=19$m=19456,t=2,p=1$abc$def".into(), role: ADMIN.into(), servers: Vec::new() };
         let printed = format!("{account:?}");
         assert!(!printed.contains("argon2"), "{printed}");
         assert!(printed.contains("[redacted]"));

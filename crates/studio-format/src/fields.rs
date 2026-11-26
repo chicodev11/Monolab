@@ -88,7 +88,8 @@ pub fn show(data: &Data) -> Show {
 impl Show {
     /// `has_permission` is only asked when a permission is set.
     pub fn allows(&self, world: &str, has_permission: impl FnOnce(&str) -> bool) -> bool {
-        (self.worlds.is_empty() || self.worlds.iter().any(|one| one == world)) && (self.permission.is_empty() || has_permission(&self.permission))
+        (self.worlds.is_empty() || self.worlds.iter().any(|one| one == world))
+            && (self.permission.is_empty() || has_permission(&self.permission))
     }
 }
 
@@ -149,7 +150,9 @@ mod tests {
 
     #[test]
     fn reads_like_the_java_addon() {
-        let one = data(json!({ "title": "Hi", "n": 12.6, "lines": ["a", 3, "b"], "single": "x", "show": { "worlds": ["world", " "], "permission": "vip" } }));
+        let one = data(
+            json!({ "title": "Hi", "n": 12.6, "lines": ["a", 3, "b"], "single": "x", "show": { "worlds": ["world", " "], "permission": "vip" } }),
+        );
         assert_eq!(text(&one, "title", "?"), "Hi");
         assert_eq!(text(&one, "n", "?"), "?");
         assert!(has(&one, "title") && !has(&one, "n"));

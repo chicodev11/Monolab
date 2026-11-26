@@ -2,8 +2,8 @@
 //! it is sealed on this PC like the cloud backup secret and never shown again. Mods whose authors
 //! block third-party downloads stay on the pack's download list.
 
-use crate::data_root::MonolabDirs;
 use crate::catalog::CatalogHit;
+use crate::data_root::MonolabDirs;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
@@ -51,11 +51,7 @@ pub fn set_key(app: &AppHandle, key: &str) -> Result<(), String> {
 }
 
 fn client() -> Result<reqwest::blocking::Client, String> {
-    crate::net::builder()
-        .user_agent(crate::net::USER_AGENT)
-        .timeout(Duration::from_secs(120))
-        .build()
-        .map_err(|error| error.to_string())
+    crate::net::builder().user_agent(crate::net::USER_AGENT).timeout(Duration::from_secs(120)).build().map_err(|error| error.to_string())
 }
 
 fn get(app: &AppHandle, url: &str) -> Result<Value, String> {
@@ -82,10 +78,13 @@ fn post(app: &AppHandle, url: &str, body: &Value) -> Result<Value, String> {
 /// Whether a search result is one of FTB's own packs.
 pub fn is_ftb(project: &Value) -> bool {
     let name = project.get("name").and_then(Value::as_str).unwrap_or_default();
-    let by_ftb = project
-        .get("authors")
-        .and_then(Value::as_array)
-        .is_some_and(|authors| authors.iter().any(|one| one.get("name").and_then(Value::as_str).is_some_and(|name| name.eq_ignore_ascii_case("ftb") || name.eq_ignore_ascii_case("ftbteam"))));
+    let by_ftb = project.get("authors").and_then(Value::as_array).is_some_and(|authors| {
+        authors.iter().any(|one| {
+            one.get("name")
+                .and_then(Value::as_str)
+                .is_some_and(|name| name.eq_ignore_ascii_case("ftb") || name.eq_ignore_ascii_case("ftbteam"))
+        })
+    });
     by_ftb || name.starts_with("FTB ")
 }
 
@@ -128,18 +127,38 @@ pub fn search(app: &AppHandle, query: &str) -> Result<Vec<CatalogHit>, String> {
         .append_pair("sortOrder", "desc")
         .append_pair("pageSize", "50");
     let found = get(app, url.as_str())?;
-    Ok(found.get("data").and_then(Value::as_array).map(|list| list.iter().filter(|one| is_ftb(one)).filter_map(hit).collect()).unwrap_or_default())
+    Ok(found
+        .get("data")
+        .and_then(Value::as_array)
+        .map(|list| list.iter().filter(|one| is_ftb(one)).filter_map(hit).collect())
+        .unwrap_or_default())
 }
 
 /// A file name CurseForge gave, without folders or odd characters.
 fn safe_name(name: &str) -> String {
-    let name: String = name.rsplit(['/', '\\']).next().unwrap_or_default().chars().filter(|letter| !letter.is_control() && !r#"<>:"|?*"#.contains(*letter)).collect();
+    let name: String = name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or_default()
+        .chars()
+        .filter(|letter| !letter.is_control() && !r#"<>:"|?*"#.contains(*letter))
+        .collect();
     let name = name.trim().trim_start_matches('.').to_string();
-    if name.is_empty() { "download".into() } else { name }
+    if name.is_empty() {
+        "download".into()
+    } else {
+        name
+    }
 }
 
 fn sha1_of(file: &Value) -> Option<String> {
-    file.get("hashes")?.as_array()?.iter().find(|one| one.get("algo").and_then(Value::as_u64) == Some(1))?.get("value")?.as_str().map(str::to_string)
+    file.get("hashes")?
+        .as_array()?
+        .iter()
+        .find(|one| one.get("algo").and_then(Value::as_u64) == Some(1))?
+        .get("value")?
+        .as_str()
+        .map(str::to_string)
 }
 
 /// Downloads the pack's newest file (the client pack: its manifest lists the mods) and returns where it is.
@@ -148,7 +167,10 @@ pub fn download_pack(app: &AppHandle, project: u64) -> Result<PathBuf, String> {
     let main = info.pointer("/data/mainFileId").and_then(Value::as_u64).ok_or("This pack has no file to download.")?;
     let file = get(app, &format!("{API}/mods/{project}/files/{main}"))?;
     let file = file.get("data").ok_or("CurseForge sent no file.")?;
-    let url = file.get("downloadUrl").and_then(Value::as_str).ok_or("The pack's author doesn't allow downloads outside CurseForge. Download it from the CurseForge site and import the .zip.")?;
+    let url = file
+        .get("downloadUrl")
+        .and_then(Value::as_str)
+        .ok_or("The pack's author doesn't allow downloads outside CurseForge. Download it from the CurseForge site and import the .zip.")?;
     let name = safe_name(file.get("fileName").and_then(Value::as_str).unwrap_or("pack.zip"));
     let folder = std::env::temp_dir().join("monolab-curseforge");
     fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
@@ -171,7 +193,8 @@ pub struct FetchedMods {
 
 /// A file marked for the client only (CurseForge tags files "Client" / "Server").
 pub fn client_only(file: &Value) -> bool {
-    let tags: Vec<&str> = file.get("gameVersions").and_then(Value::as_array).map(|list| list.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+    let tags: Vec<&str> =
+        file.get("gameVersions").and_then(Value::as_array).map(|list| list.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
     tags.contains(&"Client") && !tags.contains(&"Server")
 }
 
@@ -190,7 +213,8 @@ pub fn fetch_mods(app: &AppHandle, files: &[u64], folder: &Path) -> Result<Fetch
                 done.client_only += 1;
                 continue;
             }
-            let (Some(url), Some(name)) = (file.get("downloadUrl").and_then(Value::as_str), file.get("fileName").and_then(Value::as_str)) else {
+            let (Some(url), Some(name)) = (file.get("downloadUrl").and_then(Value::as_str), file.get("fileName").and_then(Value::as_str))
+            else {
                 done.left += 1;
                 continue;
             };

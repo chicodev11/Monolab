@@ -69,8 +69,14 @@ pub fn read_stats(text: &str) -> (Option<f64>, Vec<PlayerStat>) {
     let number = |key: &str| custom.get(format!("minecraft:{key}")).and_then(|one| one.as_f64());
     // 1.17 renamed play_one_minute (which counted ticks all along) to play_time.
     let play = number("play_time").or_else(|| number("play_one_minute")).map(|ticks| ticks / 20.0);
-    let mut out: Vec<PlayerStat> = SHOWN.iter().filter_map(|key| number(key).map(|value| PlayerStat { key: (*key).into(), value })).collect();
-    let total = |group: &str| stats.get(format!("minecraft:{group}")).and_then(|one| one.as_object()).map(|all| all.values().filter_map(|one| one.as_f64()).sum::<f64>());
+    let mut out: Vec<PlayerStat> =
+        SHOWN.iter().filter_map(|key| number(key).map(|value| PlayerStat { key: (*key).into(), value })).collect();
+    let total = |group: &str| {
+        stats
+            .get(format!("minecraft:{group}"))
+            .and_then(|one| one.as_object())
+            .map(|all| all.values().filter_map(|one| one.as_f64()).sum::<f64>())
+    };
     if let Some(value) = total("mined").filter(|one| *one > 0.0) {
         out.push(PlayerStat { key: "mined".into(), value });
     }
@@ -85,9 +91,8 @@ pub fn count_advancements(text: &str) -> Option<u32> {
     let value = serde_json::from_str::<serde_json::Value>(text).ok()?;
     let all = value.as_object()?;
     Some(
-        all.iter()
-            .filter(|(key, one)| !key.contains(":recipes/") && one.get("done").and_then(|done| done.as_bool()) == Some(true))
-            .count() as u32,
+        all.iter().filter(|(key, one)| !key.contains(":recipes/") && one.get("done").and_then(|done| done.as_bool()) == Some(true)).count()
+            as u32,
     )
 }
 
@@ -160,10 +165,13 @@ mod tests {
                    [12:09:00] [Server thread/INFO]: mina_k joined the game\n\
                    [12:09:01] [Server thread/INFO]: other joined the game";
         let (sessions, chats, commands) = read_log(log, "mina_k");
-        assert_eq!(sessions, vec![
-            PlayerSession { joined: "12:05:10".into(), left: "12:07:00".into() },
-            PlayerSession { joined: "12:09:00".into(), left: String::new() },
-        ]);
+        assert_eq!(
+            sessions,
+            vec![
+                PlayerSession { joined: "12:05:10".into(), left: "12:07:00".into() },
+                PlayerSession { joined: "12:09:00".into(), left: String::new() },
+            ]
+        );
         assert_eq!((chats, commands), (1, 1));
     }
 

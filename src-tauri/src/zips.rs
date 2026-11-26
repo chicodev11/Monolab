@@ -1,4 +1,3 @@
-
 use std::io::{Read, Seek};
 
 use zip::ZipArchive;
@@ -6,16 +5,9 @@ use zip::ZipArchive;
 pub const MAX_UNPACKED: u64 = 2 * 1024 * 1024 * 1024;
 pub const MAX_ENTRIES: usize = 50_000;
 
-pub fn check_budget<R: Read + Seek>(
-    archive: &mut ZipArchive<R>,
-    max_unpacked: u64,
-    max_entries: usize,
-) -> Result<(), String> {
+pub fn check_budget<R: Read + Seek>(archive: &mut ZipArchive<R>, max_unpacked: u64, max_entries: usize) -> Result<(), String> {
     if archive.len() > max_entries {
-        return Err(format!(
-            "The archive has too many entries ({}). Up to {max_entries} are unpacked.",
-            archive.len()
-        ));
+        return Err(format!("The archive has too many entries ({}). Up to {max_entries} are unpacked.", archive.len()));
     }
     let mut total = 0_u64;
     for index in 0..archive.len() {
@@ -25,11 +17,7 @@ pub fn check_budget<R: Read + Seek>(
         }
         total = total.saturating_add(entry.size());
         if total > max_unpacked {
-            return Err(format!(
-                "Unpacking would exceed {} MB. Up to {} MB is unpacked.",
-                total / 1024 / 1024,
-                max_unpacked / 1024 / 1024
-            ));
+            return Err(format!("Unpacking would exceed {} MB. Up to {} MB is unpacked.", total / 1024 / 1024, max_unpacked / 1024 / 1024));
         }
     }
     Ok(())

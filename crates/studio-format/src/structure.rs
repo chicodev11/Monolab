@@ -5,7 +5,7 @@
 //! world's `structure` feature is planned; `MOST_FEATURE_SIZE` is for it). Block entities (chest contents, sign text) aren't brought along.
 
 use crate::fields;
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 type Data = Map<String, Value>;
 
@@ -28,12 +28,24 @@ pub struct Structure {
 impl Structure {
     pub fn from_json(text: &str) -> Result<Self, String> {
         let value: Value = serde_json::from_str(text).map_err(|error| format!("The structure's block list is broken: {error}"))?;
-        let size = value.get("size").and_then(Value::as_array).map(|list| list.iter().map(|one| one.as_i64().unwrap_or(0) as i32).collect::<Vec<_>>()).unwrap_or_default();
+        let size = value
+            .get("size")
+            .and_then(Value::as_array)
+            .map(|list| list.iter().map(|one| one.as_i64().unwrap_or(0) as i32).collect::<Vec<_>>())
+            .unwrap_or_default();
         if size.len() != 3 {
             return Err("The structure's block list has no size.".into());
         }
-        let palette: Vec<String> = value.get("palette").and_then(Value::as_array).map(|list| list.iter().map(|one| one.as_str().unwrap_or("air").to_string()).collect()).unwrap_or_default();
-        let flat: Vec<i64> = value.get("blocks").and_then(Value::as_array).map(|list| list.iter().map(|one| one.as_i64().unwrap_or(0)).collect()).unwrap_or_default();
+        let palette: Vec<String> = value
+            .get("palette")
+            .and_then(Value::as_array)
+            .map(|list| list.iter().map(|one| one.as_str().unwrap_or("air").to_string()).collect())
+            .unwrap_or_default();
+        let flat: Vec<i64> = value
+            .get("blocks")
+            .and_then(Value::as_array)
+            .map(|list| list.iter().map(|one| one.as_i64().unwrap_or(0)).collect())
+            .unwrap_or_default();
         let blocks = flat
             .as_chunks::<4>()
             .0
@@ -46,7 +58,8 @@ impl Structure {
     }
 
     pub fn to_json(&self) -> String {
-        let flat: Vec<i64> = self.blocks.iter().flat_map(|(x, y, z, i)| [i64::from(*x), i64::from(*y), i64::from(*z), i64::from(*i)]).collect();
+        let flat: Vec<i64> =
+            self.blocks.iter().flat_map(|(x, y, z, i)| [i64::from(*x), i64::from(*y), i64::from(*z), i64::from(*i)]).collect();
         json!({ "size": [self.size.0, self.size.1, self.size.2], "palette": self.palette, "blocks": flat }).to_string()
     }
 
@@ -71,7 +84,11 @@ impl Structure {
 
     /// Width and depth after turning.
     pub fn footprint(&self, quarter: u8) -> (i32, i32) {
-        if quarter % 2 == 1 { (self.size.2, self.size.0) } else { (self.size.0, self.size.2) }
+        if quarter % 2 == 1 {
+            (self.size.2, self.size.0)
+        } else {
+            (self.size.0, self.size.2)
+        }
     }
 }
 
@@ -82,7 +99,11 @@ pub fn split_state(state: &str) -> (String, Vec<(String, String)>) {
         None => (state, ""),
     };
     let name = if name.contains(':') { name.to_string() } else { format!("minecraft:{name}") };
-    let props = rest.split(',').filter_map(|one| one.split_once('=')).map(|(key, value)| (key.trim().to_string(), value.trim().to_string())).collect();
+    let props = rest
+        .split(',')
+        .filter_map(|one| one.split_once('='))
+        .map(|(key, value)| (key.trim().to_string(), value.trim().to_string()))
+        .collect();
     (name, props)
 }
 
@@ -108,7 +129,10 @@ pub fn rotate_state(state: &str, quarter: u8) -> String {
             match key {
                 "facing" => format!("facing={}", turn_side(value, quarter).unwrap_or(value)),
                 "axis" if quarter % 2 == 1 && (value == "x" || value == "z") => format!("axis={}", if value == "x" { "z" } else { "x" }),
-                "rotation" => value.parse::<u8>().map(|turn| format!("rotation={}", (turn + quarter * 4) % 16)).unwrap_or_else(|_| format!("{key}={value}")),
+                "rotation" => value
+                    .parse::<u8>()
+                    .map(|turn| format!("rotation={}", (turn + quarter * 4) % 16))
+                    .unwrap_or_else(|_| format!("{key}={value}")),
                 side if SIDES.contains(&side) => format!("{}={value}", turn_side(side, quarter).unwrap_or(side)),
                 _ => format!("{key}={value}"),
             }
@@ -159,7 +183,11 @@ mod tests {
 
     #[test]
     fn turns_and_round_trips() {
-        let built = Structure { size: (3, 1, 2), palette: vec!["stone".into(), "oak_stairs[facing=north,half=bottom]".into()], blocks: vec![(0, 0, 0, 0), (2, 0, 1, 1)] };
+        let built = Structure {
+            size: (3, 1, 2),
+            palette: vec!["stone".into(), "oak_stairs[facing=north,half=bottom]".into()],
+            blocks: vec![(0, 0, 0, 0), (2, 0, 1, 1)],
+        };
         let back = Structure::from_json(&built.to_json()).unwrap();
         assert_eq!(back, built);
         let turned = built.placements(1);

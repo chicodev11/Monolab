@@ -144,7 +144,10 @@ impl Storage {
             return Err("Files in Storage can be at most 4 GB.".into());
         }
         if self.used() + size > self.limit() {
-            return Err(format!("The team's Storage is full ({} GB). Delete old files or versions, or ask the owner for more space.", self.limit() / GB));
+            return Err(format!(
+                "The team's Storage is full ({} GB). Delete old files or versions, or ask the owner for more space.",
+                self.limit() / GB
+            ));
         }
         let mut index = self.index();
         let at = index.items.iter().position(|one| one.name.eq_ignore_ascii_case(&name) && !one.trashed);
@@ -158,13 +161,15 @@ impl Storage {
         };
         let item = &mut index.items[at];
         let n = item.versions.last().map(|one| one.n + 1).unwrap_or(1);
-        fs::copy(source, self.dir.join("files").join(format!("{}-{n}", item.id))).map_err(|error| format!("Could not keep the file: {error}"))?;
+        fs::copy(source, self.dir.join("files").join(format!("{}-{n}", item.id)))
+            .map_err(|error| format!("Could not keep the file: {error}"))?;
         item.versions.push(StorageVersion { n, size, by: by.to_string(), at: now() });
         if !note.trim().is_empty() {
             item.note = note.trim().chars().take(500).collect();
         }
         if !tags.is_empty() {
-            item.tags = tags.iter().map(|one| one.trim().chars().take(24).collect::<String>()).filter(|one| !one.is_empty()).take(8).collect();
+            item.tags =
+                tags.iter().map(|one| one.trim().chars().take(24).collect::<String>()).filter(|one| !one.is_empty()).take(8).collect();
         }
         let done = item.clone();
         self.save(&index)?;
@@ -271,7 +276,12 @@ mod tests {
         let storage = Storage::open(&root.join("store"), "team-2").unwrap();
         storage.set_limit(1).unwrap();
         let mut index = storage.index();
-        index.items.push(StorageItem { id: "x".into(), name: "full".into(), versions: vec![StorageVersion { n: 1, size: GB, by: "@a".into(), at: 0 }], ..Default::default() });
+        index.items.push(StorageItem {
+            id: "x".into(),
+            name: "full".into(),
+            versions: vec![StorageVersion { n: 1, size: GB, by: "@a".into(), at: 0 }],
+            ..Default::default()
+        });
         storage.save(&index).unwrap();
         assert!(storage.put(&file, "big.bin", "", &[], "@amy").unwrap_err().contains("full"));
         assert!(storage.set_limit(0).is_err());

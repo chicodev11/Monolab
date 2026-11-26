@@ -4,7 +4,7 @@
 //! hangs this one.
 
 use crate::{fields, mini};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 type Data = Map<String, Value>;
 
@@ -27,7 +27,11 @@ pub fn height(data: &Data) -> u8 {
 /// The title shown on the item (MiniMessage); the id when empty.
 pub fn title(data: &Data, id: &str) -> String {
     let name = fields::text(data, "title", "").trim().to_string();
-    if name.is_empty() { id.replace(['_', '-'], " ") } else { name }
+    if name.is_empty() {
+        id.replace(['_', '-'], " ")
+    } else {
+        name
+    }
 }
 
 pub fn author(data: &Data) -> String {

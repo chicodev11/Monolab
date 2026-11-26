@@ -1,4 +1,3 @@
-
 use crate::data_root::MonolabDirs;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -78,12 +77,8 @@ pub struct PanelServer {
 }
 
 fn folder(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?;
-    std::fs::create_dir_all(&dir)
-        .map_err(|error| format!("Could not create the app data folder: {error}"))?;
+    let dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|error| format!("Could not create the app data folder: {error}"))?;
     Ok(dir)
 }
 
@@ -101,21 +96,16 @@ pub fn load_hosts(app: &AppHandle) -> Result<Vec<PanelHost>, String> {
 
 fn save_hosts(app: &AppHandle, hosts: &[PanelHost]) -> Result<(), String> {
     let text = serde_json::to_string_pretty(hosts).map_err(|error| error.to_string())?;
-    crate::store::write(&hosts_path(app)?, &text)
-        .map_err(|error| format!("Cannot write panel-hosts.json: {error}"))
+    crate::store::write(&hosts_path(app)?, &text).map_err(|error| format!("Cannot write panel-hosts.json: {error}"))
 }
 
 fn load_secrets(app: &AppHandle) -> HashMap<String, String> {
-    secrets_path(app)
-        .ok()
-        .and_then(|path| crate::store::read_secret(&path).ok().flatten())
-        .unwrap_or_default()
+    secrets_path(app).ok().and_then(|path| crate::store::read_secret(&path).ok().flatten()).unwrap_or_default()
 }
 
 fn save_secrets(app: &AppHandle, secrets: &HashMap<String, String>) -> Result<(), String> {
     let text = serde_json::to_string_pretty(secrets).map_err(|error| error.to_string())?;
-    crate::store::write_secret(&secrets_path(app)?, &text)
-        .map_err(|error| format!("Cannot write panel-secrets.json: {error}"))
+    crate::store::write_secret(&secrets_path(app)?, &text).map_err(|error| format!("Cannot write panel-secrets.json: {error}"))
 }
 
 pub fn list_hosts(app: &AppHandle) -> Result<Vec<PanelHostView>, String> {
@@ -131,10 +121,7 @@ pub fn list_hosts(app: &AppHandle) -> Result<Vec<PanelHostView>, String> {
 }
 
 pub fn host(app: &AppHandle, id: &str) -> Result<PanelHost, String> {
-    load_hosts(app)?
-        .into_iter()
-        .find(|one| one.id == id)
-        .ok_or_else(|| "Cannot find that registered panel.".to_string())
+    load_hosts(app)?.into_iter().find(|one| one.id == id).ok_or_else(|| "Cannot find that registered panel.".to_string())
 }
 
 pub fn tidy_url(given: &str) -> Result<String, String> {
@@ -157,22 +144,10 @@ pub fn tidy_url(given: &str) -> Result<String, String> {
     Ok(full)
 }
 
-pub fn save_host(
-    app: &AppHandle,
-    mut one: PanelHost,
-    key: Option<String>,
-    app_key: Option<String>,
-) -> Result<(), String> {
+pub fn save_host(app: &AppHandle, mut one: PanelHost, key: Option<String>, app_key: Option<String>) -> Result<(), String> {
     one.url = tidy_url(&one.url)?;
     if one.name.trim().is_empty() {
-        one.name = one
-            .url
-            .trim_start_matches("https://")
-            .trim_start_matches("http://")
-            .split('/')
-            .next()
-            .unwrap_or("Panel")
-            .to_string();
+        one.name = one.url.trim_start_matches("https://").trim_start_matches("http://").split('/').next().unwrap_or("Panel").to_string();
     }
     let have = load_secrets(app);
     let will_have = |slot: &str, given: &Option<String>| match given {
@@ -326,30 +301,18 @@ impl Api {
     }
 
     fn client(&self) -> Result<reqwest::Client, String> {
-        crate::net::panel_builder()
-            .timeout(WAIT)
-            .build()
-            .map_err(|error| format!("Cannot talk to the panel: {error}"))
+        crate::net::panel_builder().timeout(WAIT).build().map_err(|error| format!("Cannot talk to the panel: {error}"))
     }
 
     async fn send(&self, method: reqwest::Method, at: &str, body: Option<Value>) -> Result<Value, String> {
-        let text = self
-            .raw(method, at, &[], body.map(Payload::Json).unwrap_or(Payload::None))
-            .await?;
+        let text = self.raw(method, at, &[], body.map(Payload::Json).unwrap_or(Payload::None)).await?;
         if text.trim().is_empty() {
             return Ok(Value::Null);
         }
-        serde_json::from_str(&text)
-            .map_err(|_| "The panel's answer is not JSON. Check the address is the panel's.".to_string())
+        serde_json::from_str(&text).map_err(|_| "The panel's answer is not JSON. Check the address is the panel's.".to_string())
     }
 
-    async fn raw(
-        &self,
-        method: reqwest::Method,
-        at: &str,
-        query: &[(&str, &str)],
-        body: Payload,
-    ) -> Result<String, String> {
+    async fn raw(&self, method: reqwest::Method, at: &str, query: &[(&str, &str)], body: Payload) -> Result<String, String> {
         let application = at.starts_with("/api/application");
         let key = if application { self.app_key.as_ref() } else { self.key.as_ref() }.ok_or(if application {
             "No Application API key. Register the panel again as an admin."
@@ -366,11 +329,7 @@ impl Api {
         }
         let mut last = String::new();
         for (turn, key) in keys.iter().enumerate() {
-            let mut ask = self
-                .client()?
-                .request(method.clone(), &at)
-                .bearer_auth(key)
-                .header("Accept", "application/json");
+            let mut ask = self.client()?.request(method.clone(), &at).bearer_auth(key).header("Accept", "application/json");
             if !query.is_empty() {
                 ask = ask.query(query);
             }
@@ -379,10 +338,7 @@ impl Api {
                 Payload::Json(body) => ask.json(&body),
                 Payload::Text(text) => ask.header("Content-Type", "text/plain").body(text),
             };
-            let answer = ask
-                .send()
-                .await
-                .map_err(|error| format!("Could not reach the panel: {}", brief(&error)))?;
+            let answer = ask.send().await.map_err(|error| format!("Could not reach the panel: {}", brief(&error)))?;
             let code = answer.status();
             let text = answer.text().await.unwrap_or_default();
             if code.is_success() {
@@ -421,10 +377,7 @@ impl Api {
             let got = self.get(&format!("?include=allocations&per_page=100&page={page}")).await?;
             let rows = got.get("data").and_then(|one| one.as_array()).cloned().unwrap_or_default();
             out.extend(rows.iter().filter_map(read_server));
-            let pages = got
-                .pointer("/meta/pagination/total_pages")
-                .and_then(|one| one.as_u64())
-                .unwrap_or(1);
+            let pages = got.pointer("/meta/pagination/total_pages").and_then(|one| one.as_u64()).unwrap_or(1);
             if page as u64 >= pages || rows.is_empty() {
                 break;
             }
@@ -444,16 +397,12 @@ impl Api {
 
     pub async fn market_forget(&self, ident: &str, record: &MarketInstall) -> Result<(), String> {
         let body = serde_json::json!({ "type": record.kind, "source": record.source, "project_id": record.project_id });
-        self.send(reqwest::Method::DELETE, &format!("/api/client/servers/{ident}/marketplace/installed"), Some(body))
-            .await
-            .map(|_| ())
+        self.send(reqwest::Method::DELETE, &format!("/api/client/servers/{ident}/marketplace/installed"), Some(body)).await.map(|_| ())
     }
 
     pub async fn market_record(&self, ident: &str, record: &MarketInstall) -> Result<(), String> {
         let body = serde_json::to_value(record).map_err(|error| error.to_string())?;
-        self.send(reqwest::Method::POST, &format!("/api/client/servers/{ident}/marketplace/installed"), Some(body))
-            .await
-            .map(|_| ())
+        self.send(reqwest::Method::POST, &format!("/api/client/servers/{ident}/marketplace/installed"), Some(body)).await.map(|_| ())
     }
 
     pub async fn egg_name(&self, ident: &str) -> Option<String> {
@@ -491,10 +440,7 @@ impl Api {
             let got = self.app_get(&format!("{path}{join}per_page=100&page={page}")).await?;
             let rows = got.get("data").and_then(|one| one.as_array()).cloned().unwrap_or_default();
             out.extend(rows.iter().filter_map(|row| row.get("attributes").cloned()));
-            let pages = got
-                .pointer("/meta/pagination/total_pages")
-                .and_then(|one| one.as_u64())
-                .unwrap_or(1);
+            let pages = got.pointer("/meta/pagination/total_pages").and_then(|one| one.as_u64()).unwrap_or(1);
             if page as u64 >= pages || rows.is_empty() {
                 break;
             }
@@ -514,29 +460,19 @@ impl Api {
 
     pub async fn servers(&self) -> Result<Vec<PanelServer>, String> {
         if self.role == PanelRole::Admin && self.key.is_none() {
-            return Ok(self
-                .app_list("/servers?include=allocations")
-                .await?
-                .iter()
-                .filter_map(read_app_server)
-                .collect());
+            return Ok(self.app_list("/servers?include=allocations").await?.iter().filter_map(read_app_server).collect());
         }
         let scope = if self.role == PanelRole::Admin { "&type=admin-all" } else { "" };
         let mut out = Vec::new();
         for page in 1..=20 {
-            let got = self
-                .get(&format!("?include=allocations&per_page=100&page={page}{scope}"))
-                .await?;
+            let got = self.get(&format!("?include=allocations&per_page=100&page={page}{scope}")).await?;
             let rows = got.get("data").and_then(|one| one.as_array()).cloned().unwrap_or_default();
             for row in &rows {
                 if let Some(one) = read_server(row) {
                     out.push(one);
                 }
             }
-            let pages = got
-                .pointer("/meta/pagination/total_pages")
-                .and_then(|one| one.as_u64())
-                .unwrap_or(1);
+            let pages = got.pointer("/meta/pagination/total_pages").and_then(|one| one.as_u64()).unwrap_or(1);
             if page as u64 >= pages || rows.is_empty() {
                 break;
             }
@@ -559,11 +495,7 @@ impl Api {
         Ok(got
             .pointer("/meta/user_permissions")
             .and_then(|one| one.as_array())
-            .map(|list| {
-                list.iter()
-                    .filter_map(|one| one.as_str().map(str::to_string))
-                    .collect()
-            })
+            .map(|list| list.iter().filter_map(|one| one.as_str().map(str::to_string)).collect())
             .unwrap_or_default())
     }
 
@@ -574,18 +506,9 @@ impl Api {
             .app_list("/users")
             .await?
             .iter()
-            .map(|at| PanelUser {
-                id: num(at, "id"),
-                username: text(at, "username"),
-                email: text(at, "email"),
-            })
+            .map(|at| PanelUser { id: num(at, "id"), username: text(at, "username"), email: text(at, "email") })
             .collect();
-        let nodes = self
-            .app_list("/nodes")
-            .await?
-            .iter()
-            .map(|at| PanelNode { id: num(at, "id"), name: text(at, "name") })
-            .collect();
+        let nodes = self.app_list("/nodes").await?.iter().map(|at| PanelNode { id: num(at, "id"), name: text(at, "name") }).collect();
         let mut eggs = Vec::new();
         for nest in self.app_list("/nests").await? {
             let nest_name = text(&nest, "name");
@@ -603,12 +526,7 @@ impl Api {
             .await?
             .iter()
             .filter(|at| !at.get("assigned").and_then(|one| one.as_bool()).unwrap_or(false))
-            .map(|at| PanelAllocation {
-                id: num(at, "id"),
-                ip: text(at, "ip"),
-                alias: text(at, "alias"),
-                port: num(at, "port") as u16,
-            })
+            .map(|at| PanelAllocation { id: num(at, "id"), ip: text(at, "ip"), alias: text(at, "alias"), port: num(at, "port") as u16 })
             .collect())
     }
 
@@ -618,14 +536,8 @@ impl Api {
             return Err("Please enter a server name.".into());
         }
         let body = create_body(new);
-        let got = self
-            .send(reqwest::Method::POST, "/api/application/servers", Some(body))
-            .await?;
-        Ok(got
-            .pointer("/attributes/identifier")
-            .and_then(|one| one.as_str())
-            .unwrap_or("")
-            .to_string())
+        let got = self.send(reqwest::Method::POST, "/api/application/servers", Some(body)).await?;
+        Ok(got.pointer("/attributes/identifier").and_then(|one| one.as_str()).unwrap_or("").to_string())
     }
 }
 
@@ -722,15 +634,11 @@ pub fn split_path(relative: &str) -> Result<(String, String), String> {
 
 impl Api {
     pub async fn power(&self, target: &Target, signal: &str) -> Result<(), String> {
-        self.send(reqwest::Method::POST, &target.at("/power"), Some(serde_json::json!({ "signal": signal })))
-            .await
-            .map(|_| ())
+        self.send(reqwest::Method::POST, &target.at("/power"), Some(serde_json::json!({ "signal": signal }))).await.map(|_| ())
     }
 
     pub async fn command(&self, target: &Target, line: &str) -> Result<(), String> {
-        self.send(reqwest::Method::POST, &target.at("/command"), Some(serde_json::json!({ "command": line })))
-            .await
-            .map(|_| ())
+        self.send(reqwest::Method::POST, &target.at("/command"), Some(serde_json::json!({ "command": line }))).await.map(|_| ())
     }
 
     pub async fn stats(&self, target: &Target) -> Result<PanelStats, String> {
@@ -760,9 +668,7 @@ impl Api {
 
     pub async fn list(&self, target: &Target, relative: &str) -> Result<Vec<crate::remote::FileRow>, String> {
         let dir = panel_path(relative)?;
-        let text = self
-            .raw(reqwest::Method::GET, &target.at("/files/list"), &[("directory", &dir)], Payload::None)
-            .await?;
+        let text = self.raw(reqwest::Method::GET, &target.at("/files/list"), &[("directory", &dir)], Payload::None).await?;
         let got: Value = serde_json::from_str(&text).map_err(|_| "Cannot read the panel's file list.".to_string())?;
         let mut rows: Vec<crate::remote::FileRow> = got
             .get("data")
@@ -780,11 +686,7 @@ impl Api {
                     .collect()
             })
             .unwrap_or_default();
-        rows.sort_by(|a, b| {
-            b.directory
-                .cmp(&a.directory)
-                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-        });
+        rows.sort_by(|a, b| b.directory.cmp(&a.directory).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
         Ok(rows)
     }
 
@@ -800,9 +702,7 @@ impl Api {
 
     pub async fn read_text(&self, target: &Target, relative: &str) -> Result<String, String> {
         let file = panel_path(relative)?;
-        let text = self
-            .raw(reqwest::Method::GET, &target.at("/files/contents"), &[("file", &file)], Payload::None)
-            .await?;
+        let text = self.raw(reqwest::Method::GET, &target.at("/files/contents"), &[("file", &file)], Payload::None).await?;
         if text.len() > 8 * 1024 * 1024 {
             return Err("This file is too large to open in the app (over 8 MB).".into());
         }
@@ -811,21 +711,14 @@ impl Api {
 
     pub async fn write_text(&self, target: &Target, relative: &str, text: &str) -> Result<(), String> {
         let file = panel_path(relative)?;
-        self.raw(reqwest::Method::POST, &target.at("/files/write"), &[("file", &file)], Payload::Text(text.to_string()))
-            .await
-            .map(|_| ())
+        self.raw(reqwest::Method::POST, &target.at("/files/write"), &[("file", &file)], Payload::Text(text.to_string())).await.map(|_| ())
     }
 
     pub async fn download_url(&self, target: &Target, relative: &str) -> Result<String, String> {
         let file = panel_path(relative)?;
-        let text = self
-            .raw(reqwest::Method::GET, &target.at("/files/download"), &[("file", &file)], Payload::None)
-            .await?;
+        let text = self.raw(reqwest::Method::GET, &target.at("/files/download"), &[("file", &file)], Payload::None).await?;
         let got: Value = serde_json::from_str(&text).map_err(|_| "The panel gave no download address.".to_string())?;
-        got.pointer("/attributes/url")
-            .and_then(|one| one.as_str())
-            .map(str::to_string)
-            .ok_or("The panel gave no download address.".into())
+        got.pointer("/attributes/url").and_then(|one| one.as_str()).map(str::to_string).ok_or("The panel gave no download address.".into())
     }
 
     pub async fn read_bytes(&self, target: &Target, relative: &str, limit: u64) -> Result<Vec<u8>, String> {
@@ -906,10 +799,7 @@ impl Api {
     pub async fn upload(&self, target: &Target, relative_dir: &str, name: &str, bytes: Vec<u8>) -> Result<(), String> {
         let dir = panel_path(relative_dir)?;
         let got = self.send(reqwest::Method::GET, &target.at("/files/upload"), None).await?;
-        let url = got
-            .pointer("/attributes/url")
-            .and_then(|one| one.as_str())
-            .ok_or("The panel gave no upload address.")?;
+        let url = got.pointer("/attributes/url").and_then(|one| one.as_str()).ok_or("The panel gave no upload address.")?;
         let part = reqwest::multipart::Part::bytes(bytes).file_name(name.to_string());
         let form = reqwest::multipart::Form::new().part("files", part);
         let answer = self
@@ -947,60 +837,38 @@ impl Api {
             by_dir.entry(dir).or_default().push(name);
         }
         for (dir, names) in by_dir {
-            self.send(
-                reqwest::Method::POST,
-                &target.at("/files/delete"),
-                Some(serde_json::json!({ "root": dir, "files": names })),
-            )
-            .await?;
+            self.send(reqwest::Method::POST, &target.at("/files/delete"), Some(serde_json::json!({ "root": dir, "files": names }))).await?;
         }
         Ok(())
     }
 
     pub async fn make_dir(&self, target: &Target, relative_dir: &str, name: &str) -> Result<(), String> {
         let dir = panel_path(relative_dir)?;
-        self.send(
-            reqwest::Method::POST,
-            &target.at("/files/create-folder"),
-            Some(serde_json::json!({ "root": dir, "name": name })),
-        )
-        .await
-        .map(|_| ())
+        self.send(reqwest::Method::POST, &target.at("/files/create-folder"), Some(serde_json::json!({ "root": dir, "name": name })))
+            .await
+            .map(|_| ())
     }
 
     pub async fn compress(&self, target: &Target, relative_dir: &str, names: &[String]) -> Result<String, String> {
         let dir = panel_path(relative_dir)?;
         let got = self
-            .send(
-                reqwest::Method::POST,
-                &target.at("/files/compress"),
-                Some(serde_json::json!({ "root": dir, "files": names })),
-            )
+            .send(reqwest::Method::POST, &target.at("/files/compress"), Some(serde_json::json!({ "root": dir, "files": names })))
             .await?;
         Ok(got.pointer("/attributes/name").and_then(|one| one.as_str()).unwrap_or("").to_string())
     }
 
     pub async fn decompress(&self, target: &Target, relative: &str) -> Result<(), String> {
         let (dir, name) = split_path(relative)?;
-        self.send(
-            reqwest::Method::POST,
-            &target.at("/files/decompress"),
-            Some(serde_json::json!({ "root": dir, "file": name })),
-        )
-        .await
-        .map(|_| ())
+        self.send(reqwest::Method::POST, &target.at("/files/decompress"), Some(serde_json::json!({ "root": dir, "file": name })))
+            .await
+            .map(|_| ())
     }
 
     pub async fn backups(&self, target: &Target) -> Result<Vec<PanelBackup>, String> {
         let mut out = Vec::new();
         for page in 1..=20 {
             let text = self
-                .raw(
-                    reqwest::Method::GET,
-                    &target.at("/backups"),
-                    &[("per_page", "50"), ("page", &page.to_string())],
-                    Payload::None,
-                )
+                .raw(reqwest::Method::GET, &target.at("/backups"), &[("per_page", "50"), ("page", &page.to_string())], Payload::None)
                 .await?;
             let got: Value = serde_json::from_str(&text).map_err(|_| "Cannot read the panel's backup list.".to_string())?;
             let rows = got.get("data").and_then(|one| one.as_array()).cloned().unwrap_or_default();
@@ -1024,9 +892,7 @@ impl Api {
     }
 
     pub async fn create_backup(&self, target: &Target, name: &str) -> Result<(), String> {
-        self.send(reqwest::Method::POST, &target.at("/backups"), Some(serde_json::json!({ "name": name })))
-            .await
-            .map(|_| ())
+        self.send(reqwest::Method::POST, &target.at("/backups"), Some(serde_json::json!({ "name": name }))).await.map(|_| ())
     }
 
     pub async fn restore_backup(&self, target: &Target, uuid: &str) -> Result<(), String> {
@@ -1040,9 +906,7 @@ impl Api {
     }
 
     pub async fn delete_backup(&self, target: &Target, uuid: &str) -> Result<(), String> {
-        self.send(reqwest::Method::DELETE, &target.at(&format!("/backups/{uuid}")), None)
-            .await
-            .map(|_| ())
+        self.send(reqwest::Method::DELETE, &target.at(&format!("/backups/{uuid}")), None).await.map(|_| ())
     }
 
     pub async fn startup(&self, target: &Target) -> Result<PanelStartup, String> {
@@ -1067,23 +931,15 @@ impl Api {
             .unwrap_or_default();
         Ok(PanelStartup {
             command: got.pointer("/meta/startup_command").and_then(|one| one.as_str()).unwrap_or("").to_string(),
-            docker_image: got
-                .pointer("/meta/docker_image")
-                .and_then(|one| one.as_str())
-                .unwrap_or("")
-                .to_string(),
+            docker_image: got.pointer("/meta/docker_image").and_then(|one| one.as_str()).unwrap_or("").to_string(),
             variables,
         })
     }
 
     pub async fn set_variable(&self, target: &Target, env: &str, value: &str) -> Result<(), String> {
-        self.send(
-            reqwest::Method::PUT,
-            &target.at("/startup/variable"),
-            Some(serde_json::json!({ "key": env, "value": value })),
-        )
-        .await
-        .map(|_| ())
+        self.send(reqwest::Method::PUT, &target.at("/startup/variable"), Some(serde_json::json!({ "key": env, "value": value })))
+            .await
+            .map(|_| ())
     }
 }
 
@@ -1134,15 +990,17 @@ fn read_egg(nest: &str, at: &Value) -> PanelEgg {
         .and_then(|one| one.as_object())
         .map(|map| {
             map.iter()
-                .filter_map(|(label, image)| {
-                    image.as_str().map(|image| PanelImage { label: label.clone(), image: image.to_string() })
-                })
+                .filter_map(|(label, image)| image.as_str().map(|image| PanelImage { label: label.clone(), image: image.to_string() }))
                 .collect::<Vec<_>>()
         })
         .filter(|list| !list.is_empty())
         .unwrap_or_else(|| {
             let one = text(at, "docker_image");
-            if one.is_empty() { Vec::new() } else { vec![PanelImage { label: one.clone(), image: one }] }
+            if one.is_empty() {
+                Vec::new()
+            } else {
+                vec![PanelImage { label: one.clone(), image: one }]
+            }
         });
     let variables = at
         .pointer("/relationships/variables/data")
@@ -1167,14 +1025,7 @@ fn read_egg(nest: &str, at: &Value) -> PanelEgg {
                 .collect()
         })
         .unwrap_or_default();
-    PanelEgg {
-        id: num(at, "id"),
-        nest: nest.to_string(),
-        name: text(at, "name"),
-        images,
-        startup: text(at, "startup"),
-        variables,
-    }
+    PanelEgg { id: num(at, "id"), nest: nest.to_string(), name: text(at, "name"), images, startup: text(at, "startup"), variables }
 }
 
 #[derive(Clone, Debug, Serialize, specta::Type)]
@@ -1260,14 +1111,9 @@ pub fn saved_keys(app: &AppHandle, id: &str) -> (Option<String>, Option<String>)
 pub fn api(app: &AppHandle, host_id: &str) -> Result<Api, String> {
     let one = host(app, host_id)?;
     let secrets = load_secrets(app);
-    Api::new(
-        &one.url,
-        secrets.get(host_id).map(String::as_str),
-        secrets.get(&app_slot(host_id)).map(String::as_str),
-        one.role,
-    )
-    .map(|api| api.with_kind(one.kind))
-    .map_err(|_| "No panel API key. Register it again in Manage sessions.".to_string())
+    Api::new(&one.url, secrets.get(host_id).map(String::as_str), secrets.get(&app_slot(host_id)).map(String::as_str), one.role)
+        .map(|api| api.with_kind(one.kind))
+        .map_err(|_| "No panel API key. Register it again in Manage sessions.".to_string())
 }
 
 fn read_app_server(at: &Value) -> Option<PanelServer> {
@@ -1277,9 +1123,7 @@ fn read_app_server(at: &Value) -> Option<PanelServer> {
         .pointer("/relationships/allocations/data")
         .and_then(|one| one.as_array())
         .and_then(|list| {
-            list.iter()
-                .find(|one| one.pointer("/attributes/id").and_then(|one| one.as_u64()) == default)
-                .or_else(|| list.first())
+            list.iter().find(|one| one.pointer("/attributes/id").and_then(|one| one.as_u64()) == default).or_else(|| list.first())
         })
         .and_then(|one| one.pointer("/attributes/port"))
         .and_then(|one| one.as_u64())
@@ -1330,11 +1174,7 @@ fn read_server(row: &Value) -> Option<PanelServer> {
         .and_then(|one| one.as_array())
         .and_then(|list| {
             list.iter()
-                .find(|one| {
-                    one.pointer("/attributes/is_default")
-                        .and_then(|one| one.as_bool())
-                        .unwrap_or(false)
-                })
+                .find(|one| one.pointer("/attributes/is_default").and_then(|one| one.as_bool()).unwrap_or(false))
                 .or_else(|| list.first())
         })
         .and_then(|one| one.pointer("/attributes/port"))
@@ -1342,22 +1182,12 @@ fn read_server(row: &Value) -> Option<PanelServer> {
         .unwrap_or(0) as u16;
     Some(PanelServer {
         identifier,
-        name: at
-            .get("name")
-            .and_then(|one| one.as_str())
-            .unwrap_or("Unnamed server")
-            .to_string(),
+        name: at.get("name").and_then(|one| one.as_str()).unwrap_or("Unnamed server").to_string(),
         node: at.get("node").and_then(|one| one.as_str()).unwrap_or("").to_string(),
         daemon: String::new(),
-        memory_limit_mib: at
-            .pointer("/limits/memory")
-            .and_then(|one| one.as_u64())
-            .unwrap_or(0) as u32,
+        memory_limit_mib: at.pointer("/limits/memory").and_then(|one| one.as_u64()).unwrap_or(0) as u32,
         port,
-        suspended: at
-            .get("is_suspended")
-            .and_then(|one| one.as_bool())
-            .unwrap_or(false),
+        suspended: at.get("is_suspended").and_then(|one| one.as_bool()).unwrap_or(false),
         owner: at.get("server_owner").and_then(|one| one.as_bool()).unwrap_or(false),
     })
 }
@@ -1366,9 +1196,7 @@ fn explain(code: reqwest::StatusCode, body: &str, application: bool) -> String {
     let detail = serde_json::from_str::<Value>(body)
         .ok()
         .and_then(|one| {
-            one.pointer("/errors/0/detail")
-                .or_else(|| one.pointer("/errors/0/code"))
-                .and_then(|one| one.as_str().map(str::to_string))
+            one.pointer("/errors/0/detail").or_else(|| one.pointer("/errors/0/code")).and_then(|one| one.as_str().map(str::to_string))
         })
         .unwrap_or_default();
     if detail.contains("auto-allocation is not enabled") {
@@ -1401,10 +1229,7 @@ fn brief(error: &reqwest::Error) -> String {
     if error.is_connect() {
         return "could not connect".into();
     }
-    error
-        .source()
-        .map(|one| one.to_string())
-        .unwrap_or_else(|| error.to_string())
+    error.source().map(|one| one.to_string()).unwrap_or_else(|| error.to_string())
 }
 
 use std::error::Error as _;
@@ -1508,11 +1333,7 @@ mod tests {
 
     #[test]
     fn says_what_the_panel_complained_about() {
-        let said = explain(
-            reqwest::StatusCode::UNAUTHORIZED,
-            "{\"errors\":[{\"code\":\"InvalidKey\",\"detail\":\"wrong key\"}]}",
-            false,
-        );
+        let said = explain(reqwest::StatusCode::UNAUTHORIZED, "{\"errors\":[{\"code\":\"InvalidKey\",\"detail\":\"wrong key\"}]}", false);
         assert!(explain(reqwest::StatusCode::FORBIDDEN, "", true).contains("Application"));
         assert!(said.contains("account key"), "{said}");
         assert!(said.contains("wrong key"), "{said}");

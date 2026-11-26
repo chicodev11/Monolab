@@ -107,7 +107,9 @@ impl Filter {
     fn keeps(&self, entry: &TeamLogEntry) -> bool {
         (self.server.is_empty() || entry.server == self.server)
             && (self.who.is_empty() || entry.who.to_lowercase().contains(&self.who))
-            && (self.text.is_empty() || entry.command.to_lowercase().contains(&self.text) || entry.detail.to_lowercase().contains(&self.text))
+            && (self.text.is_empty()
+                || entry.command.to_lowercase().contains(&self.text)
+                || entry.detail.to_lowercase().contains(&self.text))
             && (!self.refused_only || !entry.ok)
     }
 }
@@ -127,7 +129,9 @@ pub fn redact(value: &Value) -> Value {
         Value::Object(map) => Value::Object(
             map.iter()
                 .map(|(name, one)| {
-                    let hidden = SECRET.iter().any(|secret| name.eq_ignore_ascii_case(secret) || name.to_ascii_lowercase().ends_with(&secret.to_ascii_lowercase()));
+                    let hidden = SECRET.iter().any(|secret| {
+                        name.eq_ignore_ascii_case(secret) || name.to_ascii_lowercase().ends_with(&secret.to_ascii_lowercase())
+                    });
                     (name.clone(), if hidden && !one.is_null() { Value::String("(hidden)".into()) } else { redact(one) })
                 })
                 .collect(),
@@ -244,7 +248,9 @@ fn fold_into(tail: &str, entry: &TeamLogEntry) -> Option<(usize, String)> {
 fn months(app: &AppHandle) -> Vec<PathBuf> {
     let Ok(dir) = folder(app) else { return Vec::new() };
     let mut files: Vec<PathBuf> = fs::read_dir(dir)
-        .map(|list| list.filter_map(|one| one.ok().map(|one| one.path())).filter(|one| one.extension().is_some_and(|ext| ext == "jsonl")).collect())
+        .map(|list| {
+            list.filter_map(|one| one.ok().map(|one| one.path())).filter(|one| one.extension().is_some_and(|ext| ext == "jsonl")).collect()
+        })
         .unwrap_or_default();
     files.sort();
     files.reverse();
@@ -257,7 +263,15 @@ fn months(app: &AppHandle) -> Vec<PathBuf> {
 #[tauri::command(async)]
 #[specta::specta]
 #[allow(clippy::too_many_arguments)]
-pub fn team_log(app: AppHandle, server: String, who: String, text: String, refused_only: bool, before: Option<f64>, limit: u32) -> Vec<TeamLogEntry> {
+pub fn team_log(
+    app: AppHandle,
+    server: String,
+    who: String,
+    text: String,
+    refused_only: bool,
+    before: Option<f64>,
+    limit: u32,
+) -> Vec<TeamLogEntry> {
     let limit = limit.clamp(1, 2000) as usize;
     let filter = Filter::new(server, &who, &text, refused_only);
     let mut out = Vec::new();
@@ -282,7 +296,14 @@ pub fn team_log(app: AppHandle, server: String, who: String, text: String, refus
 /// refused in Monolink windows). Returns how many lines were written.
 #[tauri::command(async)]
 #[specta::specta]
-pub fn export_team_log(app: AppHandle, target: String, server: String, who: String, text: String, refused_only: bool) -> Result<u32, String> {
+pub fn export_team_log(
+    app: AppHandle,
+    target: String,
+    server: String,
+    who: String,
+    text: String,
+    refused_only: bool,
+) -> Result<u32, String> {
     let destination = PathBuf::from(target.trim());
     if destination.extension().is_none_or(|ext| !ext.eq_ignore_ascii_case("csv")) {
         return Err("The export file name must end with .csv.".into());
@@ -313,7 +334,19 @@ fn local_time(at: f64) -> String {
 fn csv_line(entry: &TeamLogEntry, time: &dyn Fn(f64) -> String) -> String {
     let last = if entry.count > 1 { time(entry.last_at) } else { String::new() };
     let result = if entry.ok { "ok" } else { "refused" };
-    csv_row(&[&time(entry.at), &last, &entry.count.to_string(), &entry.who, &entry.via, &entry.device, &entry.server, &entry.command, &entry.detail, result, &entry.error])
+    csv_row(&[
+        &time(entry.at),
+        &last,
+        &entry.count.to_string(),
+        &entry.who,
+        &entry.via,
+        &entry.device,
+        &entry.server,
+        &entry.command,
+        &entry.detail,
+        result,
+        &entry.error,
+    ])
 }
 
 fn csv_row(fields: &[&str]) -> String {

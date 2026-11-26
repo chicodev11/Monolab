@@ -55,7 +55,10 @@ fn unhex(text: &str) -> Result<Vec<u8>, String> {
     if !text.len().is_multiple_of(2) {
         return Err("The item bytes are cut short.".into());
     }
-    (0..text.len()).step_by(2).map(|at| u8::from_str_radix(&text[at..at + 2], 16).map_err(|_| "The item bytes aren't hex.".to_string())).collect()
+    (0..text.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(&text[at..at + 2], 16).map_err(|_| "The item bytes aren't hex.".to_string()))
+        .collect()
 }
 
 #[cfg(test)]

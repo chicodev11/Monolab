@@ -1,4 +1,3 @@
-
 use md5::Md5;
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha512};
@@ -6,12 +5,9 @@ use std::{fs, io::Read, path::Path};
 use zip::ZipArchive;
 
 pub(crate) fn verify_java_archive(path: &Path) -> Result<(), String> {
-    let file = fs::File::open(path)
-        .map_err(|error| format!("Could not open the downloaded file: {error}"))?;
-    let mut archive = ZipArchive::new(file).map_err(|_| {
-        "The downloaded file is not a valid jar. The distributor may have returned an error page."
-            .to_string()
-    })?;
+    let file = fs::File::open(path).map_err(|error| format!("Could not open the downloaded file: {error}"))?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|_| "The downloaded file is not a valid jar. The distributor may have returned an error page.".to_string())?;
     if archive.is_empty() {
         return Err("The downloaded jar is empty.".into());
     }
@@ -22,8 +18,7 @@ pub(crate) fn verify_java_archive(path: &Path) -> Result<(), String> {
 }
 
 pub(crate) fn verify_windows_exe(path: &Path) -> Result<(), String> {
-    let mut file = fs::File::open(path)
-        .map_err(|error| format!("Could not open the downloaded file: {error}"))?;
+    let mut file = fs::File::open(path).map_err(|error| format!("Could not open the downloaded file: {error}"))?;
     let mut head = [0_u8; 2];
     let size = file.metadata().map(|meta| meta.len()).unwrap_or(0);
     let ok = file.read_exact(&mut head).is_ok() && &head == b"MZ" && size > 1024 * 1024;
@@ -45,11 +40,7 @@ pub(crate) fn verify_sha256(path: &Path, expected: &str) -> Result<(), String> {
         }
         hasher.update(&buffer[..read]);
     }
-    let actual = hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
+    let actual = hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect::<String>();
     if actual.eq_ignore_ascii_case(expected) {
         Ok(())
     } else {
@@ -68,11 +59,7 @@ pub(crate) fn verify_sha1(path: &Path, expected: &str) -> Result<(), String> {
         }
         hasher.update(&buffer[..read]);
     }
-    let actual = hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
+    let actual = hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect::<String>();
     if actual.eq_ignore_ascii_case(expected) {
         Ok(())
     } else {
@@ -91,11 +78,7 @@ pub(crate) fn verify_md5(path: &Path, expected: &str) -> Result<(), String> {
         }
         hasher.update(&buffer[..read]);
     }
-    let actual = hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
+    let actual = hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect::<String>();
     if actual.eq_ignore_ascii_case(expected) {
         Ok(())
     } else {
@@ -114,11 +97,7 @@ pub(crate) fn verify_sha512(path: &Path, expected: &str) -> Result<(), String> {
         }
         hasher.update(&buffer[..read]);
     }
-    let actual = hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
+    let actual = hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect::<String>();
     if actual.eq_ignore_ascii_case(expected) {
         Ok(())
     } else {

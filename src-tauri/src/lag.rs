@@ -1,4 +1,3 @@
-
 use crate::events::{GameEvent, LiveState};
 use serde::Serialize;
 
@@ -37,16 +36,7 @@ pub struct LagFinding {
 
 impl LagFinding {
     fn new(kind: &str, level: &str) -> Self {
-        LagFinding {
-            kind: kind.into(),
-            level: level.into(),
-            value: None,
-            limit: None,
-            world: None,
-            x: None,
-            z: None,
-            subject: None,
-        }
+        LagFinding { kind: kind.into(), level: level.into(), value: None, limit: None, world: None, x: None, z: None, subject: None }
     }
 
     fn value(mut self, value: f64) -> Self {
@@ -101,15 +91,12 @@ pub fn diagnose(input: &Input) -> LagDiagnosis {
     let live = input.live;
     let tps = live.and_then(|state| state.tps);
     let mspt = live.and_then(|state| state.mspt);
-    let lagging = tps.is_some_and(|value| value < LAGGY_TPS)
-        || mspt.is_some_and(|value| value > LAGGY_MSPT);
+    let lagging = tps.is_some_and(|value| value < LAGGY_TPS) || mspt.is_some_and(|value| value > LAGGY_MSPT);
 
     if let Some(state) = live {
         for spot in state.hotspots.iter().filter(|spot| spot.count >= HOTSPOT_MEDIUM).take(3) {
             let level = if spot.count >= HOTSPOT_HIGH { "high" } else { "medium" };
-            let mut finding = LagFinding::new("hotspot", level)
-                .value(spot.count as f64)
-                .limit(HOTSPOT_MEDIUM as f64);
+            let mut finding = LagFinding::new("hotspot", level).value(spot.count as f64).limit(HOTSPOT_MEDIUM as f64);
             finding.world = spot.world.clone();
             finding.x = Some(spot.x * 16 + 8);
             finding.z = Some(spot.z * 16 + 8);
@@ -117,14 +104,7 @@ pub fn diagnose(input: &Input) -> LagDiagnosis {
             out.push(finding);
         }
 
-        let count_of = |kind: &str| {
-            state
-                .entity_kinds
-                .iter()
-                .find(|one| one.r#type == kind)
-                .map(|one| one.count)
-                .unwrap_or(0)
-        };
+        let count_of = |kind: &str| state.entity_kinds.iter().find(|one| one.r#type == kind).map(|one| one.count).unwrap_or(0);
         let items = count_of("minecraft:item");
         let items_in_hotspots: u64 = state
             .hotspots
@@ -134,30 +114,18 @@ pub fn diagnose(input: &Input) -> LagDiagnosis {
             .sum();
         if items >= ITEMS_MEDIUM && items_in_hotspots * 10 < items * 8 {
             let level = if items >= ITEMS_HIGH { "high" } else { "medium" };
-            out.push(
-                LagFinding::new("items", level)
-                    .value(items as f64)
-                    .limit(ITEMS_MEDIUM as f64)
-                    .subject("minecraft:item"),
-            );
+            out.push(LagFinding::new("items", level).value(items as f64).limit(ITEMS_MEDIUM as f64).subject("minecraft:item"));
         }
 
         if let Some(kind) = state
             .entity_kinds
             .iter()
-            .filter(|one| {
-                one.r#type != "minecraft:item"
-                    && one.r#type != "minecraft:player"
-                    && one.r#type != "minecraft:experience_orb"
-            })
+            .filter(|one| one.r#type != "minecraft:item" && one.r#type != "minecraft:player" && one.r#type != "minecraft:experience_orb")
             .max_by_key(|one| one.count)
         {
             if kind.count >= ONE_KIND_MEDIUM {
                 out.push(
-                    LagFinding::new("one-kind", "medium")
-                        .value(kind.count as f64)
-                        .limit(ONE_KIND_MEDIUM as f64)
-                        .subject(&kind.r#type),
+                    LagFinding::new("one-kind", "medium").value(kind.count as f64).limit(ONE_KIND_MEDIUM as f64).subject(&kind.r#type),
                 );
             }
         }
@@ -165,11 +133,7 @@ pub fn diagnose(input: &Input) -> LagDiagnosis {
         if let Some(total) = state.entities {
             if total >= ENTITIES_MEDIUM {
                 let level = if total >= ENTITIES_HIGH { "high" } else { "medium" };
-                out.push(
-                    LagFinding::new("entities", level)
-                        .value(total as f64)
-                        .limit(ENTITIES_MEDIUM as f64),
-                );
+                out.push(LagFinding::new("entities", level).value(total as f64).limit(ENTITIES_MEDIUM as f64));
             }
         }
 
@@ -178,11 +142,7 @@ pub fn diagnose(input: &Input) -> LagDiagnosis {
             let radius = input.view_distance.unwrap_or(10) as f64;
             let expected = players * (2.0 * radius + 1.0).powi(2);
             if chunks >= CHUNKS_FLOOR && chunks as f64 > expected * CHUNKS_RATIO {
-                out.push(
-                    LagFinding::new("chunks", "medium")
-                        .value(chunks as f64)
-                        .limit(expected.round()),
-                );
+                out.push(LagFinding::new("chunks", "medium").value(chunks as f64).limit(expected.round()));
             }
         }
 
@@ -191,26 +151,16 @@ pub fn diagnose(input: &Input) -> LagDiagnosis {
                 let ratio = used as f64 / max as f64;
                 if ratio >= HEAP_MEDIUM {
                     let level = if ratio >= HEAP_HIGH { "high" } else { "medium" };
-                    out.push(
-                        LagFinding::new("heap", level)
-                            .value((ratio * 100.0).round())
-                            .limit(max as f64),
-                    );
+                    out.push(LagFinding::new("heap", level).value((ratio * 100.0).round()).limit(max as f64));
                 }
             }
         }
 
-        if let (Some(now), Some(then)) = (
-            state.entities,
-            oldest_within(input.perf, input.now_ms, GROWTH_WINDOW_MIN * 60_000)
-                .and_then(|event| event.entities),
-        ) {
+        if let (Some(now), Some(then)) =
+            (state.entities, oldest_within(input.perf, input.now_ms, GROWTH_WINDOW_MIN * 60_000).and_then(|event| event.entities))
+        {
             if now >= then.saturating_mul(2) && now.saturating_sub(then) >= GROWTH_FLOOR {
-                out.push(
-                    LagFinding::new("entity-growth", "medium")
-                        .value(now as f64)
-                        .limit(then as f64),
-                );
+                out.push(LagFinding::new("entity-growth", "medium").value(now as f64).limit(then as f64));
             }
         }
     }
@@ -218,32 +168,18 @@ pub fn diagnose(input: &Input) -> LagDiagnosis {
     if lagging {
         if let Some(distance) = input.view_distance {
             if distance >= VIEW_DISTANCE_HIGH {
-                out.push(
-                    LagFinding::new("view-distance", "low")
-                        .value(distance as f64)
-                        .limit(10.0),
-                );
+                out.push(LagFinding::new("view-distance", "low").value(distance as f64).limit(10.0));
             }
         }
         if let Some(distance) = input.simulation_distance {
             if distance >= SIMULATION_DISTANCE_HIGH {
-                out.push(
-                    LagFinding::new("simulation-distance", "low")
-                        .value(distance as f64)
-                        .limit(8.0),
-                );
+                out.push(LagFinding::new("simulation-distance", "low").value(distance as f64).limit(8.0));
             }
         }
     }
 
-    if input.machine_memory_mib > 0
-        && input.max_memory_mib > input.machine_memory_mib.saturating_sub(2048)
-    {
-        out.push(
-            LagFinding::new("machine-memory", "medium")
-                .value(input.max_memory_mib as f64)
-                .limit(input.machine_memory_mib as f64),
-        );
+    if input.machine_memory_mib > 0 && input.max_memory_mib > input.machine_memory_mib.saturating_sub(2048) {
+        out.push(LagFinding::new("machine-memory", "medium").value(input.max_memory_mib as f64).limit(input.machine_memory_mib as f64));
     }
 
     if let Some(cpu) = input.cpu_percent {
@@ -257,19 +193,11 @@ pub fn diagnose(input: &Input) -> LagDiagnosis {
     }
 
     out.sort_by_key(LagFinding::rank);
-    LagDiagnosis {
-        has_live: live.is_some(),
-        lagging,
-        tps,
-        mspt,
-        findings: out,
-        spark: None,
-    }
+    LagDiagnosis { has_live: live.is_some(), lagging, tps, mspt, findings: out, spark: None }
 }
 
 fn oldest_within(perf: &[GameEvent], now_ms: u64, window_ms: u64) -> Option<&GameEvent> {
-    perf.iter()
-        .find(|event| event.entities.is_some() && now_ms.saturating_sub(event.at) <= window_ms)
+    perf.iter().find(|event| event.entities.is_some() && now_ms.saturating_sub(event.at) <= window_ms)
 }
 
 #[cfg(test)]
@@ -326,17 +254,9 @@ mod tests {
         let mut live = quiet();
         live.tps = Some(9.5);
         live.entities = Some(3500);
-        live.entity_kinds = vec![
-            EntityKind { r#type: "minecraft:zombie".into(), count: 2100 },
-            EntityKind { r#type: "minecraft:item".into(), count: 350 },
-        ];
-        live.hotspots = vec![Hotspot {
-            world: Some("world".into()),
-            x: 12,
-            z: -4,
-            count: 1900,
-            top: Some("minecraft:zombie".into()),
-        }];
+        live.entity_kinds =
+            vec![EntityKind { r#type: "minecraft:zombie".into(), count: 2100 }, EntityKind { r#type: "minecraft:item".into(), count: 350 }];
+        live.hotspots = vec![Hotspot { world: Some("world".into()), x: 12, z: -4, count: 1900, top: Some("minecraft:zombie".into()) }];
         let found = diagnose(&input(Some(&live), &[]));
         assert!(found.lagging);
         assert_eq!(kinds(&found), vec!["hotspot", "items", "one-kind", "entities", "aikar"]);
@@ -364,12 +284,7 @@ mod tests {
     fn notices_entities_doubling_within_half_an_hour() {
         let mut live = quiet();
         live.entities = Some(2400);
-        let perf = |at: u64, entities: u64| GameEvent {
-            at,
-            kind: "perf".into(),
-            entities: Some(entities),
-            ..Default::default()
-        };
+        let perf = |at: u64, entities: u64| GameEvent { at, kind: "perf".into(), entities: Some(entities), ..Default::default() };
         let now = 1_000_000_000u64;
         let rows = vec![perf(now - 40 * 60_000, 100), perf(now - 25 * 60_000, 800), perf(now - 60_000, 2300)];
         let found = diagnose(&input(Some(&live), &rows));
@@ -384,13 +299,7 @@ mod tests {
         let mut live = quiet();
         live.entities = Some(420);
         live.entity_kinds = vec![EntityKind { r#type: "minecraft:item".into(), count: 406 }];
-        live.hotspots = vec![Hotspot {
-            world: Some("world".into()),
-            x: 0,
-            z: 0,
-            count: 406,
-            top: Some("minecraft:item".into()),
-        }];
+        live.hotspots = vec![Hotspot { world: Some("world".into()), x: 0, z: 0, count: 406, top: Some("minecraft:item".into()) }];
         assert_eq!(kinds(&diagnose(&input(Some(&live), &[]))), vec!["hotspot"]);
         live.entity_kinds[0].count = 900;
         assert_eq!(kinds(&diagnose(&input(Some(&live), &[]))), vec!["hotspot", "items"]);

@@ -128,7 +128,11 @@ impl Bundle {
 pub fn ids_keys(kind: &str, id: &str) -> Vec<(&'static str, String)> {
     match kind {
         "item" => vec![("cmd", id.to_string())],
-        "block" => vec![(studio_format::block::IDS_CUBE, id.to_string()), (studio_format::block::IDS_PLANT, id.to_string()), ("cmd", format!("block:{id}"))],
+        "block" => vec![
+            (studio_format::block::IDS_CUBE, id.to_string()),
+            (studio_format::block::IDS_PLANT, id.to_string()),
+            ("cmd", format!("block:{id}")),
+        ],
         "furniture" => vec![("cmd", format!("{}{id}", studio_format::furniture::CMD_PREFIX))],
         "font" => vec![("glyph", id.to_string())],
         _ => Vec::new(),
@@ -191,7 +195,8 @@ impl Refs {
 
     fn asset(set: &mut BTreeSet<String>, name: &str) {
         let name = name.trim();
-        let name = name.strip_suffix(".png").or_else(|| name.strip_suffix(".bbmodel")).or_else(|| name.strip_suffix(".json")).unwrap_or(name);
+        let name =
+            name.strip_suffix(".png").or_else(|| name.strip_suffix(".bbmodel")).or_else(|| name.strip_suffix(".json")).unwrap_or(name);
         if studio_format::valid_id(name) {
             set.insert(name.to_string());
         }
@@ -350,7 +355,11 @@ pub fn write(manifest: &Manifest, resources: &[(StudioRef, String)], assets: &[(
         let mut zip = zip::ZipWriter::new(&mut out);
         let stamp = zip::DateTime::default();
         let options = |path: &str| {
-            let method = if path.ends_with(".png") || path.ends_with(".ogg") { zip::CompressionMethod::Stored } else { zip::CompressionMethod::Deflated };
+            let method = if path.ends_with(".png") || path.ends_with(".ogg") {
+                zip::CompressionMethod::Stored
+            } else {
+                zip::CompressionMethod::Deflated
+            };
             zip::write::SimpleFileOptions::default().compression_method(method).last_modified_time(stamp)
         };
         zip.start_file(MANIFEST, options(MANIFEST)).map_err(|error| error.to_string())?;
@@ -438,7 +447,13 @@ pub fn read(bytes: &[u8]) -> Result<Bundle, String> {
 /// "kind/id" and "assets/folder/name" in the bundle that the server already has.
 pub fn clashes(bundle: &Bundle, has_resource: impl Fn(&StudioRef) -> bool, has_asset: impl Fn(&str, &str) -> bool) -> Vec<String> {
     let mut out: Vec<String> = bundle.resources.iter().filter(|(one, _)| has_resource(one)).map(|(one, _)| one.label()).collect();
-    out.extend(bundle.assets.iter().filter(|(folder, file, _)| has_asset(folder.as_str(), file.as_str())).map(|(folder, file, _)| format!("assets/{folder}/{file}")));
+    out.extend(
+        bundle
+            .assets
+            .iter()
+            .filter(|(folder, file, _)| has_asset(folder.as_str(), file.as_str()))
+            .map(|(folder, file, _)| format!("assets/{folder}/{file}")),
+    );
     out
 }
 
@@ -486,11 +501,18 @@ fn read_file(path: &str) -> Result<Vec<u8>, String> {
 }
 
 async fn read_bundle(path: String) -> Result<Bundle, String> {
-    tauri::async_runtime::spawn_blocking(move || read_file(&path).and_then(|bytes| read(&bytes))).await.map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || read_file(&path).and_then(|bytes| read(&bytes)))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 /// What the server has: studio files of the bundle's kinds, and its assets.
-async fn existing(app: &AppHandle, instance: &crate::ServerInstance, root: &str, bundle: &Bundle) -> (BTreeSet<StudioRef>, BTreeSet<(String, String)>) {
+async fn existing(
+    app: &AppHandle,
+    instance: &crate::ServerInstance,
+    root: &str,
+    bundle: &Bundle,
+) -> (BTreeSet<StudioRef>, BTreeSet<(String, String)>) {
     let kinds: BTreeSet<&str> = bundle.resources.iter().map(|(one, _)| one.kind.as_str()).collect();
     let mut have = BTreeSet::new();
     for kind in kinds {
@@ -505,14 +527,26 @@ async fn existing(app: &AppHandle, instance: &crate::ServerInstance, root: &str,
 }
 
 async fn read_ids(app: &AppHandle, instance: &crate::ServerInstance, root: &str) -> Ids {
-    crate::server_text(app, instance, &format!("{root}/pack/ids.json")).await.ok().flatten().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+    crate::server_text(app, instance, &format!("{root}/pack/ids.json"))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
 }
 
 /// Saves the chosen studio files, what they point at and (with `include_assets`) the assets they use as a
 /// `.monolab` bundle at `path` on this PC.
 #[tauri::command(async)]
 #[specta::specta]
-pub async fn studio_bundle_export(app: AppHandle, id: String, name: String, resources: Vec<StudioRef>, include_assets: bool, path: String) -> Result<StudioBundleInfo, String> {
+pub async fn studio_bundle_export(
+    app: AppHandle,
+    id: String,
+    name: String,
+    resources: Vec<StudioRef>,
+    include_assets: bool,
+    path: String,
+) -> Result<StudioBundleInfo, String> {
     let instance = crate::instance_by_id(&app, &id)?;
     let root = crate::studio_root(&instance).ok_or(NO_STUDIO)?;
     let name: String = name.trim().chars().filter(|one| !one.is_control()).take(64).collect();
@@ -525,8 +559,11 @@ pub async fn studio_bundle_export(app: AppHandle, id: String, name: String, reso
     let path = if path.to_lowercase().ends_with(&format!(".{EXTENSION}")) { path } else { format!("{path}.{EXTENSION}") };
 
     // Glyph names (:ruby:) point at font files by their name, not their id.
-    let glyph_fonts: BTreeMap<String, String> =
-        crate::studio_kind_files(&app, &instance, root, "font").await.into_iter().map(|(id, data)| (studio_format::glyphs::name_of(&id, &data), id)).collect();
+    let glyph_fonts: BTreeMap<String, String> = crate::studio_kind_files(&app, &instance, root, "font")
+        .await
+        .into_iter()
+        .map(|(id, data)| (studio_format::glyphs::name_of(&id, &data), id))
+        .collect();
     let asked: BTreeSet<StudioRef> = resources.into_iter().collect();
     let mut queue: Vec<StudioRef> = asked.iter().cloned().collect();
     let mut seen: BTreeSet<StudioRef> = asked.clone();
@@ -590,7 +627,9 @@ pub async fn studio_bundle_export(app: AppHandle, id: String, name: String, reso
             };
             let mut found = Vec::new();
             for row in rows.iter().filter(|row| row.folder == folder && names.contains(&row.name)) {
-                let bytes = crate::server_bytes(&app, &instance, &format!("{root}/assets/{folder}/{}", row.file), studio_pack::MOST_SOUND as u64).await?;
+                let bytes =
+                    crate::server_bytes(&app, &instance, &format!("{root}/assets/{folder}/{}", row.file), studio_pack::MOST_SOUND as u64)
+                        .await?;
                 found.push((folder.to_string(), row.file.clone(), bytes));
             }
             if folder == "models" {
@@ -607,7 +646,8 @@ pub async fn studio_bundle_export(app: AppHandle, id: String, name: String, reso
         // Parent models a JSON model named after the first pass.
         let have: BTreeSet<String> = assets.iter().filter(|(folder, _, _)| folder == "models").map(|(_, file, _)| file.clone()).collect();
         for row in rows.iter().filter(|row| row.folder == "models" && models.contains(&row.name) && !have.contains(&row.file)) {
-            let bytes = crate::server_bytes(&app, &instance, &format!("{root}/assets/models/{}", row.file), studio_pack::MOST_SOUND as u64).await?;
+            let bytes =
+                crate::server_bytes(&app, &instance, &format!("{root}/assets/models/{}", row.file), studio_pack::MOST_SOUND as u64).await?;
             assets.push(("models".to_string(), row.file.clone(), bytes));
         }
         assets.sort_by(|a, b| (&a.0, &a.1).cmp(&(&b.0, &b.1)));
@@ -647,7 +687,13 @@ pub async fn studio_bundle_peek(app: AppHandle, id: String, path: String) -> Res
     let clashes = clashes(&bundle, |one| have.contains(one), |folder, file| have_assets.contains(&(folder.to_string(), file.to_string())));
     let kinds = crate::studio_kinds(&instance);
     let mut problems = bundle.problems.clone();
-    problems.extend(bundle.resources.iter().filter(|(one, _)| !kinds.contains(&one.kind.as_str())).map(|(one, _)| format!("{}: this server's add-on doesn't run {}.", one.label(), one.kind)));
+    problems.extend(
+        bundle
+            .resources
+            .iter()
+            .filter(|(one, _)| !kinds.contains(&one.kind.as_str()))
+            .map(|(one, _)| format!("{}: this server's add-on doesn't run {}.", one.label(), one.kind)),
+    );
     Ok(StudioBundlePeek {
         name: bundle.manifest.name.clone(),
         made: bundle.manifest.made,
@@ -687,7 +733,9 @@ pub async fn studio_bundle_import(app: AppHandle, id: String, path: String, repl
     let root = crate::studio_root(&instance).ok_or(NO_STUDIO)?;
     {
         let (app, instance) = (app.clone(), instance.clone());
-        tauri::async_runtime::spawn_blocking(move || crate::studio_assets_ready(&app, &instance)).await.map_err(|error| error.to_string())??;
+        tauri::async_runtime::spawn_blocking(move || crate::studio_assets_ready(&app, &instance))
+            .await
+            .map_err(|error| error.to_string())??;
     }
     let bytes = std::fs::metadata(&path).map(|one| one.len()).unwrap_or(0);
     let bundle = read_bundle(path.clone()).await?;
@@ -699,7 +747,11 @@ pub async fn studio_bundle_import(app: AppHandle, id: String, path: String, repl
     let planned = plan(bundle, &found, replace, crate::studio_kinds(&instance));
     skipped.extend(planned.skipped);
     if planned.resources.is_empty() && planned.assets.is_empty() {
-        return Err(if found.is_empty() { "There is nothing in this bundle this server can use.".into() } else { "Everything in this bundle is already on this server. Replace to bring it in anyway.".into() });
+        return Err(if found.is_empty() {
+            "There is nothing in this bundle this server can use.".into()
+        } else {
+            "Everything in this bundle is already on this server. Replace to bring it in anyway.".into()
+        });
     }
 
     crate::studio_guide(&app, &instance, root).await;
@@ -762,7 +814,10 @@ mod tests {
             (StudioRef::new("item", "ruby_sword"), r#"{"schema":1,"id":"ruby_sword","look":{"texture":"ruby_sword"}}"#.to_string()),
             (StudioRef::new("font", "ruby"), r#"{"schema":1,"image":"ruby"}"#.to_string()),
         ];
-        let assets = vec![("textures".to_string(), "ruby_sword.png".to_string(), png()), ("sounds".to_string(), "ding.ogg".to_string(), b"OggS....".to_vec())];
+        let assets = vec![
+            ("textures".to_string(), "ruby_sword.png".to_string(), png()),
+            ("sounds".to_string(), "ding.ogg".to_string(), b"OggS....".to_vec()),
+        ];
         let mut ids = Ids { schema: 1, ..Default::default() };
         ids.given.entry("cmd".into()).or_default().insert("ruby_sword".into(), 1000);
         ids.given.entry("glyph".into()).or_default().insert("ruby".into(), 0xE003);
@@ -875,7 +930,11 @@ mod tests {
         target.number("cmd", "there", 1001); // already has a number of its own (1002)
         target.next.insert("cmd".into(), 1003);
         target.number("glyph", "old", 0xE000);
-        let written = ["ruby_sword", "taken", "low", "there"].map(|id| StudioRef::new("item", id)).into_iter().chain([StudioRef::new("font", "ruby")]).collect::<Vec<_>>();
+        let written = ["ruby_sword", "taken", "low", "there"]
+            .map(|id| StudioRef::new("item", id))
+            .into_iter()
+            .chain([StudioRef::new("font", "ruby")])
+            .collect::<Vec<_>>();
         assert!(merge_ids(&mut target, &from, &written));
         let cmd = &target.given["cmd"];
         assert_eq!(cmd.get("ruby_sword"), None, "1000 is below what the target gives out next");

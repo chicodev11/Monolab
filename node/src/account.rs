@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use ed25519_dalek::{Signer, SigningKey};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// What the node signs to pair. Must match the account server's `node_pair_message`.
 pub fn pair_message(code: &str) -> String {
@@ -49,7 +49,11 @@ pub fn pair(accounts: &str, data: &Path, key: &[u8; 32], code: &str, name: &str)
         "signature": hex(&signing.sign(pair_message(&code).as_bytes()).to_bytes()),
         "name": name,
     });
-    let response = client()?.post(format!("{}/v2/nodes/pair", accounts.trim_end_matches('/'))).json(&body).send().map_err(|error| format!("Could not reach the account server: {error}"))?;
+    let response = client()?
+        .post(format!("{}/v2/nodes/pair", accounts.trim_end_matches('/')))
+        .json(&body)
+        .send()
+        .map_err(|error| format!("Could not reach the account server: {error}"))?;
     let status = response.status();
     let answer: Value = response.json().unwrap_or(Value::Null);
     if !status.is_success() {
@@ -93,11 +97,8 @@ pub fn send_addr(accounts: &str, token: &str, addr: &Value) -> Result<(), String
 /// The versions of the teams this node's owner is in (`GET /v2/me`), to learn of a team change without waiting
 /// for a newer grant (F7). A 401 means the node was removed.
 pub fn team_versions(accounts: &str, token: &str) -> Result<Vec<(String, u64)>, String> {
-    let response = client()?
-        .get(format!("{}/v2/me", accounts.trim_end_matches('/')))
-        .bearer_auth(token)
-        .send()
-        .map_err(|error| error.to_string())?;
+    let response =
+        client()?.get(format!("{}/v2/me", accounts.trim_end_matches('/'))).bearer_auth(token).send().map_err(|error| error.to_string())?;
     match response.status().as_u16() {
         200..=299 => Ok(versions_of(&response.json::<Value>().map_err(|error| error.to_string())?)),
         401 => Err("unpaired".into()),

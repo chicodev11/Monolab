@@ -96,10 +96,7 @@ impl Kind {
     }
 
     pub fn is_container(self) -> bool {
-        matches!(
-            self,
-            Kind::List | Kind::Compound | Kind::ByteArray | Kind::IntArray | Kind::LongArray
-        )
+        matches!(self, Kind::List | Kind::Compound | Kind::ByteArray | Kind::IntArray | Kind::LongArray)
     }
 }
 
@@ -236,10 +233,7 @@ pub struct List {
 
 impl List {
     pub fn empty() -> List {
-        List {
-            kind: Kind::End,
-            items: Vec::new(),
-        }
+        List { kind: Kind::End, items: Vec::new() }
     }
 
     pub fn of(items: Vec<Tag>) -> Result<List, String> {
@@ -261,11 +255,7 @@ impl List {
 
     pub fn insert(&mut self, at: usize, tag: Tag) -> Result<(), String> {
         if !self.accepts(&tag) {
-            return Err(format!(
-                "This list holds {} values, not {}.",
-                self.kind.name(),
-                tag.kind().name()
-            ));
+            return Err(format!("This list holds {} values, not {}.", self.kind.name(), tag.kind().name()));
         }
         self.kind = tag.kind();
         self.items.insert(at.min(self.items.len()), tag);
@@ -308,17 +298,11 @@ impl Compound {
     }
 
     pub fn get(&self, key: &str) -> Option<&Tag> {
-        self.0
-            .iter()
-            .find(|(one, _)| one == key)
-            .map(|(_, tag)| tag)
+        self.0.iter().find(|(one, _)| one == key).map(|(_, tag)| tag)
     }
 
     pub fn get_mut(&mut self, key: &str) -> Option<&mut Tag> {
-        self.0
-            .iter_mut()
-            .find(|(one, _)| one == key)
-            .map(|(_, tag)| tag)
+        self.0.iter_mut().find(|(one, _)| one == key).map(|(_, tag)| tag)
     }
 
     pub fn contains(&self, key: &str) -> bool {
@@ -369,10 +353,7 @@ impl Compound {
         if !self.contains(base) {
             return base.to_string();
         }
-        (2..)
-            .map(|n| format!("{base} {n}"))
-            .find(|key| !self.contains(key))
-            .expect("unbounded")
+        (2..).map(|n| format!("{base} {n}")).find(|key| !self.contains(key)).expect("unbounded")
     }
 
     pub fn sort(&mut self) {

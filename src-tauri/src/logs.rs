@@ -1,4 +1,3 @@
-
 use flate2::read::GzDecoder;
 use serde::Serialize;
 use std::{
@@ -56,36 +55,25 @@ pub fn list_files(instance_path: &Path) -> Vec<LogFile> {
                 compressed: name.ends_with(".gz"),
                 file_name: name,
                 size_bytes: metadata.len(),
-                modified_at: metadata
-                    .modified()
-                    .ok()?
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .ok()?
-                    .as_secs(),
+                modified_at: metadata.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs(),
             })
         })
         .collect::<Vec<_>>();
     files.sort_by(|left, right| {
-        (right.file_name == "latest.log")
-            .cmp(&(left.file_name == "latest.log"))
-            .then_with(|| right.modified_at.cmp(&left.modified_at))
+        (right.file_name == "latest.log").cmp(&(left.file_name == "latest.log")).then_with(|| right.modified_at.cmp(&left.modified_at))
     });
     files
 }
 
 pub fn safe_log_path(instance_path: &Path, file_name: &str) -> Result<std::path::PathBuf, String> {
     let name = file_name.trim();
-    if name.is_empty()
-        || name.contains(['/', '\\'])
-        || (!name.ends_with(".log") && !name.ends_with(".log.gz"))
-    {
+    if name.is_empty() || name.contains(['/', '\\']) || (!name.ends_with(".log") && !name.ends_with(".log.gz")) {
         return Err("The log file name is malformed.".into());
     }
-    let path = crate::paths::resolve_in_server(instance_path, &format!("logs/{name}"))
-        .map_err(|error| match error {
-            crate::paths::PathError::Missing => "Log file not found.".to_string(),
-            _ => "The log file name is malformed.".to_string(),
-        })?;
+    let path = crate::paths::resolve_in_server(instance_path, &format!("logs/{name}")).map_err(|error| match error {
+        crate::paths::PathError::Missing => "Log file not found.".to_string(),
+        _ => "The log file name is malformed.".to_string(),
+    })?;
     if !path.is_file() {
         return Err("Log file not found.".into());
     }
@@ -94,15 +82,8 @@ pub fn safe_log_path(instance_path: &Path, file_name: &str) -> Result<std::path:
 
 pub fn read_lines(path: &Path, limit: usize) -> Result<Vec<String>, String> {
     let file = fs::File::open(path).map_err(|error| format!("Could not open the log: {error}"))?;
-    let reader: Box<dyn Read> = if path
-        .to_string_lossy()
-        .to_ascii_lowercase()
-        .ends_with(".gz")
-    {
-        Box::new(GzDecoder::new(file))
-    } else {
-        Box::new(file)
-    };
+    let reader: Box<dyn Read> =
+        if path.to_string_lossy().to_ascii_lowercase().ends_with(".gz") { Box::new(GzDecoder::new(file)) } else { Box::new(file) };
     let mut lines = std::collections::VecDeque::with_capacity(limit.min(4096));
     for line in BufReader::new(reader).lines() {
         let line = line.map_err(|error| format!("Problem while reading the log: {error}"))?;
@@ -146,9 +127,7 @@ fn body_of(line: &str) -> &str {
 /// A player name as it shows in a log: Java names, Bedrock names through Geyser (a leading dot, spaces), nothing
 /// like markup or a path, so an HTML or JSON line that starts with `<` isn't read as chat.
 fn is_player_name(name: &str) -> bool {
-    !name.is_empty()
-        && name.chars().count() <= 32
-        && name.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '.' | '*' | '-' | ' '))
+    !name.is_empty() && name.chars().count() <= 32 && name.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '.' | '*' | '-' | ' '))
 }
 
 pub fn classify(line: &str) -> Option<TimelineEvent> {
@@ -158,37 +137,17 @@ pub fn classify(line: &str) -> Option<TimelineEvent> {
 
     if let Some(rest) = body.strip_prefix('<') {
         if let Some((name, text)) = rest.split_once("> ").filter(|(name, _)| is_player_name(name)) {
-            return Some(TimelineEvent {
-                time,
-                kind: "Chat".into(),
-                player: name.to_string(),
-                text: text.to_string(),
-            });
+            return Some(TimelineEvent { time, kind: "Chat".into(), player: name.to_string(), text: text.to_string() });
         }
     }
     if let Some(name) = body.strip_suffix(" joined the game").filter(|name| is_player_name(name)) {
-        return Some(TimelineEvent {
-            time,
-            kind: "Join".into(),
-            player: name.to_string(),
-            text: "joined the server.".into(),
-        });
+        return Some(TimelineEvent { time, kind: "Join".into(), player: name.to_string(), text: "joined the server.".into() });
     }
     if let Some(name) = body.strip_suffix(" left the game").filter(|name| is_player_name(name)) {
-        return Some(TimelineEvent {
-            time,
-            kind: "Leave".into(),
-            player: name.to_string(),
-            text: "left the server.".into(),
-        });
+        return Some(TimelineEvent { time, kind: "Leave".into(), player: name.to_string(), text: "left the server.".into() });
     }
     if let Some((name, rest)) = body.split_once(" issued server command: ").filter(|(name, _)| is_player_name(name)) {
-        return Some(TimelineEvent {
-            time,
-            kind: "Command".into(),
-            player: name.to_string(),
-            text: rest.to_string(),
-        });
+        return Some(TimelineEvent { time, kind: "Command".into(), player: name.to_string(), text: rest.to_string() });
     }
     const DEATHS: &[&str] = &[
         " was slain by",
@@ -215,7 +174,7 @@ pub fn classify(line: &str) -> Option<TimelineEvent> {
                 kind: "Death".into(),
                 player: name.to_string(),
                 text: body.trim_start_matches(name).trim().to_string(),
-                });
+            });
         }
         let _ = found;
     }
@@ -227,12 +186,7 @@ pub fn classify(line: &str) -> Option<TimelineEvent> {
         || lower.contains("exception")
         || lower.contains("caused by:")
     {
-        return Some(TimelineEvent {
-            time,
-            kind: "Error".into(),
-            player: String::new(),
-            text: body.chars().take(200).collect(),
-        });
+        return Some(TimelineEvent { time, kind: "Error".into(), player: String::new(), text: body.chars().take(200).collect() });
     }
     None
 }
@@ -316,15 +270,10 @@ pub fn mask(text: &str) -> (String, Masked) {
     static HOME: OnceLock<Regex> = OnceLock::new();
     static SECRET: OnceLock<Regex> = OnceLock::new();
     let ipv4 = IPV4.get_or_init(|| Regex::new(r"\b(?:\d{1,3}\.){3}\d{1,3}\b([+\-.]?)").expect("ipv4"));
-    let ipv6 = IPV6.get_or_init(|| {
-        Regex::new(r"(?i)\b(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}\b").expect("ipv6")
-    });
-    let home = HOME.get_or_init(|| {
-        Regex::new(r"(?i)([A-Z]:\\Users\\|/home/|/Users/)([^\\/\s\]\)]+)").expect("home")
-    });
-    let secret = SECRET.get_or_init(|| {
-        Regex::new(r"(?i)\b(token|password|passwd|secret|api[_-]?key|webhook)(\s*[=:]\s*)([^\s,;\]\)]+)").expect("secret")
-    });
+    let ipv6 = IPV6.get_or_init(|| Regex::new(r"(?i)\b(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}\b").expect("ipv6"));
+    let home = HOME.get_or_init(|| Regex::new(r"(?i)([A-Z]:\\Users\\|/home/|/Users/)([^\\/\s\]\)]+)").expect("home"));
+    let secret = SECRET
+        .get_or_init(|| Regex::new(r"(?i)\b(token|password|passwd|secret|api[_-]?key|webhook)(\s*[=:]\s*)([^\s,;\]\)]+)").expect("secret"));
 
     let mut count = Masked::default();
     let text = secret.replace_all(text, |caps: &regex::Captures| {
@@ -351,8 +300,7 @@ pub fn mask(text: &str) -> (String, Masked) {
     });
     let text = ipv6.replace_all(&text, |caps: &regex::Captures| {
         let whole = &caps[0];
-        let looks_like_address =
-            whole.contains("::") || whole.chars().any(|letter| letter.is_ascii_alphabetic());
+        let looks_like_address = whole.contains("::") || whole.chars().any(|letter| letter.is_ascii_alphabetic());
         if whole == "::1" || whole == "::" || !looks_like_address {
             return whole.to_string();
         }
@@ -384,7 +332,10 @@ mod tests {
         assert!(out.contains("*:25565"), "ports stay: {out}");
         assert!(out.contains(r"C:\Users\[USER]\AppData"), "{out}");
         assert!(out.contains("webhook=[REDACTED]") && out.contains("token=[REDACTED]") && out.contains("password: [REDACTED]"), "{out}");
-        assert!(out.contains("26.2-123") && out.contains("127.0.0.1") && out.contains("25.0.4.1+1-LTS"), "version numbers and own address stay: {out}");
+        assert!(
+            out.contains("26.2-123") && out.contains("127.0.0.1") && out.contains("25.0.4.1+1-LTS"),
+            "version numbers and own address stay: {out}"
+        );
         assert_eq!((count.ips, count.paths, count.secrets), (2, 1, 3));
     }
 
@@ -409,21 +360,17 @@ mod tests {
         assert_eq!(chat.kind, "Chat");
         assert_eq!(chat.player, "Alex");
         assert_eq!(chat.text, "hello there");
-        let command =
-            classify("[13:47:00] [Server thread/INFO]: Alex issued server command: /gamemode creative")
-                .unwrap();
+        let command = classify("[13:47:00] [Server thread/INFO]: Alex issued server command: /gamemode creative").unwrap();
         assert_eq!(command.kind, "Command");
         assert_eq!(command.text, "/gamemode creative");
     }
 
     #[test]
     fn understands_deaths_and_errors() {
-        let death =
-            classify("[13:48:00] [Server thread/INFO]: Steve was slain by Zombie").unwrap();
+        let death = classify("[13:48:00] [Server thread/INFO]: Steve was slain by Zombie").unwrap();
         assert_eq!(death.kind, "Death");
         assert_eq!(death.player, "Steve");
-        let error =
-            classify("[13:49:00] [Server thread/ERROR]: java.lang.NullPointerException").unwrap();
+        let error = classify("[13:49:00] [Server thread/ERROR]: java.lang.NullPointerException").unwrap();
         assert_eq!(error.kind, "Error");
     }
 

@@ -230,7 +230,9 @@ pub fn parse(source: &str) -> Result<Model, String> {
     loose.extend(orphans);
     let root_added = !loose.is_empty();
     if root_added {
-        model.bones.insert(0, Bone { name: "root".into(), parent: None, origin: [0.0; 3], rotation: [0.0; 3], cubes: loose, visible: true });
+        model
+            .bones
+            .insert(0, Bone { name: "root".into(), parent: None, origin: [0.0; 3], rotation: [0.0; 3], cubes: loose, visible: true });
         for bone in model.bones.iter_mut().skip(1) {
             bone.parent = bone.parent.map(|at| at + 1);
         }
@@ -297,7 +299,8 @@ pub fn parse(source: &str) -> Result<Model, String> {
             model.problems.push(format!("\"{}\": {expressions} keyframe value(s) are expressions, read as 0.", animation.name));
         }
         if animation.length <= 0.0 {
-            animation.length = animation.tracks.iter().flat_map(|one| one.keys.iter().map(|key| key.time)).fold(0.0, f64::max).min(MOST_SECONDS);
+            animation.length =
+                animation.tracks.iter().flat_map(|one| one.keys.iter().map(|key| key.time)).fold(0.0, f64::max).min(MOST_SECONDS);
         }
         model.animations.push(animation);
     }
@@ -310,7 +313,10 @@ fn bone_uuids(root: &Data, groups: &[&Data]) -> Vec<String> {
         let Some(node) = node.as_object() else { return };
         let uuid = text(node, "uuid").to_string();
         out.push(uuid.clone());
-        let children = node.get("children").and_then(Value::as_array).or_else(|| groups.iter().find(|one| text(one, "uuid") == uuid).and_then(|one| one.get("children")).and_then(Value::as_array));
+        let children = node
+            .get("children")
+            .and_then(Value::as_array)
+            .or_else(|| groups.iter().find(|one| text(one, "uuid") == uuid).and_then(|one| one.get("children")).and_then(Value::as_array));
         for child in children.into_iter().flatten() {
             visit(child, groups, out);
         }
@@ -346,7 +352,10 @@ fn walk(node: &Value, parent: Option<usize>, groups: &[&Data], cubes: &[(String,
                 cubes: Vec::new(),
                 visible: parent_visible && info.get("visibility").and_then(Value::as_bool) != Some(false),
             });
-            let children = node.get("children").and_then(Value::as_array).or_else(|| full.and_then(|one| one.get("children")).and_then(Value::as_array));
+            let children = node
+                .get("children")
+                .and_then(Value::as_array)
+                .or_else(|| full.and_then(|one| one.get("children")).and_then(Value::as_array));
             for child in children.into_iter().flatten() {
                 walk(child, Some(at), groups, cubes, model, loose);
             }
@@ -363,7 +372,12 @@ fn lerp(a: Vec3, b: Vec3, t: f64) -> Vec3 {
 
 fn catmull(p0: Vec3, p1: Vec3, p2: Vec3, p3: Vec3, t: f64) -> Vec3 {
     let (t2, t3) = (t * t, t * t * t);
-    [0, 1, 2].map(|at| 0.5 * (2.0 * p1[at] + (p2[at] - p0[at]) * t + (2.0 * p0[at] - 5.0 * p1[at] + 4.0 * p2[at] - p3[at]) * t2 + (3.0 * p1[at] - p0[at] - 3.0 * p2[at] + p3[at]) * t3))
+    [0, 1, 2].map(|at| {
+        0.5 * (2.0 * p1[at]
+            + (p2[at] - p0[at]) * t
+            + (2.0 * p0[at] - 5.0 * p1[at] + 4.0 * p2[at] - p3[at]) * t2
+            + (3.0 * p1[at] - p0[at] - 3.0 * p2[at] + p3[at]) * t3)
+    })
 }
 
 /// A track's value at `time` seconds: held before the first key and after the last, step / linear / Catmull-Rom

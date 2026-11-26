@@ -218,7 +218,8 @@ impl Shared {
 
     /// The provider said who this is: sign them in, or ask the app for a handle.
     fn identified(&self, login_id: &str, identity: oauth::Identity, now: u64) -> LoginResult {
-        let Some((device, provider)) = self.logins.lock().expect("logins poisoned").get(login_id).map(|one| (one.device.clone(), one.provider))
+        let Some((device, provider)) =
+            self.logins.lock().expect("logins poisoned").get(login_id).map(|one| (one.device.clone(), one.provider))
         else {
             return LoginResult::Failed("expired");
         };

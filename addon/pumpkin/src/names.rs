@@ -3,8 +3,8 @@
 //! (`armor_stand`, `keep_inventory`, `sharpness`). Remake it when the API version changes.
 
 use pumpkin_plugin_api::EntityType;
-use pumpkin_plugin_api::enchantments_wit::Enchantment;
 use pumpkin_plugin_api::GameRule;
+use pumpkin_plugin_api::enchantments_wit::Enchantment;
 
 /// An entity type by its Minecraft name, without `minecraft:`.
 pub fn entity_type(name: &str) -> Option<EntityType> {

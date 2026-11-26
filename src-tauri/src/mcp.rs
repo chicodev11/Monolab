@@ -1,4 +1,3 @@
-
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -79,11 +78,7 @@ fn reply(stream: &mut TcpStream, status: u16, kind: &str, body: &[u8]) -> std::i
         404 => "Not Found",
         _ => "Method Not Allowed",
     };
-    write!(
-        stream,
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-        body.len()
-    )?;
+    write!(stream, "HTTP/1.1 {status} {reason}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len())?;
     stream.write_all(body)?;
     stream.flush()
 }
@@ -117,11 +112,8 @@ fn serve(app: &AppHandle, token: &str, mut stream: TcpStream) -> std::io::Result
     let target = parts.next().unwrap_or_default();
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
     let path = path.to_string();
-    let locked: Option<String> = query
-        .split('&')
-        .find_map(|pair| pair.strip_prefix("server="))
-        .map(str::to_string)
-        .filter(|id| !id.is_empty());
+    let locked: Option<String> =
+        query.split('&').find_map(|pair| pair.strip_prefix("server=")).map(str::to_string).filter(|id| !id.is_empty());
     if path != "/mcp" {
         return reply(&mut stream, 404, "text/plain", b"not found");
     }
@@ -205,7 +197,9 @@ fn handle(app: &AppHandle, message: &Value, locked: Option<&str>) -> Option<Valu
             }))
         }
         "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({ "tools": tool_list(locked.is_some()).into_iter().filter(|tool| !(shared.is_some() && LOCAL_ONLY.contains(&tool["name"].as_str().unwrap_or_default()))).collect::<Vec<_>>() })),
+        "tools/list" => Ok(
+            json!({ "tools": tool_list(locked.is_some()).into_iter().filter(|tool| !(shared.is_some() && LOCAL_ONLY.contains(&tool["name"].as_str().unwrap_or_default()))).collect::<Vec<_>>() }),
+        ),
         "tools/call" => {
             let name = params.get("name").and_then(Value::as_str).unwrap_or_default();
             let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
@@ -341,7 +335,12 @@ fn wait_ready(app: &AppHandle, id: &str, before: Option<String>) -> String {
     mark_read(id, &lines);
     let errors: Vec<String> = fresh.iter().filter(|line| is_error(line)).map(|line| line.to_string()).collect();
     let warnings: Vec<String> = fresh.iter().filter(|line| is_warning(line)).map(|line| line.to_string()).collect();
-    let mut out = format!("Server is {outcome} after about {secs} s. New console lines: {}, errors: {}, warnings: {}.", fresh.len(), errors.len(), warnings.len());
+    let mut out = format!(
+        "Server is {outcome} after about {secs} s. New console lines: {}, errors: {}, warnings: {}.",
+        fresh.len(),
+        errors.len(),
+        warnings.len()
+    );
     if let Some(done) = fresh.iter().rev().find(|line| line.contains("Done (")) {
         out.push_str(&format!("\n{}", shorten(done, 200)));
     }
@@ -525,7 +524,8 @@ struct Tool {
 /// The studio's asset folders (`studio_pack::check_upload`).
 const STUDIO_FOLDERS: [&str; 3] = ["textures", "models", "sounds"];
 
-const SERVER: (&str, &str, &str, bool) = ("server", "string", "Server id or name from list_servers (optional when only one server exists).", false);
+const SERVER: (&str, &str, &str, bool) =
+    ("server", "string", "Server id or name from list_servers (optional when only one server exists).", false);
 
 const TOOLS: &[Tool] = &[
     Tool { name: "list_core_versions", description: "Minecraft versions a new server can use for one core, newest first. Cores: Vanilla, Paper, Purpur, Leaf, Folia, Fabric, Forge, NeoForge, Velocity, Pumpkin.", args: &[("core", "string", "Core name, e.g. Paper.", true), ("snapshots", "boolean", "Include snapshots (Vanilla/Fabric only, default false).", false)], read_only: true, destructive: false },
@@ -629,11 +629,7 @@ fn need<'a>(args: &'a Value, name: &str) -> Result<&'a str, String> {
 }
 
 fn ensure_folder(app: &AppHandle, with: &dyn Fn(Value) -> Value, path: &str) -> Result<String, String> {
-    let parts: Vec<&str> = path
-        .split(['/', '\\'])
-        .map(str::trim)
-        .filter(|part| !part.is_empty() && *part != ".")
-        .collect();
+    let parts: Vec<&str> = path.split(['/', '\\']).map(str::trim).filter(|part| !part.is_empty() && *part != ".").collect();
     if parts.is_empty() {
         return Err("`path` is empty.".into());
     }
@@ -648,8 +644,7 @@ fn ensure_folder(app: &AppHandle, with: &dyn Fn(Value) -> Value, path: &str) -> 
                 .and_then(Value::as_array)
                 .map(|entries| {
                     entries.iter().any(|one| {
-                        one.get("name").and_then(Value::as_str) == Some(name)
-                            && one.get("isDir").and_then(Value::as_bool) == Some(true)
+                        one.get("name").and_then(Value::as_str) == Some(name) && one.get("isDir").and_then(Value::as_bool) == Some(true)
                     })
                 })
                 .unwrap_or(false);
@@ -865,7 +860,11 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
         "diagnose_lag" => invoke(app, "diagnose_lag", with(json!({}))),
         "precheck" => invoke(app, "precheck_instance", with(json!({}))),
         "list_files" => {
-            let page = invoke(app, "browse_server_files", with(json!({ "path": text(args, "path").unwrap_or(""), "offset": null, "limit": null })))?;
+            let page = invoke(
+                app,
+                "browse_server_files",
+                with(json!({ "path": text(args, "path").unwrap_or(""), "offset": null, "limit": null })),
+            )?;
             let entries = page.get("entries").and_then(Value::as_array).cloned().unwrap_or_default();
             let total = page.get("total").and_then(Value::as_u64).unwrap_or(entries.len() as u64);
             let mut lines: Vec<String> = entries
@@ -890,7 +889,9 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
             let start = args.get("start").and_then(Value::as_u64).map(|one| one as usize);
             let lines = args.get("lines").and_then(Value::as_u64).map(|one| one as usize);
             match content {
-                Value::String(content) if start.is_some() || lines.is_some() => Ok(Value::String(line_window(&content, start.unwrap_or(1), lines))),
+                Value::String(content) if start.is_some() || lines.is_some() => {
+                    Ok(Value::String(line_window(&content, start.unwrap_or(1), lines)))
+                }
                 other => Ok(other),
             }
         }
@@ -1038,17 +1039,23 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
             }))
         }
         "list_addon_versions" => {
-            let all = invoke(app, "list_addon_versions", with(json!({ "projectId": need(args, "projectId")?, "projectType": addon_kind(&core) })))?;
+            let all = invoke(
+                app,
+                "list_addon_versions",
+                with(json!({ "projectId": need(args, "projectId")?, "projectType": addon_kind(&core) })),
+            )?;
             Ok(Value::Array(
                 all.as_array()
                     .cloned()
                     .unwrap_or_default()
                     .iter()
                     .take(30)
-                    .map(|one| json!({
-                        "versionId": one.get("id"), "name": one.get("name"), "fits": one.get("fits"), "channel": one.get("channel"),
-                        "gameVersions": span_of(one.get("gameVersions")), "loaders": one.get("loaders"),
-                    }))
+                    .map(|one| {
+                        json!({
+                            "versionId": one.get("id"), "name": one.get("name"), "fits": one.get("fits"), "channel": one.get("channel"),
+                            "gameVersions": span_of(one.get("gameVersions")), "loaders": one.get("loaders"),
+                        })
+                    })
                     .collect(),
             ))
         }
@@ -1056,7 +1063,9 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
             invoke(
                 app,
                 "install_modrinth",
-                with(json!({ "projectId": need(args, "projectId")?, "projectType": addon_kind(&core), "versionId": text(args, "versionId") })),
+                with(
+                    json!({ "projectId": need(args, "projectId")?, "projectType": addon_kind(&core), "versionId": text(args, "versionId") }),
+                ),
             )?;
             Ok(Value::String("Installed. If the server is running it loads on next start.".into()))
         }
@@ -1072,12 +1081,18 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
                 .ok_or_else(|| format!("No installed file `{file}`. Call list_addons."))?;
             let kind = found.get("kind").and_then(Value::as_str).unwrap_or("mod").to_string();
             invoke(app, name, with(json!({ "fileName": file, "kind": kind })))?;
-            Ok(Value::String(if name == "toggle_addon" { format!("Toggled {file}.") } else { format!("Removed {file} (in the app trash).") }))
+            Ok(Value::String(if name == "toggle_addon" {
+                format!("Toggled {file}.")
+            } else {
+                format!("Removed {file} (in the app trash).")
+            }))
         }
         "monolab_addon" => match need(args, "action")? {
             "status" => invoke(app, "addon_status", with(json!({}))),
-            "install" => invoke(app, "install_addon", with(json!({}))).map(|_| Value::String("Installed the bundled Monolab addon. Restart the server so it loads.".into())),
-            "remove" => invoke(app, "remove_addon", with(json!({}))).map(|_| Value::String("Removed the Monolab addon. Restart the server to unload it.".into())),
+            "install" => invoke(app, "install_addon", with(json!({})))
+                .map(|_| Value::String("Installed the bundled Monolab addon. Restart the server so it loads.".into())),
+            "remove" => invoke(app, "remove_addon", with(json!({})))
+                .map(|_| Value::String("Removed the Monolab addon. Restart the server to unload it.".into())),
             _ => Err("action must be status, install or remove.".into()),
         },
         "start_server" => {
@@ -1102,7 +1117,13 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
         "list_backups" => invoke(app, "list_backups", with(json!({}))),
         "studio_overview" => invoke(app, "studio_overview", with(json!({}))),
         "studio_read" => invoke(app, "studio_read", with(json!({ "kind": need(args, "kind")?, "name": need(args, "name")? }))),
-        "studio_write" => invoke(app, "studio_save", with(json!({ "kind": need(args, "kind")?, "name": need(args, "name")?, "text": need(args, "json")?, "hash": text(args, "hash").unwrap_or_default() }))),
+        "studio_write" => invoke(
+            app,
+            "studio_save",
+            with(
+                json!({ "kind": need(args, "kind")?, "name": need(args, "name")?, "text": need(args, "json")?, "hash": text(args, "hash").unwrap_or_default() }),
+            ),
+        ),
         "studio_new" => invoke(app, "studio_template", with(json!({ "kind": need(args, "kind")?, "name": "new" }))),
         "studio_assets" => invoke(app, "studio_asset_list", with(json!({}))),
         "studio_upload_asset" => {
@@ -1115,14 +1136,21 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
             if !path.is_file() {
                 return Err(format!("No file at {local} on this computer."));
             }
-            let file = text(args, "name").map(str::to_string).or_else(|| path.file_name().and_then(|one| one.to_str()).map(str::to_string)).ok_or("Could not read the file name.")?;
+            let file = text(args, "name")
+                .map(str::to_string)
+                .or_else(|| path.file_name().and_then(|one| one.to_str()).map(str::to_string))
+                .ok_or("Could not read the file name.")?;
             if ON_HOST.with(|one| one.borrow().is_some()) {
                 let upload = upload_to_host(app, path)?;
                 return invoke(app, "studio_asset_add_upload", with(json!({ "folder": folder, "file": file, "upload": upload })));
             }
             use base64::Engine;
             let bytes = std::fs::read(path).map_err(|error| format!("Could not read {local}: {error}"))?;
-            invoke(app, "studio_asset_add", with(json!({ "folder": folder, "file": file, "data": base64::engine::general_purpose::STANDARD.encode(bytes) })))
+            invoke(
+                app,
+                "studio_asset_add",
+                with(json!({ "folder": folder, "file": file, "data": base64::engine::general_purpose::STANDARD.encode(bytes) })),
+            )
         }
         "studio_build_pack" => invoke(app, "studio_pack_build", with(json!({}))),
         "studio_view_texture" => invoke(app, "studio_asset_image", with(json!({ "file": need(args, "file")? }))),
@@ -1148,13 +1176,22 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
                 return Ok(Value::String(why));
             }
             let lines = |list: Value| -> Vec<String> {
-                list.as_array().into_iter().flatten().map(|one| format!("{} = {} ({})", field_of(one, "key"), field_of(one, "value"), field_of(one, "kind"))).collect()
+                list.as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|one| format!("{} = {} ({})", field_of(one, "key"), field_of(one, "value"), field_of(one, "kind")))
+                    .collect()
             };
             let settings = lines(invoke(app, "msmp_settings", with(json!({})))?);
             let rules = lines(invoke(app, "msmp_rules", with(json!({})))?);
-            Ok(Value::String(format!("Settings (set_live_setting):\n{}\n\nGame rules (set_gamerule):\n{}", settings.join("\n"), rules.join("\n"))))
+            Ok(Value::String(format!(
+                "Settings (set_live_setting):\n{}\n\nGame rules (set_gamerule):\n{}",
+                settings.join("\n"),
+                rules.join("\n")
+            )))
         }
-        "setup_live_settings" => invoke(app, "msmp_setup", with(json!({}))).map(|_| Value::String("Live settings are set up. They work after the next start.".into())),
+        "setup_live_settings" => invoke(app, "msmp_setup", with(json!({})))
+            .map(|_| Value::String("Live settings are set up. They work after the next start.".into())),
         "set_live_setting" => {
             let key = need(args, "key")?;
             let now = invoke(app, "msmp_set_setting", with(json!({ "key": key, "value": json_text(args.get("value"))? })))?;
@@ -1170,14 +1207,21 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
             let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(30).clamp(1, 200);
             // Catch up first, so a change the agent just made is there.
             let _ = invoke(app, "rewind_scan", with(json!({})));
-            let list = invoke(app, "rewind_list", with(json!({ "path": text(args, "path").filter(|one| !one.is_empty()), "limit": limit })))?;
+            let list =
+                invoke(app, "rewind_list", with(json!({ "path": text(args, "path").filter(|one| !one.is_empty()), "limit": limit })))?;
             let rows: Vec<String> = list
                 .as_array()
                 .into_iter()
                 .flatten()
                 .map(|one| {
                     let by = one.get("by").and_then(Value::as_str).map(|who| format!(" by {who}")).unwrap_or_default();
-                    format!("{}  {}  {} {}{by}", field_of(one, "id"), ago(one.get("at").and_then(Value::as_u64).unwrap_or(0)), field_of(one, "kind"), field_of(one, "path"))
+                    format!(
+                        "{}  {}  {} {}{by}",
+                        field_of(one, "id"),
+                        ago(one.get("at").and_then(Value::as_u64).unwrap_or(0)),
+                        field_of(one, "kind"),
+                        field_of(one, "path")
+                    )
                 })
                 .collect();
             Ok(Value::String(if rows.is_empty() { "No changes kept yet.".into() } else { rows.join("\n") }))
@@ -1218,15 +1262,26 @@ fn call(app: &AppHandle, name: &str, args: &Value, locked: Option<&str>) -> Resu
         "update_todo" if ON_HOST.with(|one| one.borrow().is_some()) => invoke(
             app,
             "agent_update_todo",
-            with(json!({ "action": need(args, "action")?, "todo": text(args, "id"), "text": text(args, "text"), "status": text(args, "status"), "assignee": text(args, "assignee") })),
+            with(
+                json!({ "action": need(args, "action")?, "todo": text(args, "id"), "text": text(args, "text"), "status": text(args, "status"), "assignee": text(args, "assignee") }),
+            ),
         ),
         "update_todo" => crate::update_todo(
             app,
             &id,
-            &crate::memo::TodoChange { action: need(args, "action")?, todo: text(args, "id"), words: text(args, "text"), status: text(args, "status"), assignee: text(args, "assignee"), by: "AI" },
+            &crate::memo::TodoChange {
+                action: need(args, "action")?,
+                todo: text(args, "id"),
+                words: text(args, "text"),
+                status: text(args, "status"),
+                assignee: text(args, "assignee"),
+                by: "AI",
+            },
         )
         .map(Value::String),
-        "create_backup" => invoke(app, "create_backup", with(json!({ "note": text(args, "note").unwrap_or("Claude"), "worldsOnly": false }))),
+        "create_backup" => {
+            invoke(app, "create_backup", with(json!({ "note": text(args, "note").unwrap_or("Claude"), "worldsOnly": false })))
+        }
         other => Err(format!("Unknown tool `{other}`.")),
     }
 }
@@ -1248,10 +1303,24 @@ mod tests {
 
     #[test]
     fn studio_tools_are_listed() {
-        let names = ["studio_overview", "studio_read", "studio_write", "studio_new", "studio_assets", "studio_upload_asset", "studio_build_pack", "storage_list", "storage_put_in_server"];
+        let names = [
+            "studio_overview",
+            "studio_read",
+            "studio_write",
+            "studio_new",
+            "studio_assets",
+            "studio_upload_asset",
+            "studio_build_pack",
+            "storage_list",
+            "storage_put_in_server",
+        ];
         for name in names {
             let tool = super::TOOLS.iter().find(|tool| tool.name == name).unwrap_or_else(|| panic!("{name}"));
-            assert_eq!(tool.read_only, matches!(name, "studio_overview" | "studio_read" | "studio_new" | "studio_assets" | "storage_list"), "{name}");
+            assert_eq!(
+                tool.read_only,
+                matches!(name, "studio_overview" | "studio_read" | "studio_new" | "studio_assets" | "storage_list"),
+                "{name}"
+            );
         }
     }
 

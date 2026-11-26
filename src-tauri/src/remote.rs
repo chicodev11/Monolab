@@ -1,4 +1,3 @@
-
 use crate::data_root::MonolabDirs;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -72,22 +71,14 @@ impl Output {
         if self.code == 0 {
             return Ok(self.stdout);
         }
-        let why = if self.stderr.trim().is_empty() {
-            self.stdout.trim()
-        } else {
-            self.stderr.trim()
-        };
+        let why = if self.stderr.trim().is_empty() { self.stdout.trim() } else { self.stderr.trim() };
         Err(format!("A command failed on the SSH server ({}): {why}", self.code))
     }
 }
 
 fn folder(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?;
-    std::fs::create_dir_all(&dir)
-        .map_err(|error| format!("Could not create the app data folder: {error}"))?;
+    let dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|error| format!("Could not create the app data folder: {error}"))?;
     Ok(dir)
 }
 
@@ -105,39 +96,28 @@ pub fn load_hosts(app: &AppHandle) -> Result<Vec<SshHost>, String> {
 
 fn save_hosts(app: &AppHandle, hosts: &[SshHost]) -> Result<(), String> {
     let text = serde_json::to_string_pretty(hosts).map_err(|error| error.to_string())?;
-    crate::store::write(&hosts_path(app)?, &text)
-        .map_err(|error| format!("Could not write ssh-hosts.json: {error}"))
+    crate::store::write(&hosts_path(app)?, &text).map_err(|error| format!("Could not write ssh-hosts.json: {error}"))
 }
 
 fn load_secrets(app: &AppHandle) -> HashMap<String, String> {
-    secrets_path(app)
-        .ok()
-        .and_then(|path| crate::store::read_secret(&path).ok().flatten())
-        .unwrap_or_default()
+    secrets_path(app).ok().and_then(|path| crate::store::read_secret(&path).ok().flatten()).unwrap_or_default()
 }
 
 fn save_secrets(app: &AppHandle, secrets: &HashMap<String, String>) -> Result<(), String> {
     let text = serde_json::to_string_pretty(secrets).map_err(|error| error.to_string())?;
-    crate::store::write_secret(&secrets_path(app)?, &text)
-        .map_err(|error| format!("Could not write ssh-secrets.json: {error}"))
+    crate::store::write_secret(&secrets_path(app)?, &text).map_err(|error| format!("Could not write ssh-secrets.json: {error}"))
 }
 
 pub fn list_hosts(app: &AppHandle) -> Result<Vec<SshHostView>, String> {
     let secrets = load_secrets(app);
     Ok(load_hosts(app)?
         .into_iter()
-        .map(|host| SshHostView {
-            has_secret: secrets.get(&host.id).is_some_and(|one| !one.is_empty()),
-            host,
-        })
+        .map(|host| SshHostView { has_secret: secrets.get(&host.id).is_some_and(|one| !one.is_empty()), host })
         .collect())
 }
 
 pub fn host(app: &AppHandle, id: &str) -> Result<SshHost, String> {
-    load_hosts(app)?
-        .into_iter()
-        .find(|one| one.id == id)
-        .ok_or_else(|| "Registered SSH server not found.".to_string())
+    load_hosts(app)?.into_iter().find(|one| one.id == id).ok_or_else(|| "Registered SSH server not found.".to_string())
 }
 
 pub fn save_host(app: &AppHandle, one: SshHost, secret: Option<String>) -> Result<(), String> {
@@ -194,10 +174,7 @@ struct Client {
 impl client::Handler for Client {
     type Error = russh::Error;
 
-    async fn check_server_key(
-        &mut self,
-        key: &russh::keys::PublicKeyOrCertificate,
-    ) -> Result<bool, Self::Error> {
+    async fn check_server_key(&mut self, key: &russh::keys::PublicKeyOrCertificate) -> Result<bool, Self::Error> {
         let russh::keys::PublicKeyOrCertificate::PublicKey { key, .. } = key else {
             return Ok(false);
         };
@@ -248,29 +225,19 @@ fn config() -> Arc<client::Config> {
 
 pub async fn probe(app: &AppHandle, address: &str, port: u16) -> Result<HostKey, String> {
     let seen = Arc::new(Mutex::new(None));
-    let handler = Client {
-        expect: None,
-        seen: seen.clone(),
-        forward_to: None,
-    };
+    let handler = Client { expect: None, seen: seen.clone(), forward_to: None };
     let connect = client::connect(config(), (address.to_string(), port), handler);
     let handle = tokio::time::timeout(Duration::from_secs(CONNECT_SECS), connect)
         .await
         .map_err(|_| format!("Could not connect to {address}:{port} (timed out). Check the address and port."))?
         .map_err(|error| format!("Could not connect to {address}:{port}: {error}"))?;
     let pair = seen.lock().await.clone();
-    let _ = handle
-        .disconnect(Disconnect::ByApplication, "", "English")
-        .await;
+    let _ = handle.disconnect(Disconnect::ByApplication, "", "English").await;
     let (algorithm, fingerprint) = pair.ok_or("The SSH server didn't send a host key.")?;
-    let changed = load_hosts(app)?.iter().any(|one| {
-        one.address == address && one.port == port && !one.fingerprint.is_empty() && one.fingerprint != fingerprint
-    });
-    Ok(HostKey {
-        algorithm,
-        fingerprint,
-        changed,
-    })
+    let changed = load_hosts(app)?
+        .iter()
+        .any(|one| one.address == address && one.port == port && !one.fingerprint.is_empty() && one.fingerprint != fingerprint);
+    Ok(HostKey { algorithm, fingerprint, changed })
 }
 
 pub struct Conn {
@@ -350,11 +317,7 @@ async fn dial_forwarding(one: &SshHost, secret: Option<String>, forward_to: Opti
         return Err("This SSH server was registered without confirming its host key. Please register it again.".into());
     }
     let seen = Arc::new(Mutex::new(None));
-    let handler = Client {
-        expect: Some(one.fingerprint.clone()),
-        seen,
-        forward_to,
-    };
+    let handler = Client { expect: Some(one.fingerprint.clone()), seen, forward_to };
     let connect = client::connect(config(), (one.address.clone(), one.port), handler);
     let mut handle = tokio::time::timeout(Duration::from_secs(CONNECT_SECS), connect)
         .await
@@ -368,10 +331,7 @@ async fn dial_forwarding(one: &SshHost, secret: Option<String>, forward_to: Opti
 
     let result = if one.auth == "password" {
         let password = secret.ok_or("No password saved. Enter it again in the SSH server settings.")?;
-        handle
-            .authenticate_password(&one.username, password)
-            .await
-            .map_err(|error| format!("Login failed: {error}"))?
+        handle.authenticate_password(&one.username, password).await.map_err(|error| format!("Login failed: {error}"))?
     } else {
         let path = one.key_path.trim();
         if path.is_empty() {
@@ -380,10 +340,7 @@ async fn dial_forwarding(one: &SshHost, secret: Option<String>, forward_to: Opti
         let key = load_secret_key(path, secret.as_deref().filter(|one| !one.is_empty()))
             .map_err(|error| format!("Could not read the SSH key file: {error}"))?;
         handle
-            .authenticate_publickey(
-                &one.username,
-                PrivateKeyWithHashAlg::new(Arc::new(key), None),
-            )
+            .authenticate_publickey(&one.username, PrivateKeyWithHashAlg::new(Arc::new(key), None))
             .await
             .map_err(|error| format!("Could not log in with the key: {error}"))?
     };
@@ -391,15 +348,10 @@ async fn dial_forwarding(one: &SshHost, secret: Option<String>, forward_to: Opti
         return Err(if one.auth == "password" {
             "Wrong username or password.".into()
         } else {
-            "This key can't log in. Check that it's in `~/.ssh/authorized_keys` on the SSH server."
-                .to_string()
+            "This key can't log in. Check that it's in `~/.ssh/authorized_keys` on the SSH server.".to_string()
         });
     }
-    Ok(Arc::new(Conn {
-        handle,
-        shared: Mutex::new(None),
-        channels: Arc::new(tokio::sync::Semaphore::new(4)),
-    }))
+    Ok(Arc::new(Conn { handle, shared: Mutex::new(None), channels: Arc::new(tokio::sync::Semaphore::new(4)) }))
 }
 
 pub async fn connect(app: &AppHandle, host_id: &str) -> Result<Arc<Conn>, String> {
@@ -410,10 +362,7 @@ pub async fn connect(app: &AppHandle, host_id: &str) -> Result<Arc<Conn>, String
     }
     let one = host(app, host_id)?;
     let fresh = dial(app, &one).await?;
-    pool()
-        .lock()
-        .await
-        .insert(host_id.to_string(), fresh.clone());
+    pool().lock().await.insert(host_id.to_string(), fresh.clone());
     Ok(fresh)
 }
 
@@ -423,10 +372,7 @@ impl Conn {
         if let Some(one) = held.as_ref() {
             return Ok(one.clone());
         }
-        let turn = Arc::new(tokio::sync::Semaphore::new(1))
-            .acquire_owned()
-            .await
-            .map_err(|_| "The SSH connection closed.".to_string())?;
+        let turn = Arc::new(tokio::sync::Semaphore::new(1)).acquire_owned().await.map_err(|_| "The SSH connection closed.".to_string())?;
         let one = Arc::new(self.open_sftp(turn).await?);
         *held = Some(one.clone());
         Ok(one)
@@ -448,19 +394,12 @@ impl Conn {
 
     /// An interactive login shell with a PTY (the Shell tab).
     pub async fn open_shell(&self, cols: u16, rows: u16) -> Result<russh::Channel<russh::client::Msg>, String> {
-        let channel = self
-            .handle
-            .channel_open_session()
-            .await
-            .map_err(|error| format!("Could not open an SSH channel: {error}"))?;
+        let channel = self.handle.channel_open_session().await.map_err(|error| format!("Could not open an SSH channel: {error}"))?;
         channel
             .request_pty(true, "xterm-256color", u32::from(cols), u32::from(rows), 0, 0, &[])
             .await
             .map_err(|error| format!("The SSH server didn't give a terminal: {error}"))?;
-        channel
-            .request_shell(true)
-            .await
-            .map_err(|error| format!("The SSH server didn't start a shell: {error}"))?;
+        channel.request_shell(true).await.map_err(|error| format!("The SSH server didn't start a shell: {error}"))?;
         Ok(channel)
     }
 
@@ -483,15 +422,9 @@ impl Conn {
 
     async fn run_for(&self, command: &str, secs: u64) -> Result<Output, String> {
         let work = async {
-            let mut channel = self
-                .handle
-                .channel_open_session()
-                .await
-                .map_err(|error| format!("Could not open an SSH channel: {error}"))?;
-            channel
-                .exec(true, command)
-                .await
-                .map_err(|error| format!("Could not send the command: {error}"))?;
+            let mut channel =
+                self.handle.channel_open_session().await.map_err(|error| format!("Could not open an SSH channel: {error}"))?;
+            channel.exec(true, command).await.map_err(|error| format!("Could not send the command: {error}"))?;
             let mut out = Output::default();
             let mut stdout: Vec<u8> = Vec::new();
             let mut stderr: Vec<u8> = Vec::new();
@@ -515,28 +448,14 @@ impl Conn {
 
     #[allow(dead_code)]
     pub async fn sftp(&self) -> Result<Sftp, String> {
-        let turn = self
-            .channels
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|_| "The SSH connection closed.".to_string())?;
+        let turn = self.channels.clone().acquire_owned().await.map_err(|_| "The SSH connection closed.".to_string())?;
         self.open_sftp(turn).await
     }
 
     async fn open_sftp(&self, turn: tokio::sync::OwnedSemaphorePermit) -> Result<Sftp, String> {
-        let channel = self
-            .handle
-            .channel_open_session()
-            .await
-            .map_err(|error| format!("Could not open an SSH channel: {error}"))?;
-        channel
-            .request_subsystem(true, "sftp")
-            .await
-            .map_err(|error| format!("Could not open SFTP: {error}"))?;
-        let inner = SftpSession::new(channel.into_stream())
-            .await
-            .map_err(|error| format!("Could not start SFTP: {error}"))?;
+        let channel = self.handle.channel_open_session().await.map_err(|error| format!("Could not open an SSH channel: {error}"))?;
+        channel.request_subsystem(true, "sftp").await.map_err(|error| format!("Could not open SFTP: {error}"))?;
+        let inner = SftpSession::new(channel.into_stream()).await.map_err(|error| format!("Could not start SFTP: {error}"))?;
         Ok(Sftp { inner: Some(inner), turn: Some(turn) })
     }
 }
@@ -563,15 +482,9 @@ pub struct FoundServer {
 pub async fn survey(app: &AppHandle, host_id: &str) -> Result<BoxInfo, String> {
     let conn = connect(app, host_id).await?;
 
-    let os = conn
-        .run(". /etc/os-release 2>/dev/null && printf %s \"$PRETTY_NAME\" || uname -sr")
-        .await?
-        .stdout;
+    let os = conn.run(". /etc/os-release 2>/dev/null && printf %s \"$PRETTY_NAME\" || uname -sr").await?.stdout;
 
-    let java = conn
-        .run("bash -lc 'java -version 2>&1 | head -1; command -v java' 2>&1")
-        .await?
-        .stdout;
+    let java = conn.run("bash -lc 'java -version 2>&1 | head -1; command -v java' 2>&1").await?.stdout;
     let mut java_lines = java.lines().map(str::trim).filter(|line| !line.is_empty());
     let java = match (java_lines.next(), java_lines.next()) {
         (Some(version), Some(path)) if path.starts_with('/') => format!("{version} · {path}"),
@@ -579,10 +492,7 @@ pub async fn survey(app: &AppHandle, host_id: &str) -> Result<BoxInfo, String> {
         _ => String::new(),
     };
 
-    let tools = conn
-        .run("command -v screen >/dev/null && echo screen; command -v tmux >/dev/null && echo tmux")
-        .await?
-        .stdout;
+    let tools = conn.run("command -v screen >/dev/null && echo screen; command -v tmux >/dev/null && echo tmux").await?.stdout;
 
     Ok(BoxInfo {
         os: os.trim().to_string(),
@@ -594,10 +504,7 @@ pub async fn survey(app: &AppHandle, host_id: &str) -> Result<BoxInfo, String> {
 }
 
 async fn running_servers(conn: &Conn) -> Result<Vec<FoundServer>, String> {
-    let listing = conn
-        .run("ps -eo pid=,user=,args= | grep -i java | grep -viE 'grep -|ps -eo'")
-        .await?
-        .stdout;
+    let listing = conn.run("ps -eo pid=,user=,args= | grep -i java | grep -viE 'grep -|ps -eo'").await?.stdout;
     let mut found = Vec::new();
     for line in listing.lines() {
         let Some((pid, user, command)) = split_ps_line(line) else {
@@ -606,21 +513,11 @@ async fn running_servers(conn: &Conn) -> Result<Vec<FoundServer>, String> {
         if !looks_like_minecraft(&command) {
             continue;
         }
-        let folder = conn
-            .run(&format!("readlink /proc/{pid}/cwd 2>/dev/null"))
-            .await?
-            .stdout
-            .trim()
-            .to_string();
+        let folder = conn.run(&format!("readlink /proc/{pid}/cwd 2>/dev/null")).await?.stdout.trim().to_string();
         if !folder.is_empty() && found.iter().any(|one: &FoundServer| one.folder == folder) {
             continue;
         }
-        found.push(FoundServer {
-            pid,
-            user,
-            folder,
-            command,
-        });
+        found.push(FoundServer { pid, user, folder, command });
     }
     Ok(found)
 }
@@ -637,23 +534,13 @@ pub struct RemoteEntry {
 pub async fn browse(app: &AppHandle, host_id: &str, path: &str) -> Result<Vec<RemoteEntry>, String> {
     let conn = connect(app, host_id).await?;
     let path = path.trim();
-    let root = if path.is_empty() {
-        conn.run("printf %s \"$HOME\"").await?.stdout
-    } else {
-        path.to_string()
-    };
+    let root = if path.is_empty() { conn.run("printf %s \"$HOME\"").await?.stdout } else { path.to_string() };
     let root = root.trim_end_matches('/').to_string();
     let root = if root.is_empty() { "/".to_string() } else { root };
 
     let sftp = conn.shared_sftp().await?;
     let mut entries = Vec::new();
-    let listing = conn
-        .healed(
-            sftp.read_dir(&root)
-                .await
-                .map_err(|error| format!("Cannot open {root}: {error}")),
-        )
-        .await?;
+    let listing = conn.healed(sftp.read_dir(&root).await.map_err(|error| format!("Cannot open {root}: {error}"))).await?;
     for item in listing {
         let name = item.file_name();
         if name.starts_with('.') || !item.file_type().is_dir() {
@@ -695,11 +582,7 @@ const EVIDENCE: &str = "echo '@jars'; ls -1 *.jar 2>/dev/null | head -20\n\
 
 pub async fn detect(app: &AppHandle, host_id: &str, folder: &str) -> Result<Detected, String> {
     let conn = connect(app, host_id).await?;
-    let script = format!(
-        "cd {} 2>/dev/null || {{ echo MISSING; exit 0; }}\n{}\n",
-        quote(folder),
-        EVIDENCE
-    );
+    let script = format!("cd {} 2>/dev/null || {{ echo MISSING; exit 0; }}\n{}\n", quote(folder), EVIDENCE);
     let text = conn.run(&script).await?.stdout;
     if text.contains("MISSING") {
         return Err(format!("Could not open the folder {folder}."));
@@ -719,11 +602,8 @@ pub struct FoundFolder {
 pub async fn scan(app: &AppHandle, host_id: &str) -> Result<Vec<FoundFolder>, String> {
     let one = host(app, host_id)?;
     let conn = connect(app, host_id).await?;
-    let root = if one.root.trim().is_empty() {
-        server_root(app, host_id).await?
-    } else {
-        one.root.trim().trim_end_matches('/').to_string()
-    };
+    let root =
+        if one.root.trim().is_empty() { server_root(app, host_id).await? } else { one.root.trim().trim_end_matches('/').to_string() };
     if root.is_empty() {
         return Err("Please choose the server folder location.".into());
     }
@@ -760,11 +640,7 @@ fn read_scan(text: &str, root: &str) -> Vec<FoundFolder> {
             continue;
         }
         let seen = read_evidence(&rest);
-        found.push(FoundFolder {
-            path: format!("{root}/{name}"),
-            name: name.to_string(),
-            found: seen,
-        });
+        found.push(FoundFolder { path: format!("{root}/{name}"), name: name.to_string(), found: seen });
     }
     found
 }
@@ -824,19 +700,11 @@ fn read_evidence(text: &str) -> Detected {
     }
 
     if version.is_none() {
-        version = bag
-            .get("history")
-            .into_iter()
-            .flatten()
-            .find_map(|line| version_in_history(line));
+        version = bag.get("history").into_iter().flatten().find_map(|line| version_in_history(line));
     }
 
     if version.is_none() {
-        version = bag
-            .get("log")
-            .into_iter()
-            .flatten()
-            .find_map(|line| version_in_log(line));
+        version = bag.get("log").into_iter().flatten().find_map(|line| version_in_log(line));
     }
 
     Detected {
@@ -862,11 +730,10 @@ pub(crate) fn version_in_log(line: &str) -> Option<String> {
         return Some(found);
     }
     let lower = line.to_lowercase();
-    let at = lower.find("version ").map(|at| at + "version ".len()).or_else(|| {
-        lower
-            .find("starting pumpkin ")
-            .map(|at| at + "starting pumpkin ".len())
-    })?;
+    let at = lower
+        .find("version ")
+        .map(|at| at + "version ".len())
+        .or_else(|| lower.find("starting pumpkin ").map(|at| at + "starting pumpkin ".len()))?;
     let rest = line.get(at..)?.trim();
     let word = rest.split_whitespace().next()?;
     (!word.is_empty()).then(|| word.to_string())
@@ -899,11 +766,9 @@ fn split_ps_line(line: &str) -> Option<(u32, String, String)> {
 fn looks_like_minecraft(command: &str) -> bool {
     let lower = command.to_lowercase();
     lower.contains("-jar")
-        || [
-            "paper", "purpur", "leaf", "folia", "fabric", "forge", "neoforge", "spigot", "minecraft",
-        ]
-        .iter()
-        .any(|name| lower.contains(name))
+        || ["paper", "purpur", "leaf", "folia", "fabric", "forge", "neoforge", "spigot", "minecraft"]
+            .iter()
+            .any(|name| lower.contains(name))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -914,37 +779,21 @@ pub enum Holder {
 
 impl Holder {
     pub fn session(id: &str) -> String {
-        let safe: String = id
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-            .collect();
+        let safe: String = id.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
         format!("se-{safe}")
     }
 
     pub fn start(self, name: &str, folder: &str, command: &str) -> String {
         match self {
-            Holder::Tmux => format!(
-                "tmux new-session -d -s {} -c {} {}",
-                quote(name),
-                quote(folder),
-                quote(command)
-            ),
-            Holder::Screen => format!(
-                "cd {} && screen -dmS {} sh -c {}",
-                quote(folder),
-                quote(name),
-                quote(command)
-            ),
+            Holder::Tmux => format!("tmux new-session -d -s {} -c {} {}", quote(name), quote(folder), quote(command)),
+            Holder::Screen => format!("cd {} && screen -dmS {} sh -c {}", quote(folder), quote(name), quote(command)),
         }
     }
 
     pub fn alive(self, name: &str) -> String {
         match self {
             Holder::Tmux => format!("tmux has-session -t {} 2>/dev/null", quote(name)),
-            Holder::Screen => format!(
-                "screen -ls | grep -q {}",
-                quote(&format!("\\.{name}\\s"))
-            ),
+            Holder::Screen => format!("screen -ls | grep -q {}", quote(&format!("\\.{name}\\s"))),
         }
     }
 
@@ -957,29 +806,13 @@ impl Holder {
 
     pub fn send(self, name: &str, line: &str) -> String {
         match self {
-            Holder::Tmux => format!(
-                "tmux send-keys -t {} -l {} && tmux send-keys -t {} Enter",
-                quote(name),
-                quote(line),
-                quote(name)
-            ),
-            Holder::Screen => format!(
-                "screen -S {} -X stuff {}",
-                quote(name),
-                quote(&format!("{line}\n"))
-            ),
+            Holder::Tmux => format!("tmux send-keys -t {} -l {} && tmux send-keys -t {} Enter", quote(name), quote(line), quote(name)),
+            Holder::Screen => format!("screen -S {} -X stuff {}", quote(name), quote(&format!("{line}\n"))),
         }
     }
 }
 
-pub fn launch_line(
-    custom: &str,
-    java: &str,
-    launch: &Launch,
-    min_mib: u32,
-    max_mib: u32,
-    jvm_args: &str,
-) -> Result<String, String> {
+pub fn launch_line(custom: &str, java: &str, launch: &Launch, min_mib: u32, max_mib: u32, jvm_args: &str) -> Result<String, String> {
     let custom = custom.trim();
     if !custom.is_empty() {
         return Ok(custom.to_string());
@@ -1016,10 +849,7 @@ pub fn launch_line(
 }
 
 pub async fn holder_of(conn: &Conn) -> Result<Holder, String> {
-    let seen = conn
-        .run("command -v tmux >/dev/null && echo tmux; command -v screen >/dev/null && echo screen")
-        .await?
-        .stdout;
+    let seen = conn.run("command -v tmux >/dev/null && echo tmux; command -v screen >/dev/null && echo screen").await?.stdout;
     if seen.contains("tmux") {
         Ok(Holder::Tmux)
     } else if seen.contains("screen") {
@@ -1029,14 +859,7 @@ pub async fn holder_of(conn: &Conn) -> Result<Holder, String> {
     }
 }
 
-pub async fn start(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    id: &str,
-    command: &str,
-    restart: bool,
-) -> Result<(), String> {
+pub async fn start(app: &AppHandle, host_id: &str, folder: &str, id: &str, command: &str, restart: bool) -> Result<(), String> {
     let conn = connect(app, host_id).await?;
     let holder = holder_of(&conn).await?;
     let name = Holder::session(id);
@@ -1044,9 +867,7 @@ pub async fn start(
         return Err("This server is already running.".into());
     }
     let _ = conn.run(&format!("rm -f {}", quote(&launch_log(id)))).await;
-    conn.run(&holder.start(&name, folder, &launch_wrapper(id, command, restart)))
-        .await?
-        .ok()?;
+    conn.run(&holder.start(&name, folder, &launch_wrapper(id, command, restart))).await?.ok()?;
     Ok(())
 }
 
@@ -1121,8 +942,7 @@ fn read_javas(text: &str) -> Vec<crate::java::JavaRuntime> {
         if bits.next() != Some("J") {
             continue;
         }
-        let (Some(path), Some(source), Some(version)): (Option<&str>, Option<&str>, Option<&str>) =
-            (bits.next(), bits.next(), bits.next())
+        let (Some(path), Some(source), Some(version)): (Option<&str>, Option<&str>, Option<&str>) = (bits.next(), bits.next(), bits.next())
         else {
             continue;
         };
@@ -1132,19 +952,9 @@ fn read_javas(text: &str) -> Vec<crate::java::JavaRuntime> {
         let source = match source {
             "path" => "PATH default".to_string(),
             "alternatives" => "update-alternatives".to_string(),
-            _ => path
-                .trim_end_matches("/bin/java")
-                .rsplit('/')
-                .next()
-                .unwrap_or(path)
-                .to_string(),
+            _ => path.trim_end_matches("/bin/java").rsplit('/').next().unwrap_or(path).to_string(),
         };
-        found.push(crate::java::JavaRuntime {
-            path: path.to_string(),
-            major,
-            source,
-            managed: false,
-        });
+        found.push(crate::java::JavaRuntime { path: path.to_string(), major, source, managed: false });
     }
     found
 }
@@ -1169,11 +979,7 @@ pub async fn precheck(
          echo \"javaver:$(bash -lc {java_test} 2>&1 | head -n 1)\"\n",
         folder = quote(folder),
         java_test = quote(&format!("{java_word} -version")),
-        jar_test = if jar.is_empty() {
-            "echo nojar".to_string()
-        } else {
-            format!("[ -f {} ] && echo jar", quote(jar))
-        },
+        jar_test = if jar.is_empty() { "echo nojar".to_string() } else { format!("[ -f {} ] && echo jar", quote(jar)) },
     );
     let out = conn.run(&script).await?;
     if out.code == 3 {
@@ -1196,11 +1002,7 @@ pub async fn precheck(
             "Open eula.txt in the server folder and change eula=false to eula=true.",
         ));
     }
-    let version_line = out
-        .stdout
-        .lines()
-        .find_map(|line| line.strip_prefix("javaver:"))
-        .unwrap_or("");
+    let version_line = out.stdout.lines().find_map(|line| line.strip_prefix("javaver:")).unwrap_or("");
     match crate::java::java_major_from_output(version_line.as_bytes()) {
         None => found.push(Finding::stop(
             "Java was not found on the SSH server",
@@ -1227,13 +1029,7 @@ pub struct Launch {
     pub from_win: String,
 }
 
-pub async fn resolve_launch(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    jar: &str,
-    core: &str,
-) -> Result<Launch, String> {
+pub async fn resolve_launch(app: &AppHandle, host_id: &str, folder: &str, jar: &str, core: &str) -> Result<Launch, String> {
     let conn = connect(app, host_id).await?;
     let script = format!(
         "cd {} 2>/dev/null || {{ echo @nofolder; exit 0; }}\n\
@@ -1247,26 +1043,15 @@ pub async fn resolve_launch(
     );
     let out = conn.run(&script).await?;
     if out.stdout.lines().any(|line| line.trim() == "@nofolder") {
-        return Err(format!(
-            "The server folder ({folder}) doesn't exist on the SSH server. Check whether it was moved or renamed."
-        ));
+        return Err(format!("The server folder ({folder}) doesn't exist on the SSH server. Check whether it was moved or renamed."));
     }
     let launch = read_launch(&out.stdout, jar, core);
     if !launch.from_win.is_empty() {
         let made = conn
-            .run(&format!(
-                "cd {} && sed -e 's/;/:/g' -e 's#\\\\#/#g' {} > {}",
-                quote(folder),
-                quote(&launch.from_win),
-                quote(&launch.args)
-            ))
+            .run(&format!("cd {} && sed -e 's/;/:/g' -e 's#\\\\#/#g' {} > {}", quote(folder), quote(&launch.from_win), quote(&launch.args)))
             .await?;
         if made.code != 0 {
-            return Err(format!(
-                "Couldn't convert {} for Linux: {}",
-                launch.from_win,
-                made.stderr.trim()
-            ));
+            return Err(format!("Couldn't convert {} for Linux: {}", launch.from_win, made.stderr.trim()));
         }
     }
     Ok(launch)
@@ -1303,41 +1088,28 @@ pub fn read_launch(text: &str, wanted: &str, core: &str) -> Launch {
     let mut dirs: Vec<String> = listed.iter().map(|path| folder_of(path)).collect();
     dirs.sort();
     dirs.dedup();
-    let dir = named
-        .map(|path| folder_of(&path))
-        .filter(|dir| dirs.contains(dir))
-        .or_else(|| {
-            dirs.iter()
-                .max_by_key(|dir| {
-                    dir.rsplit('/')
-                        .next()
-                        .unwrap_or("")
-                        .split(|c: char| !c.is_ascii_digit())
-                        .filter(|part| !part.is_empty())
-                        .map(|part| part.parse::<u64>().unwrap_or(0))
-                        .collect::<Vec<_>>()
-                })
-                .cloned()
-        });
+    let dir = named.map(|path| folder_of(&path)).filter(|dir| dirs.contains(dir)).or_else(|| {
+        dirs.iter()
+            .max_by_key(|dir| {
+                dir.rsplit('/')
+                    .next()
+                    .unwrap_or("")
+                    .split(|c: char| !c.is_ascii_digit())
+                    .filter(|part| !part.is_empty())
+                    .map(|part| part.parse::<u64>().unwrap_or(0))
+                    .collect::<Vec<_>>()
+            })
+            .cloned()
+    });
     let installed = matches!(core, "Forge" | "NeoForge");
     match dir {
         Some(dir) if installed || jars.is_empty() => {
             let unix = format!("{dir}/unix_args.txt");
             let win = format!("{dir}/win_args.txt");
             let from_win = if listed.contains(&unix) { String::new() } else { win };
-            Launch {
-                jar: String::new(),
-                args: unix,
-                user_args,
-                from_win,
-            }
+            Launch { jar: String::new(), args: unix, user_args, from_win }
         }
-        _ => Launch {
-            jar: pick_jar(wanted, &jars),
-            args: String::new(),
-            user_args,
-            from_win: String::new(),
-        },
+        _ => Launch { jar: pick_jar(wanted, &jars), args: String::new(), user_args, from_win: String::new() },
     }
 }
 
@@ -1383,13 +1155,7 @@ pub fn launch_wrapper(id: &str, command: &str, restart: bool) -> String {
     format!("bash -lc {}", quote(&inner))
 }
 
-pub async fn send_line(
-    app: &AppHandle,
-    host_id: &str,
-    id: &str,
-    line: &str,
-    session: Option<String>,
-) -> Result<(), String> {
+pub async fn send_line(app: &AppHandle, host_id: &str, id: &str, line: &str, session: Option<String>) -> Result<(), String> {
     let conn = connect(app, host_id).await?;
     let holder = holder_of(&conn).await?;
     let name = session.unwrap_or_else(|| Holder::session(id));
@@ -1400,13 +1166,7 @@ pub async fn send_line(
     Ok(())
 }
 
-pub async fn force_stop(
-    app: &AppHandle,
-    host_id: &str,
-    id: &str,
-    session: Option<String>,
-    pid: u32,
-) -> Result<(), String> {
+pub async fn force_stop(app: &AppHandle, host_id: &str, id: &str, session: Option<String>, pid: u32) -> Result<(), String> {
     let conn = connect(app, host_id).await?;
     let name = session.unwrap_or_else(|| Holder::session(id));
     let mut cut = false;
@@ -1434,19 +1194,11 @@ pub struct Live {
     pub ours: bool,
 }
 
-pub async fn live_state(
-    app: &AppHandle,
-    host_id: &str,
-    servers: &[(String, String)],
-) -> HashMap<String, Live> {
+pub async fn live_state(app: &AppHandle, host_id: &str, servers: &[(String, String)]) -> HashMap<String, Live> {
     live_state_checked(app, host_id, servers).await.unwrap_or_default()
 }
 
-pub async fn live_state_checked(
-    app: &AppHandle,
-    host_id: &str,
-    servers: &[(String, String)],
-) -> Result<HashMap<String, Live>, String> {
+pub async fn live_state_checked(app: &AppHandle, host_id: &str, servers: &[(String, String)]) -> Result<HashMap<String, Live>, String> {
     let conn = connect(app, host_id).await?;
     let script = "echo '@sessions'\n\
          tmux list-panes -a -F '#{session_name} #{pane_pid}' 2>/dev/null\n\
@@ -1526,39 +1278,19 @@ fn read_live_state(text: &str, servers: &[(String, String)]) -> HashMap<String, 
                 _ => break,
             }
         }
-        out.insert(
-            id.clone(),
-            Live {
-                pid: *pid,
-                ours: session == Holder::session(id),
-                session,
-            },
-        );
+        out.insert(id.clone(), Live { pid: *pid, ours: session == Holder::session(id), session });
     }
     out
 }
 
-pub async fn tail_log<F>(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    mut on_line: impl FnMut(String),
-    keep: F,
-) -> Result<(), String>
+pub async fn tail_log<F>(app: &AppHandle, host_id: &str, folder: &str, mut on_line: impl FnMut(String), keep: F) -> Result<(), String>
 where
     F: Fn() -> bool,
 {
     let conn = connect(app, host_id).await?;
-    let mut channel = conn
-        .handle
-        .channel_open_session()
-        .await
-        .map_err(|error| format!("Could not open an SSH channel: {error}"))?;
+    let mut channel = conn.handle.channel_open_session().await.map_err(|error| format!("Could not open an SSH channel: {error}"))?;
     let command = format!("tail -n 200 -F {}/logs/latest.log 2>/dev/null", quote(folder));
-    channel
-        .exec(true, command.as_str())
-        .await
-        .map_err(|error| format!("Could not read the log: {error}"))?;
+    channel.exec(true, command.as_str()).await.map_err(|error| format!("Could not read the log: {error}"))?;
 
     let mut rest = Vec::new();
     while let Some(message) = channel.wait().await {
@@ -1618,22 +1350,11 @@ async fn really_inside(sftp: &SftpSession, folder: &str, at: &str) -> Result<(),
     }
 }
 
-pub async fn list_dir(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    relative: &str,
-) -> Result<Vec<FileRow>, String> {
+pub async fn list_dir(app: &AppHandle, host_id: &str, folder: &str, relative: &str) -> Result<Vec<FileRow>, String> {
     let at = inside(folder, relative)?;
     let conn = connect(app, host_id).await?;
     let sftp = conn.shared_sftp().await?;
-    let listing = conn
-        .healed(
-            sftp.read_dir(&at)
-                .await
-                .map_err(|error| format!("Cannot open {at}: {error}")),
-        )
-        .await?;
+    let listing = conn.healed(sftp.read_dir(&at).await.map_err(|error| format!("Cannot open {at}: {error}"))).await?;
     let mut rows: Vec<FileRow> = listing
         .into_iter()
         .map(|one| {
@@ -1646,11 +1367,7 @@ pub async fn list_dir(
             }
         })
         .collect();
-    rows.sort_by(|a, b| {
-        b.directory
-            .cmp(&a.directory)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
+    rows.sort_by(|a, b| b.directory.cmp(&a.directory).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     Ok(rows)
 }
 
@@ -1663,34 +1380,17 @@ pub struct FileRow {
     pub modified_at: u64,
 }
 
-pub async fn read_text(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    relative: &str,
-) -> Result<String, String> {
+pub async fn read_text(app: &AppHandle, host_id: &str, folder: &str, relative: &str) -> Result<String, String> {
     const LIMIT: u64 = 8 * 1024 * 1024;
     let at = inside(folder, relative)?;
     let conn = connect(app, host_id).await?;
     let sftp = conn.shared_sftp().await?;
     really_inside(&sftp, folder, &at).await?;
-    let meta = conn
-        .healed(
-            sftp.metadata(&at)
-                .await
-                .map_err(|error| format!("Cannot open {at}: {error}")),
-        )
-        .await?;
+    let meta = conn.healed(sftp.metadata(&at).await.map_err(|error| format!("Cannot open {at}: {error}"))).await?;
     if meta.size.unwrap_or(0) > LIMIT {
         return Err("This file is too large to open in the app (over 8 MB).".into());
     }
-    let bytes = conn
-        .healed(
-            sftp.read(&at)
-                .await
-                .map_err(|error| format!("Could not read {at}: {error}")),
-        )
-        .await?;
+    let bytes = conn.healed(sftp.read(&at).await.map_err(|error| format!("Could not read {at}: {error}"))).await?;
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
@@ -1711,13 +1411,7 @@ pub fn is_missing(error: &str) -> bool {
     lower.contains("no such file") || lower.contains("not found") || lower.contains("404")
 }
 
-pub async fn read_bytes(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    relative: &str,
-    limit: u64,
-) -> Result<Vec<u8>, String> {
+pub async fn read_bytes(app: &AppHandle, host_id: &str, folder: &str, relative: &str, limit: u64) -> Result<Vec<u8>, String> {
     let at = inside(folder, relative)?;
     let _turn = read_turn(host_id).await;
     let conn = connect(app, host_id).await?;
@@ -1738,59 +1432,33 @@ pub async fn read_bytes(
 }
 
 async fn read_with(sftp: &SftpSession, at: &str, limit: u64) -> Result<Vec<u8>, String> {
-    let meta = sftp
-        .metadata(at)
-        .await
-        .map_err(|error| format!("Cannot open {at}: {error}"))?;
+    let meta = sftp.metadata(at).await.map_err(|error| format!("Cannot open {at}: {error}"))?;
     if meta.size.unwrap_or(0) > limit {
-        return Err(format!(
-            "This image is too large to open in the app (over {} MB).",
-            limit / (1024 * 1024)
-        ));
+        return Err(format!("This image is too large to open in the app (over {} MB).", limit / (1024 * 1024)));
     }
-    sftp.read(at)
-        .await
-        .map_err(|error| format!("Could not read {at}: {error}"))
+    sftp.read(at).await.map_err(|error| format!("Could not read {at}: {error}"))
 }
 
 async fn put(sftp: &SftpSession, path: &str, bytes: &[u8]) -> Result<(), String> {
     put_watched(sftp, path, bytes, &|_, _| {}).await
 }
 
-pub async fn put_watched(
-    sftp: &SftpSession,
-    path: &str,
-    bytes: &[u8],
-    tick: &(dyn Fn(u64, u64) + Sync),
-) -> Result<(), String> {
+pub async fn put_watched(sftp: &SftpSession, path: &str, bytes: &[u8], tick: &(dyn Fn(u64, u64) + Sync)) -> Result<(), String> {
     use tokio::io::AsyncWriteExt;
-    let mut file = sftp
-        .create(path)
-        .await
-        .map_err(|error| format!("Could not create {path}: {error}"))?;
+    let mut file = sftp.create(path).await.map_err(|error| format!("Could not create {path}: {error}"))?;
     let total = bytes.len() as u64;
     let mut sent = 0u64;
     tick(0, total);
     for chunk in bytes.chunks(256 * 1024) {
-        file.write_all(chunk)
-            .await
-            .map_err(|error| format!("Could not write to {path}: {error}"))?;
+        file.write_all(chunk).await.map_err(|error| format!("Could not write to {path}: {error}"))?;
         sent += chunk.len() as u64;
         tick(sent, total);
     }
-    file.shutdown()
-        .await
-        .map_err(|error| format!("Could not close {path}: {error}"))?;
+    file.shutdown().await.map_err(|error| format!("Could not close {path}: {error}"))?;
     Ok(())
 }
 
-pub async fn write_text(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    relative: &str,
-    text: &str,
-) -> Result<(), String> {
+pub async fn write_text(app: &AppHandle, host_id: &str, folder: &str, relative: &str, text: &str) -> Result<(), String> {
     let at = inside(folder, relative)?;
     let conn = connect(app, host_id).await?;
     let sftp = conn.sftp().await?;
@@ -1800,54 +1468,29 @@ pub async fn write_text(
         None => format!(".{at}.uploading"),
     };
     put(&sftp, &temp, text.as_bytes()).await?;
-    conn.run(&format!("mv -f {} {}", quote(&temp), quote(&at)))
-        .await?
-        .ok()?;
+    conn.run(&format!("mv -f {} {}", quote(&temp), quote(&at))).await?.ok()?;
     Ok(())
 }
 
 fn unix_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|gap| gap.as_secs())
-        .unwrap_or(0)
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|gap| gap.as_secs()).unwrap_or(0)
 }
 
-pub async fn move_path(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    from: &str,
-    to: &str,
-) -> Result<(), String> {
+pub async fn move_path(app: &AppHandle, host_id: &str, folder: &str, from: &str, to: &str) -> Result<(), String> {
     let from = inside(folder, from)?;
     let to = inside(folder, to)?;
     let conn = connect(app, host_id).await?;
-    conn.run(&format!("mv -n {} {}", quote(&from), quote(&to)))
-        .await?
-        .ok()?;
+    conn.run(&format!("mv -n {} {}", quote(&from), quote(&to))).await?.ok()?;
     Ok(())
 }
 
-pub async fn trash_path(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    relative: &str,
-) -> Result<(), String> {
+pub async fn trash_path(app: &AppHandle, host_id: &str, folder: &str, relative: &str) -> Result<(), String> {
     let at = inside(folder, relative)?;
     let conn = connect(app, host_id).await?;
     let bin = format!("{}/.monolab-trash", folder.trim_end_matches('/'));
     let name = relative.rsplit('/').next().unwrap_or("File");
     let stored = format!("{}-{name}", unix_secs());
-    conn.run(&format!(
-        "mkdir -p {} && mv {} {}",
-        quote(&bin),
-        quote(&at),
-        quote(&format!("{bin}/{stored}"))
-    ))
-    .await?
-    .ok()?;
+    conn.run(&format!("mkdir -p {} && mv {} {}", quote(&bin), quote(&at), quote(&format!("{bin}/{stored}")))).await?.ok()?;
     let from = relative.trim_matches('/').to_string();
     edit_trash_notes(app, host_id, folder, |note| {
         note.insert(stored, from);
@@ -1862,11 +1505,7 @@ async fn trash_notes(app: &AppHandle, host_id: &str, folder: &str) -> HashMap<St
     read_trash_notes(app, host_id, folder).await.unwrap_or_default()
 }
 
-async fn read_trash_notes(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-) -> Option<HashMap<String, String>> {
+async fn read_trash_notes(app: &AppHandle, host_id: &str, folder: &str) -> Option<HashMap<String, String>> {
     let at = format!(".monolab-trash/{TRASH_NOTE}");
     match read_text(app, host_id, folder, &at).await {
         Ok(text) => serde_json::from_str(&text).ok(),
@@ -1875,24 +1514,14 @@ async fn read_trash_notes(
     }
 }
 
-async fn edit_trash_notes(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    change: impl FnOnce(&mut HashMap<String, String>),
-) {
+async fn edit_trash_notes(app: &AppHandle, host_id: &str, folder: &str, change: impl FnOnce(&mut HashMap<String, String>)) {
     if let Some(mut note) = read_trash_notes(app, host_id, folder).await {
         change(&mut note);
         write_trash_notes(app, host_id, folder, &note).await;
     }
 }
 
-async fn write_trash_notes(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    note: &HashMap<String, String>,
-) {
+async fn write_trash_notes(app: &AppHandle, host_id: &str, folder: &str, note: &HashMap<String, String>) {
     let Ok(text) = serde_json::to_string_pretty(note) else {
         return;
     };
@@ -1900,11 +1529,7 @@ async fn write_trash_notes(
     let _ = write_text(app, host_id, folder, &at, &text).await;
 }
 
-pub async fn trash_list(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-) -> Result<Vec<(FileRow, String)>, String> {
+pub async fn trash_list(app: &AppHandle, host_id: &str, folder: &str) -> Result<Vec<(FileRow, String)>, String> {
     let rows = match list_dir(app, host_id, folder, ".monolab-trash").await {
         Ok(rows) => rows,
         Err(_) => return Ok(Vec::new()),
@@ -1914,10 +1539,7 @@ pub async fn trash_list(
         .into_iter()
         .filter(|one| one.name != TRASH_NOTE)
         .map(|one| {
-            let came = note
-                .get(&one.name)
-                .cloned()
-                .unwrap_or_else(|| plain_trash_name(&one.name));
+            let came = note.get(&one.name).cloned().unwrap_or_else(|| plain_trash_name(&one.name));
             (one, came)
         })
         .collect())
@@ -1925,37 +1547,19 @@ pub async fn trash_list(
 
 pub fn plain_trash_name(stored: &str) -> String {
     match stored.split_once('-') {
-        Some((head, rest)) if !head.is_empty() && head.chars().all(|one| one.is_ascii_digit()) => {
-            rest.to_string()
-        }
+        Some((head, rest)) if !head.is_empty() && head.chars().all(|one| one.is_ascii_digit()) => rest.to_string(),
         _ => stored.to_string(),
     }
 }
 
-pub async fn trash_restore(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    stored: &str,
-) -> Result<String, String> {
+pub async fn trash_restore(app: &AppHandle, host_id: &str, folder: &str, stored: &str) -> Result<String, String> {
     crate::paths::check_relative(stored)?;
-    let note = read_trash_notes(app, host_id, folder)
-        .await
-        .ok_or("Could not read the trash list. Please try again shortly.")?;
-    let back = note
-        .get(stored)
-        .cloned()
-        .unwrap_or_else(|| plain_trash_name(stored));
+    let note = read_trash_notes(app, host_id, folder).await.ok_or("Could not read the trash list. Please try again shortly.")?;
+    let back = note.get(stored).cloned().unwrap_or_else(|| plain_trash_name(stored));
     let to = inside(folder, &back)?;
     let from = inside(folder, &format!(".monolab-trash/{stored}"))?;
     let conn = connect(app, host_id).await?;
-    let out = conn
-        .run(&format!(
-            "test -e {0} && exit 17; mkdir -p \"$(dirname {0})\" && mv {1} {0}",
-            quote(&to),
-            quote(&from)
-        ))
-        .await?;
+    let out = conn.run(&format!("test -e {0} && exit 17; mkdir -p \"$(dirname {0})\" && mv {1} {0}", quote(&to), quote(&from))).await?;
     if out.code == 17 {
         return Err(format!("Something is already at {back}. Move it out of the way first."));
     }
@@ -1967,12 +1571,7 @@ pub async fn trash_restore(
     Ok(back)
 }
 
-pub async fn trash_delete(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    stored: &str,
-) -> Result<(), String> {
+pub async fn trash_delete(app: &AppHandle, host_id: &str, folder: &str, stored: &str) -> Result<(), String> {
     crate::paths::check_relative(stored)?;
     let at = inside(folder, &format!(".monolab-trash/{stored}"))?;
     let conn = connect(app, host_id).await?;
@@ -1988,22 +1587,14 @@ pub async fn trash_empty(app: &AppHandle, host_id: &str, folder: &str) -> Result
     let count = trash_list(app, host_id, folder).await?.len() as u32;
     let bin = inside(folder, ".monolab-trash")?;
     let conn = connect(app, host_id).await?;
-    conn.run(&format!("rm -rf {}/* {}/.[!.]*", quote(&bin), quote(&bin)))
-        .await?;
+    conn.run(&format!("rm -rf {}/* {}/.[!.]*", quote(&bin), quote(&bin))).await?;
     Ok(count)
 }
 
-pub async fn make_dir(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    relative: &str,
-) -> Result<(), String> {
+pub async fn make_dir(app: &AppHandle, host_id: &str, folder: &str, relative: &str) -> Result<(), String> {
     let at = inside(folder, relative)?;
     let conn = connect(app, host_id).await?;
-    let out = conn
-        .run(&format!("test -e {0} && exit 17; mkdir -p {0}", quote(&at)))
-        .await?;
+    let out = conn.run(&format!("test -e {0} && exit 17; mkdir -p {0}", quote(&at))).await?;
     if out.code == 17 {
         return Err("That name already exists.".into());
     }
@@ -2013,31 +1604,17 @@ pub async fn make_dir(
 
 pub async fn log_files(app: &AppHandle, host_id: &str, folder: &str) -> Vec<FileRow> {
     let mut rows = list_dir(app, host_id, folder, "logs").await.unwrap_or_default();
-    rows.retain(|one| {
-        !one.directory && (one.name.ends_with(".log") || one.name.ends_with(".log.gz"))
-    });
+    rows.retain(|one| !one.directory && (one.name.ends_with(".log") || one.name.ends_with(".log.gz")));
     rows.sort_by_key(|one| std::cmp::Reverse(one.modified_at));
     rows
 }
 
-pub async fn read_log(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    name: &str,
-    lines: u32,
-) -> Result<String, String> {
+pub async fn read_log(app: &AppHandle, host_id: &str, folder: &str, name: &str, lines: u32) -> Result<String, String> {
     crate::paths::check_relative(name)?;
     let at = format!("{}/logs/{name}", folder.trim_end_matches('/'));
     let conn = connect(app, host_id).await?;
     let reader = if name.ends_with(".gz") { "zcat" } else { "cat" };
-    Ok(conn
-        .run(&format!(
-            "{reader} {} 2>/dev/null | tail -n {lines}",
-            quote(&at)
-        ))
-        .await?
-        .stdout)
+    Ok(conn.run(&format!("{reader} {} 2>/dev/null | tail -n {lines}", quote(&at))).await?.stdout)
 }
 
 pub async fn resource(app: &AppHandle, host_id: &str, pid: u32) -> Option<(f64, u64)> {
@@ -2052,21 +1629,13 @@ pub async fn resource(app: &AppHandle, host_id: &str, pid: u32) -> Option<(f64, 
          echo \"$u1 $u2 $t1 $t2 ${{rss:-0}} $(nproc)\""
     );
     let out = conn.run(&script).await.ok()?;
-    let bits: Vec<u64> = out
-        .stdout
-        .split_whitespace()
-        .filter_map(|one| one.parse().ok())
-        .collect();
+    let bits: Vec<u64> = out.stdout.split_whitespace().filter_map(|one| one.parse().ok()).collect();
     if bits.len() < 6 {
         return None;
     }
     let used = bits[1].saturating_sub(bits[0]);
     let total = bits[3].saturating_sub(bits[2]);
-    let cpu = if total == 0 {
-        0.0
-    } else {
-        (used as f64 / total as f64) * 100.0
-    };
+    let cpu = if total == 0 { 0.0 } else { (used as f64 / total as f64) * 100.0 };
     Some((cpu, bits[4] / 1024))
 }
 
@@ -2077,21 +1646,12 @@ pub fn backup_vault(folder: &str) -> String {
 }
 
 /// Packs the server folder, or only the folders in `only` (top-level names) when it isn't empty.
-pub async fn make_backup(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    label: &str,
-    only: &[String],
-) -> Result<String, String> {
+pub async fn make_backup(app: &AppHandle, host_id: &str, folder: &str, label: &str, only: &[String]) -> Result<String, String> {
     let folder = folder.trim_end_matches('/');
     let vault = backup_vault(folder);
     let name = format!("{}-{label}.tar.gz", unix_secs());
-    let what = if only.is_empty() {
-        ".".to_string()
-    } else {
-        only.iter().map(|one| quote(&format!("./{one}"))).collect::<Vec<_>>().join(" ")
-    };
+    let what =
+        if only.is_empty() { ".".to_string() } else { only.iter().map(|one| quote(&format!("./{one}"))).collect::<Vec<_>>().join(" ") };
     let conn = connect(app, host_id).await?;
     conn.run_long(&format!(
         "mkdir -p {vault} && {{ tar -czf {vault}/{name}.part -C {here} --warning=no-file-changed --ignore-failed-read \
@@ -2109,11 +1669,7 @@ pub async fn make_backup(
 
 pub async fn sweep_backups(app: &AppHandle, host_id: &str, folder: &str, days: u32) -> Result<(), String> {
     let vault = backup_vault(folder);
-    let old = if days == 0 {
-        String::new()
-    } else {
-        format!(" -o -name '*.tar.gz' -mtime +{days}")
-    };
+    let old = if days == 0 { String::new() } else { format!(" -o -name '*.tar.gz' -mtime +{days}") };
     let conn = connect(app, host_id).await?;
     conn.run(&format!(
         "test -d {vault} && find {vault} -maxdepth 1 -type f \\( -name '*.tar.gz.part' -mmin +1440{old} \\) -delete; true",
@@ -2124,12 +1680,7 @@ pub async fn sweep_backups(app: &AppHandle, host_id: &str, folder: &str, days: u
     Ok(())
 }
 
-pub async fn restore_backup(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    file_name: &str,
-) -> Result<String, String> {
+pub async fn restore_backup(app: &AppHandle, host_id: &str, folder: &str, file_name: &str) -> Result<String, String> {
     let name = file_name.trim();
     if name.is_empty() || name.contains(['/', '\\']) || !name.ends_with(".tar.gz") {
         return Err("The backup name is malformed.".into());
@@ -2137,10 +1688,7 @@ pub async fn restore_backup(
     let folder = folder.trim_end_matches('/');
     let archive = format!("{}/{name}", backup_vault(folder));
     let conn = connect(app, host_id).await?;
-    conn.run(&format!("test -f {}", quote(&archive)))
-        .await?
-        .ok()
-        .map_err(|_| "That backup was not found.".to_string())?;
+    conn.run(&format!("test -f {}", quote(&archive))).await?.ok().map_err(|_| "That backup was not found.".to_string())?;
     let safety = make_backup(app, host_id, folder, "before-restore", &[]).await?;
     if crate::backups::is_worlds_only(name) {
         let listing = conn.run_long(&format!("tar -tzf {}", quote(&archive))).await?.ok()?;
@@ -2155,14 +1703,10 @@ pub async fn restore_backup(
             conn.run(&format!("rm -rf {}", quote(&format!("{folder}/{top}")))).await?.ok()?;
         }
     }
-    conn.run_long(&format!(
-        "tar -xzf {archive} -C {here}",
-        archive = quote(&archive),
-        here = quote(folder)
-    ))
-    .await?
-    .ok()
-    .map_err(|error| format!("Could not extract the backup: {error}"))?;
+    conn.run_long(&format!("tar -xzf {archive} -C {here}", archive = quote(&archive), here = quote(folder)))
+        .await?
+        .ok()
+        .map_err(|error| format!("Could not extract the backup: {error}"))?;
     Ok(safety)
 }
 
@@ -2225,12 +1769,16 @@ pub async fn backup_listing(
     Ok((tar_files(&listing), now))
 }
 
-pub async fn backup_entry_text(app: &AppHandle, host_id: &str, folder: &str, file_name: &str, inside: &str) -> Result<Option<String>, String> {
+pub async fn backup_entry_text(
+    app: &AppHandle,
+    host_id: &str,
+    folder: &str,
+    file_name: &str,
+    inside: &str,
+) -> Result<Option<String>, String> {
     let archive = backup_archive(folder, file_name)?;
     let conn = connect(app, host_id).await?;
-    let out = conn
-        .run(&format!("tar -xzOf {} {}", quote(&archive), quote(&format!("./{inside}"))))
-        .await?;
+    let out = conn.run(&format!("tar -xzOf {} {}", quote(&archive), quote(&format!("./{inside}")))).await?;
     if out.code != 0 {
         return Err("That file isn't in the backup.".into());
     }
@@ -2240,15 +1788,18 @@ pub async fn backup_entry_text(app: &AppHandle, host_id: &str, folder: &str, fil
 }
 
 /// Puts back only the picked paths from a backup; the current versions go into a backup first.
-pub async fn restore_backup_paths(app: &AppHandle, host_id: &str, folder: &str, file_name: &str, picks: &[String]) -> Result<String, String> {
+pub async fn restore_backup_paths(
+    app: &AppHandle,
+    host_id: &str,
+    folder: &str,
+    file_name: &str,
+    picks: &[String],
+) -> Result<String, String> {
     let archive = backup_archive(folder, file_name)?;
     let folder = folder.trim_end_matches('/');
     let vault = backup_vault(folder);
     let conn = connect(app, host_id).await?;
-    conn.run(&format!("test -f {}", quote(&archive)))
-        .await?
-        .ok()
-        .map_err(|_| "That backup was not found.".to_string())?;
+    conn.run(&format!("test -f {}", quote(&archive))).await?.ok().map_err(|_| "That backup was not found.".to_string())?;
     let name = format!("{}-before-partial-restore.tar.gz", unix_secs());
     let list = picks.iter().map(|one| quote(&format!("./{one}"))).collect::<Vec<_>>().join(" ");
     conn.run_long(&format!(
@@ -2280,47 +1831,28 @@ pub async fn download_to(
     let conn = connect(app, host_id).await?;
     let sftp = conn.sftp().await?;
     let whole = sftp.metadata(&at).await.ok().and_then(|one| one.size).unwrap_or(0);
-    let mut from = sftp
-        .open(&at)
-        .await
-        .map_err(|error| format!("Cannot open {at}: {error}"))?;
+    let mut from = sftp.open(&at).await.map_err(|error| format!("Cannot open {at}: {error}"))?;
     let temp = to.with_extension("monolab-part");
-    let mut out = tokio::fs::File::create(&temp)
-        .await
-        .map_err(|error| format!("Could not create the save location: {error}"))?;
+    let mut out = tokio::fs::File::create(&temp).await.map_err(|error| format!("Could not create the save location: {error}"))?;
     let mut buffer = vec![0_u8; 64 * 1024];
     let mut total = 0_u64;
     loop {
-        let read = from
-            .read(&mut buffer)
-            .await
-            .map_err(|error| format!("Could not read {at}: {error}"))?;
+        let read = from.read(&mut buffer).await.map_err(|error| format!("Could not read {at}: {error}"))?;
         if read == 0 {
             break;
         }
-        out.write_all(&buffer[..read])
-            .await
-            .map_err(|error| format!("Could not save the file: {error}"))?;
+        out.write_all(&buffer[..read]).await.map_err(|error| format!("Could not save the file: {error}"))?;
         total += read as u64;
         tick(total, whole);
     }
-    out.flush()
-        .await
-        .map_err(|error| format!("Could not save the file: {error}"))?;
+    out.flush().await.map_err(|error| format!("Could not save the file: {error}"))?;
     drop(out);
     let _ = tokio::fs::remove_file(to).await;
-    tokio::fs::rename(&temp, to)
-        .await
-        .map_err(|error| format!("Could not save the file: {error}"))?;
+    tokio::fs::rename(&temp, to).await.map_err(|error| format!("Could not save the file: {error}"))?;
     Ok(total)
 }
 
-pub async fn pack_for_download(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    relative: &str,
-) -> Result<String, String> {
+pub async fn pack_for_download(app: &AppHandle, host_id: &str, folder: &str, relative: &str) -> Result<String, String> {
     let at = inside(folder, relative)?;
     let name = relative.trim_end_matches('/').rsplit('/').next().unwrap_or("Folder");
     let kept = format!(".monolab-trash/{}-{name}.tar.gz", unix_secs());
@@ -2340,12 +1872,7 @@ pub async fn pack_for_download(
     Ok(kept)
 }
 
-pub async fn is_dir_checked(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    relative: &str,
-) -> Result<bool, String> {
+pub async fn is_dir_checked(app: &AppHandle, host_id: &str, folder: &str, relative: &str) -> Result<bool, String> {
     let at = inside(folder, relative)?;
     let conn = connect(app, host_id).await?;
     let sftp = conn.shared_sftp().await?;
@@ -2363,9 +1890,7 @@ pub async fn server_root(app: &AppHandle, host_id: &str) -> Result<String, Strin
         return Ok(root);
     }
     let conn = connect(app, host_id).await?;
-    let made = conn
-        .run("mkdir -p \"$HOME/monolab\" && printf %s \"$HOME/monolab\"")
-        .await?;
+    let made = conn.run("mkdir -p \"$HOME/monolab\" && printf %s \"$HOME/monolab\"").await?;
     let made = made.stdout.trim().to_string();
     if made.is_empty() || !made.starts_with('/') {
         return Err("Could not create the monolab folder on the SSH server. Pick the server folder yourself.".into());
@@ -2377,12 +1902,7 @@ pub async fn server_root(app: &AppHandle, host_id: &str) -> Result<String, Strin
 
 fn plain_folder(name: &str) -> Result<String, String> {
     let name = name.trim().trim_matches('/');
-    if name.is_empty()
-        || name.contains('/')
-        || name.contains('\\')
-        || name.starts_with('.')
-        || name == ".."
-    {
+    if name.is_empty() || name.contains('/') || name.contains('\\') || name.starts_with('.') || name == ".." {
         return Err("The folder name is invalid.".into());
     }
     Ok(name.to_string())
@@ -2403,10 +1923,7 @@ pub async fn unpack_zip(
     }
     let dest = format!("{parent}/{name}");
     let conn = connect(app, host_id).await?;
-    let taken = conn
-        .run(&format!("[ -e {} ] && echo YES", quote(&dest)))
-        .await?
-        .stdout;
+    let taken = conn.run(&format!("[ -e {} ] && echo YES", quote(&dest))).await?.stdout;
     if taken.contains("YES") {
         return Err(format!("Something already exists at {dest}. Choose another name."));
     }
@@ -2439,9 +1956,7 @@ pub async fn unpack_zip(
     let _ = conn.run(&format!("rm -f {}", quote(&temp))).await;
     if unpacked.stdout.contains("NOUNZIP") {
         let _ = conn.run(&format!("rmdir {} 2>/dev/null", quote(&dest))).await;
-        return Err(
-            "The server machine has no unzip tool. Install one with `sudo apt install unzip`.".into(),
-        );
+        return Err("The server machine has no unzip tool. Install one with `sudo apt install unzip`.".into());
     }
     if let Err(error) = unpacked.ok() {
         let _ = conn.run(&format!("rm -rf {}", quote(&dest))).await;
@@ -2460,14 +1975,7 @@ pub async fn drop_path(app: &AppHandle, host_id: &str, folder: &str, relative: &
     let _ = conn.run(&format!("rm -f {}", quote(&at))).await;
 }
 
-pub async fn swap_core(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    jar: &str,
-    bytes: &[u8],
-    stamp: u64,
-) -> Result<String, String> {
+pub async fn swap_core(app: &AppHandle, host_id: &str, folder: &str, jar: &str, bytes: &[u8], stamp: u64) -> Result<String, String> {
     let jar = jar.trim();
     if jar.is_empty() || jar.contains(['/', '\\']) {
         return Err("The server jar to replace was not found.".into());
@@ -2487,24 +1995,13 @@ pub async fn swap_core(
     .ok()
     .map_err(|_| "The server jar to replace was not found.".to_string())?;
     if let Err(error) = upload(app, host_id, folder, jar, bytes).await {
-        let _ = conn
-            .run(&format!("mv -f {} {}", quote(&previous), quote(&current)))
-            .await;
-        return Err(format!(
-            "Could not swap in the new jar, so the old one was restored: {error}"
-        ));
+        let _ = conn.run(&format!("mv -f {} {}", quote(&previous), quote(&current))).await;
+        return Err(format!("Could not swap in the new jar, so the old one was restored: {error}"));
     }
     Ok(previous)
 }
 
-pub async fn restore_core(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    jar: &str,
-    previous: &str,
-    stamp: u64,
-) -> Result<(), String> {
+pub async fn restore_core(app: &AppHandle, host_id: &str, folder: &str, jar: &str, previous: &str, stamp: u64) -> Result<(), String> {
     let jar = jar.trim();
     if jar.is_empty() || jar.contains(['/', '\\']) {
         return Err("The server jar file name is invalid.".into());
@@ -2519,10 +2016,7 @@ pub async fn restore_core(
     let current = format!("{folder}/{jar}");
     let kept = format!("{vault}/rollback-{stamp}-{jar}");
     let conn = connect(app, host_id).await?;
-    conn.run(&format!("test -f {}", quote(previous)))
-        .await?
-        .ok()
-        .map_err(|_| format!("The previous jar file ({tail}) wasn't found."))?;
+    conn.run(&format!("test -f {}", quote(previous))).await?.ok().map_err(|_| format!("The previous jar file ({tail}) wasn't found."))?;
     conn.run(&format!(
         "if [ -f {current} ]; then mv -f {current} {kept}; fi && mv -f {previous} {current}",
         current = quote(&current),
@@ -2572,12 +2066,7 @@ pub struct AddonFile {
     pub size: u64,
 }
 
-pub async fn addon_files(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    sub: &str,
-) -> Result<Vec<AddonFile>, String> {
+pub async fn addon_files(app: &AppHandle, host_id: &str, folder: &str, sub: &str) -> Result<Vec<AddonFile>, String> {
     let at = inside(folder, sub)?;
     let conn = connect(app, host_id).await?;
     let out = conn
@@ -2663,13 +2152,7 @@ pub async fn worlds(app: &AppHandle, host_id: &str, folder: &str) -> Vec<RemoteW
         .collect()
 }
 
-pub async fn upload(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    relative: &str,
-    bytes: &[u8],
-) -> Result<(), String> {
+pub async fn upload(app: &AppHandle, host_id: &str, folder: &str, relative: &str, bytes: &[u8]) -> Result<(), String> {
     upload_watched(app, host_id, folder, relative, bytes, &|_, _| {}).await
 }
 
@@ -2692,17 +2175,11 @@ pub async fn upload_watched(
         None => format!(".{at}.uploading"),
     };
     put_watched(&sftp, &temp, bytes, tick).await?;
-    conn.run(&format!("mv -f {} {}", quote(&temp), quote(&at)))
-        .await?
-        .ok()?;
+    conn.run(&format!("mv -f {} {}", quote(&temp), quote(&at))).await?.ok()?;
     Ok(())
 }
 
-fn walk_tree(
-    base: &std::path::Path,
-    here: &std::path::Path,
-    out: &mut Vec<(String, PathBuf)>,
-) -> Result<(), String> {
+fn walk_tree(base: &std::path::Path, here: &std::path::Path, out: &mut Vec<(String, PathBuf)>) -> Result<(), String> {
     for entry in std::fs::read_dir(here).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
         let path = entry.path();
@@ -2710,23 +2187,14 @@ fn walk_tree(
         if kind.is_dir() {
             walk_tree(base, &path, out)?;
         } else if kind.is_file() {
-            let relative = path
-                .strip_prefix(base)
-                .map_err(|error| error.to_string())?
-                .to_string_lossy()
-                .replace('\\', "/");
+            let relative = path.strip_prefix(base).map_err(|error| error.to_string())?.to_string_lossy().replace('\\', "/");
             out.push((relative, path));
         }
     }
     Ok(())
 }
 
-pub async fn upload_tree(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    local: &std::path::Path,
-) -> Result<usize, String> {
+pub async fn upload_tree(app: &AppHandle, host_id: &str, folder: &str, local: &std::path::Path) -> Result<usize, String> {
     let mut files = Vec::new();
     walk_tree(local, local, &mut files)?;
     let mut targets = Vec::with_capacity(files.len());
@@ -2777,10 +2245,7 @@ async fn upload_targets(
     let whole = targets.len();
     for (at, path) in targets.iter().enumerate() {
         let (to, from) = path;
-        let name = from
-            .file_name()
-            .map(|one| one.to_string_lossy().to_string())
-            .unwrap_or_default();
+        let name = from.file_name().map(|one| one.to_string_lossy().to_string()).unwrap_or_default();
         let bytes = std::fs::read(from).map_err(|error| error.to_string())?;
         put(&sftp, to, &bytes).await?;
         tick(at + 1, whole, &name);
@@ -2793,30 +2258,18 @@ pub async fn disk_free_mib(app: &AppHandle, host_id: &str, folder: &str) -> (u64
         return (0, 0);
     };
     let out = conn
-        .run(&format!(
-            "df -Pk {} 2>/dev/null | awk 'NR==2{{print $4, $2}}'",
-            quote(folder)
-        ))
+        .run(&format!("df -Pk {} 2>/dev/null | awk 'NR==2{{print $4, $2}}'", quote(folder)))
         .await
         .map(|one| one.stdout)
         .unwrap_or_default();
-    let bits: Vec<u64> = out
-        .split_whitespace()
-        .filter_map(|one| one.parse().ok())
-        .collect();
+    let bits: Vec<u64> = out.split_whitespace().filter_map(|one| one.parse().ok()).collect();
     if bits.len() < 2 {
         return (0, 0);
     }
     (bits[0] / 1024, bits[1] / 1024)
 }
 
-pub async fn zip_paths(
-    app: &AppHandle,
-    host_id: &str,
-    folder: &str,
-    paths: &[String],
-    name: &str,
-) -> Result<(), String> {
+pub async fn zip_paths(app: &AppHandle, host_id: &str, folder: &str, paths: &[String], name: &str) -> Result<(), String> {
     if paths.is_empty() {
         return Err("Select something to zip.".into());
     }
@@ -2899,11 +2352,8 @@ mod tests {
     #[test]
     #[ignore]
     fn runs_on_the_real_host() {
-        let data = std::path::PathBuf::from(std::env::var("APPDATA").unwrap())
-            .join("com.monolab.desktop");
-        let hosts: Vec<SshHost> =
-            serde_json::from_str(&std::fs::read_to_string(data.join("ssh-hosts.json")).unwrap())
-                .unwrap();
+        let data = std::path::PathBuf::from(std::env::var("APPDATA").unwrap()).join("com.monolab.desktop");
+        let hosts: Vec<SshHost> = serde_json::from_str(&std::fs::read_to_string(data.join("ssh-hosts.json")).unwrap()).unwrap();
         let secrets: HashMap<String, String> = crate::store::read_secret(&data.join("ssh-secrets.json")).ok().flatten().unwrap_or_default();
         let one = hosts.first().expect("no SSH server registered");
         let command = std::env::var("SE_SSH_RUN").unwrap_or_else(|_| "uname -a".into());
@@ -2918,11 +2368,8 @@ mod tests {
     #[test]
     #[ignore]
     fn opens_many_sftp_at_once() {
-        let data = std::path::PathBuf::from(std::env::var("APPDATA").unwrap())
-            .join("com.monolab.desktop");
-        let hosts: Vec<SshHost> =
-            serde_json::from_str(&std::fs::read_to_string(data.join("ssh-hosts.json")).unwrap())
-                .unwrap();
+        let data = std::path::PathBuf::from(std::env::var("APPDATA").unwrap()).join("com.monolab.desktop");
+        let hosts: Vec<SshHost> = serde_json::from_str(&std::fs::read_to_string(data.join("ssh-hosts.json")).unwrap()).unwrap();
         let secrets: HashMap<String, String> = crate::store::read_secret(&data.join("ssh-secrets.json")).ok().flatten().unwrap_or_default();
         let one = hosts.first().expect("no SSH server registered");
         tauri::async_runtime::block_on(async {
@@ -2955,11 +2402,8 @@ mod tests {
     #[test]
     #[ignore]
     fn pulls_real_map_tiles() {
-        let data = std::path::PathBuf::from(std::env::var("APPDATA").unwrap())
-            .join("com.monolab.desktop");
-        let hosts: Vec<SshHost> =
-            serde_json::from_str(&std::fs::read_to_string(data.join("ssh-hosts.json")).unwrap())
-                .unwrap();
+        let data = std::path::PathBuf::from(std::env::var("APPDATA").unwrap()).join("com.monolab.desktop");
+        let hosts: Vec<SshHost> = serde_json::from_str(&std::fs::read_to_string(data.join("ssh-hosts.json")).unwrap()).unwrap();
         let secrets: HashMap<String, String> = crate::store::read_secret(&data.join("ssh-secrets.json")).ok().flatten().unwrap_or_default();
         let one = hosts.first().expect("no SSH server registered");
         let src = std::env::var("SE_MAP_SRC").unwrap();
@@ -3161,19 +2605,11 @@ mod tests {
 
     #[test]
     fn nonzero_exit_becomes_an_error() {
-        let failed = Output {
-            code: 2,
-            stdout: String::new(),
-            stderr: "No such file or directory".into(),
-        };
+        let failed = Output { code: 2, stdout: String::new(), stderr: "No such file or directory".into() };
         let message = failed.ok().unwrap_err();
         assert!(message.contains("No such file"), "{message}");
         assert!(message.contains('2'), "{message}");
-        let quiet = Output {
-            code: 1,
-            stdout: "still says something".into(),
-            stderr: "   ".into(),
-        };
+        let quiet = Output { code: 1, stdout: "still says something".into(), stderr: "   ".into() };
         assert!(quiet.ok().unwrap_err().contains("still"));
     }
 
@@ -3219,10 +2655,7 @@ mod tests {
             version_in_log("[10:00:02 INFO]: This server is running Paper version 1.21.8-40-main (MC: 1.21.8)"),
             Some("1.21.8".into())
         );
-        assert_eq!(
-            version_in_log("[10:00:00 INFO]: Starting minecraft server version 1.21.8"),
-            Some("1.21.8".into())
-        );
+        assert_eq!(version_in_log("[10:00:00 INFO]: Starting minecraft server version 1.21.8"), Some("1.21.8".into()));
     }
 
     #[test]
@@ -3254,21 +2687,15 @@ mod tests {
     #[test]
     fn pulls_the_version_out_of_names_and_logs() {
         assert_eq!(version_in_name("paper-1.21.8-40.jar").as_deref(), Some("1.21.8"));
-        assert_eq!(
-            version_in_name("fabric-server-mc.1.21.4-loader.0.16.9.jar").as_deref(),
-            Some("1.21.4")
-        );
+        assert_eq!(version_in_name("fabric-server-mc.1.21.4-loader.0.16.9.jar").as_deref(), Some("1.21.4"));
         assert_eq!(version_in_name("server.jar"), None);
+        assert_eq!(version_in_log("[10:00:00 INFO]: Starting minecraft server version 1.21.8").as_deref(), Some("1.21.8"));
+        assert_eq!(version_in_log("[INFO] Starting Pumpkin 0.1.0-dev+26.2-26.45").as_deref(), Some("0.1.0-dev+26.2-26.45"));
         assert_eq!(
-            version_in_log("[10:00:00 INFO]: Starting minecraft server version 1.21.8").as_deref(),
-            Some("1.21.8")
-        );
-        assert_eq!(
-            version_in_log("[INFO] Starting Pumpkin 0.1.0-dev+26.2-26.45").as_deref(),
-            Some("0.1.0-dev+26.2-26.45")
-        );
-        assert_eq!(
-            version_in_log("23:39:57  INFO Starting Pumpkin 0.2.1+26.3-26.51 Java Minecraft (Protocol 777) | 1.26.51 Bedrock (Protocol 2193)").as_deref(),
+            version_in_log(
+                "23:39:57  INFO Starting Pumpkin 0.2.1+26.3-26.51 Java Minecraft (Protocol 777) | 1.26.51 Bedrock (Protocol 2193)"
+            )
+            .as_deref(),
             Some("0.2.1+26.3-26.51")
         );
         assert_eq!(version_in_log("just some line"), None);
@@ -3288,21 +2715,13 @@ mod tests {
     #[test]
     fn tells_minecraft_from_other_java() {
         assert!(looks_like_minecraft("java -Xmx4G -jar paper-1.21.8.jar nogui"));
-        assert!(looks_like_minecraft(
-            "/usr/bin/java @user_jvm_args.txt @libraries/net/neoforged/.../unix_args.txt"
-        ));
-        assert!(!looks_like_minecraft(
-            "java -Des.path.home=/usr/share/elasticsearch org.elasticsearch.bootstrap.Elasticsearch"
-        ));
+        assert!(looks_like_minecraft("/usr/bin/java @user_jvm_args.txt @libraries/net/neoforged/.../unix_args.txt"));
+        assert!(!looks_like_minecraft("java -Des.path.home=/usr/share/elasticsearch org.elasticsearch.bootstrap.Elasticsearch"));
     }
 
     #[test]
     fn zero_exit_hands_back_stdout() {
-        let fine = Output {
-            code: 0,
-            stdout: "ok\n".into(),
-            stderr: String::new(),
-        };
+        let fine = Output { code: 0, stdout: "ok\n".into(), stderr: String::new() };
         assert_eq!(fine.ok().unwrap(), "ok\n");
     }
 }

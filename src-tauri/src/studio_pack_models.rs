@@ -120,7 +120,8 @@ fn part_model(model: &Model, part: &Part, textures: &BTreeMap<usize, String>) ->
             let Some(texture) = textures.get(&face.texture) else { continue };
             used.insert(face.texture, texture.clone());
             let size = model.textures.get(face.texture).map_or((16.0, 16.0), |one| (one.uv_width, one.uv_height));
-            let uv = [face.uv[0] * 16.0 / size.0, face.uv[1] * 16.0 / size.1, face.uv[2] * 16.0 / size.0, face.uv[3] * 16.0 / size.1].map(round);
+            let uv =
+                [face.uv[0] * 16.0 / size.0, face.uv[1] * 16.0 / size.1, face.uv[2] * 16.0 / size.0, face.uv[3] * 16.0 / size.1].map(round);
             let mut out = json!({ "uv": uv, "texture": format!("#{}", face.texture) });
             if face.rotation != 0 {
                 out["rotation"] = json!(face.rotation);
@@ -180,10 +181,14 @@ fn rig(id: &str, data: &Data, model: &Model, parts: &[Part], problems: Vec<Strin
                 json!(frame(parts, &shrinks, &bbmodel::pose(model, Some((animation, time))), scale))
             })
             .collect();
-        animations.insert(animation.name.clone(), json!({ "loop": animation.looping.name(), "length": round(animation.length), "frames": frames }));
+        animations.insert(
+            animation.name.clone(),
+            json!({ "loop": animation.looping.name(), "length": round(animation.length), "frames": frames }),
+        );
     }
     let seat = rules::seat(data);
-    let seat = model.bones.iter().position(|one| one.name == seat).map(|at| rest_bones[at].translation.map(|one| round(one / 16.0 * scale)));
+    let seat =
+        model.bones.iter().position(|one| one.name == seat).map(|at| rest_bones[at].translation.map(|one| round(one / 16.0 * scale)));
     let list: Vec<Value> = parts
         .iter()
         .enumerate()
@@ -224,7 +229,8 @@ pub fn model_files(version: &str, models: &[(String, Data)], sources: &[Source])
             continue;
         }
         let asset = rules::asset(data);
-        let Some((_, _, source)) = sources.iter().find(|(folder, file, _)| folder == "models" && *file == format!("{asset}.bbmodel")) else {
+        let Some((_, _, source)) = sources.iter().find(|(folder, file, _)| folder == "models" && *file == format!("{asset}.bbmodel"))
+        else {
             if !asset.is_empty() {
                 problems.push(format!("There is no model asset called {asset}.bbmodel."));
             }
@@ -249,7 +255,8 @@ pub fn model_files(version: &str, models: &[(String, Data)], sources: &[Source])
             } else if sources.iter().any(|(folder, file, _)| folder == "textures" && *file == format!("{}.png", texture.name)) {
                 textures.insert(at, format!("{NAMESPACE}:studio/{}", texture.name));
             } else {
-                problems.push(format!("Texture \"{}\" isn't inside the model. Add it to the studio's textures with that name.", texture.name));
+                problems
+                    .push(format!("Texture \"{}\" isn't inside the model. Add it to the studio's textures with that name.", texture.name));
             }
         }
         let parts = parts(&model);
@@ -259,7 +266,10 @@ pub fn model_files(version: &str, models: &[(String, Data)], sources: &[Source])
         let parts: Vec<Part> = parts.into_iter().take(bbmodel::MOST_BONES).collect();
         for (at, part) in parts.iter().enumerate() {
             output.files.push((format!("assets/{NAMESPACE}/models/model/{id}/p{at}.json"), bytes(&part_model(&model, part, &textures))));
-            output.files.push((format!("assets/{NAMESPACE}/items/model/{id}/p{at}.json"), bytes(&json!({ "model": { "type": "minecraft:model", "model": format!("{NAMESPACE}:model/{id}/p{at}") } }))));
+            output.files.push((
+                format!("assets/{NAMESPACE}/items/model/{id}/p{at}.json"),
+                bytes(&json!({ "model": { "type": "minecraft:model", "model": format!("{NAMESPACE}:model/{id}/p{at}") } })),
+            ));
         }
         let rig = rig(id, data, &model, &parts, problems);
         output.rigs.push((id.clone(), serde_json::to_vec(&rig).unwrap_or_default()));
@@ -305,12 +315,19 @@ mod tests {
     }
 
     fn find<'a>(files: &'a [(String, Vec<u8>)], path: &str) -> &'a [u8] {
-        &files.iter().find(|(one, _)| one == path).unwrap_or_else(|| panic!("no {path} in {:?}", files.iter().map(|one| &one.0).collect::<Vec<_>>())).1
+        &files
+            .iter()
+            .find(|(one, _)| one == path)
+            .unwrap_or_else(|| panic!("no {path} in {:?}", files.iter().map(|one| &one.0).collect::<Vec<_>>()))
+            .1
     }
 
     #[test]
     fn builds_parts_and_rig() {
-        let sources = vec![("models".to_string(), "pet.bbmodel".to_string(), bbmodel().into_bytes()), ("textures".to_string(), "fur.png".to_string(), vec![])];
+        let sources = vec![
+            ("models".to_string(), "pet.bbmodel".to_string(), bbmodel().into_bytes()),
+            ("textures".to_string(), "fur.png".to_string(), vec![]),
+        ];
         let models = data(json!({ "model": "pet", "scale": 2, "seat": "saddle", "animations": { "idle": "wag" } }));
         let out = model_files("1.21.4", &models, &sources);
         // body (with the 22.5° cube inside), its odd cube on its own, the tail: 3 parts.
@@ -359,7 +376,8 @@ mod tests {
         let rig: Value = serde_json::from_slice(&old.rigs[0].1).unwrap();
         assert!(rig["problems"][0].as_str().unwrap().contains("1.21.4"));
         assert!(old.files.is_empty());
-        let sources = vec![("models".to_string(), "missing.bbmodel".to_string(), b"{\"elements\":[],\"textures\":[{\"name\":\"gone\"}]}".to_vec())];
+        let sources =
+            vec![("models".to_string(), "missing.bbmodel".to_string(), b"{\"elements\":[],\"textures\":[{\"name\":\"gone\"}]}".to_vec())];
         let out = model_files("1.21.4", &models, &sources);
         let rig: Value = serde_json::from_slice(&out.rigs[0].1).unwrap();
         let text = rig["problems"].to_string();

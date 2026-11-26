@@ -70,7 +70,11 @@ pub fn read_config(properties: &str) -> Config {
 impl Config {
     /// Monolab can connect: on, a fixed port, a secret, no TLS, and only on this computer.
     pub fn ready(&self) -> bool {
-        self.enabled && !self.tls && self.port > 0 && !self.secret.is_empty() && matches!(self.host.as_str(), "" | "localhost" | "127.0.0.1")
+        self.enabled
+            && !self.tls
+            && self.port > 0
+            && !self.secret.is_empty()
+            && matches!(self.host.as_str(), "" | "localhost" | "127.0.0.1")
     }
 }
 
@@ -119,7 +123,11 @@ pub fn check_setting(kind: &str, value: &Value) -> Result<(), String> {
         "game_mode" => value.as_str().is_some_and(|one| GAME_MODES.contains(&one)),
         _ => false,
     };
-    if fine { Ok(()) } else { Err("That value doesn't fit this setting.".into()) }
+    if fine {
+        Ok(())
+    } else {
+        Err("That value doesn't fit this setting.".into())
+    }
 }
 
 /// Before API 2.0.0 game rule values were sent as text.
@@ -170,11 +178,13 @@ pub fn rules_from(result: &Value) -> Vec<MsmpRule> {
                 Value::String(text) => text.parse::<i64>().map(|number| json!(number)).unwrap_or(value),
                 _ => value,
             };
-            let kind = one
-                .get("type")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .unwrap_or_else(|| if value.is_boolean() { "boolean".into() } else { "integer".into() });
+            let kind = one.get("type").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| {
+                if value.is_boolean() {
+                    "boolean".into()
+                } else {
+                    "integer".into()
+                }
+            });
             Some(MsmpRule { key, kind, value: value.to_string() })
         })
         .collect();
@@ -187,12 +197,11 @@ pub async fn call_many(at: &Link, secret: &str, calls: &[(String, Value)]) -> Re
     let port = match at {
         Link::Local(port) | Link::Ssh(_, port) => *port,
     };
-    let mut request = format!("ws://127.0.0.1:{port}")
-        .into_client_request()
-        .map_err(|error| error.to_string())?;
-    request
-        .headers_mut()
-        .insert("Authorization", format!("Bearer {secret}").parse().map_err(|_| "The management secret has characters that can't be sent.".to_string())?);
+    let mut request = format!("ws://127.0.0.1:{port}").into_client_request().map_err(|error| error.to_string())?;
+    request.headers_mut().insert(
+        "Authorization",
+        format!("Bearer {secret}").parse().map_err(|_| "The management secret has characters that can't be sent.".to_string())?,
+    );
     match at {
         Link::Local(_) => {
             let stream = tokio::time::timeout(TIMEOUT, tokio::net::TcpStream::connect(("127.0.0.1", port)))
@@ -211,7 +220,11 @@ pub async fn call_many(at: &Link, secret: &str, calls: &[(String, Value)]) -> Re
 }
 
 /// The WebSocket conversation itself, over any connection to the management server.
-async fn talk<S>(stream: S, request: tokio_tungstenite::tungstenite::handshake::client::Request, calls: &[(String, Value)]) -> Result<Vec<Result<Value, String>>, String>
+async fn talk<S>(
+    stream: S,
+    request: tokio_tungstenite::tungstenite::handshake::client::Request,
+    calls: &[(String, Value)],
+) -> Result<Vec<Result<Value, String>>, String>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
@@ -235,9 +248,7 @@ where
     let mut answers: Vec<Option<Result<Value, String>>> = vec![None; calls.len()];
     let deadline = tokio::time::Instant::now() + TIMEOUT;
     while answers.iter().any(Option::is_none) {
-        let next = tokio::time::timeout_at(deadline, socket.next())
-            .await
-            .map_err(|_| "The server took too long to answer.".to_string())?;
+        let next = tokio::time::timeout_at(deadline, socket.next()).await.map_err(|_| "The server took too long to answer.".to_string())?;
         let Some(frame) = next else { break };
         let Ok(Message::Text(text)) = frame.map_err(|error| error.to_string()) else { continue };
         let Ok(value) = serde_json::from_str::<Value>(text.as_str()) else { continue };
@@ -268,7 +279,9 @@ pub async fn settings(at: &Link, secret: &str) -> Result<Vec<MsmpSetting>, Strin
     Ok(SETTINGS
         .iter()
         .zip(answers)
-        .filter_map(|((key, _, kind), answer)| answer.ok().map(|value| MsmpSetting { key: key.to_string(), kind: kind.to_string(), value: value.to_string() }))
+        .filter_map(|((key, _, kind), answer)| {
+            answer.ok().map(|value| MsmpSetting { key: key.to_string(), kind: kind.to_string(), value: value.to_string() })
+        })
         .collect())
 }
 

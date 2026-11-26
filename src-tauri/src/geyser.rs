@@ -15,7 +15,11 @@ pub const VIAVERSION_MODRINTH: &str = "viaversion";
 pub const OLDEST: &str = "1.12.2";
 
 fn numbers(version: &str) -> Vec<u32> {
-    version.split(|letter: char| !letter.is_ascii_digit()).filter(|piece| !piece.is_empty()).map(|piece| piece.parse().unwrap_or(0)).collect()
+    version
+        .split(|letter: char| !letter.is_ascii_digit())
+        .filter(|piece| !piece.is_empty())
+        .map(|piece| piece.parse().unwrap_or(0))
+        .collect()
 }
 
 /// Whether `version` is older than `than` ("1.20.4" < "1.21" < "26.3").
@@ -49,7 +53,11 @@ pub fn pick(project: &str, build: &Value, platform: &str) -> Result<(String, Str
     let version = build.get("version").and_then(Value::as_str).ok_or("GeyserMC's answer has no version.")?;
     let number = build.get("build").and_then(Value::as_u64).ok_or("GeyserMC's answer has no build number.")?;
     let file = build.pointer(&format!("/downloads/{platform}")).ok_or(format!("GeyserMC has no {project} build for {platform}."))?;
-    let name = file.get("name").and_then(Value::as_str).filter(|name| name.ends_with(".jar") && !name.contains(['/', '\\'])).ok_or("GeyserMC's file name is malformed.")?;
+    let name = file
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|name| name.ends_with(".jar") && !name.contains(['/', '\\']))
+        .ok_or("GeyserMC's file name is malformed.")?;
     let sha256 = file.get("sha256").and_then(Value::as_str).filter(|hash| hash.len() == 64).ok_or("GeyserMC's file has no SHA-256.")?;
     Ok((format!("{API}/{project}/versions/{version}/builds/{number}/downloads/{platform}"), name.to_string(), sha256.to_string()))
 }
@@ -61,7 +69,8 @@ mod tests {
 
     #[test]
     fn picks_the_platform_file() {
-        let build = json!({"version": "2.12.1", "build": 1306, "downloads": {"spigot": {"name": "Geyser-Spigot.jar", "sha256": "a".repeat(64)}}});
+        let build =
+            json!({"version": "2.12.1", "build": 1306, "downloads": {"spigot": {"name": "Geyser-Spigot.jar", "sha256": "a".repeat(64)}}});
         let (url, name, sha) = pick("geyser", &build, "spigot").unwrap();
         assert_eq!(url, "https://download.geysermc.org/v2/projects/geyser/versions/2.12.1/builds/1306/downloads/spigot");
         assert_eq!(name, "Geyser-Spigot.jar");

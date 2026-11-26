@@ -82,6 +82,23 @@ jobs:
             test-results/
           if-no-files-found: ignore
 
+  # One rustfmt style for every crate (rustfmt.toml at the root). Fix with `cargo fmt` in the crate's folder.
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+          components: rustfmt
+      - name: cargo fmt --check
+        run: |
+          for crate in src-tauri relay node crates/nbt crates/relay-proto crates/studio-format addon/pumpkin; do
+            echo "== $crate"
+            (cd "$crate" && cargo fmt --check)
+          done
+
   rust:
     name: ${{ matrix.crate }}
     runs-on: ubuntu-latest

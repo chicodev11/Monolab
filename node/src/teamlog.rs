@@ -41,7 +41,9 @@ pub fn redact(value: &Value) -> Value {
         Value::Object(map) => Value::Object(
             map.iter()
                 .map(|(name, one)| {
-                    let hidden = SECRET.iter().any(|secret| name.eq_ignore_ascii_case(secret) || name.to_ascii_lowercase().ends_with(&secret.to_ascii_lowercase()));
+                    let hidden = SECRET.iter().any(|secret| {
+                        name.eq_ignore_ascii_case(secret) || name.to_ascii_lowercase().ends_with(&secret.to_ascii_lowercase())
+                    });
                     (name.clone(), if hidden && !one.is_null() { Value::String("(hidden)".into()) } else { redact(one) })
                 })
                 .collect(),
@@ -139,7 +141,9 @@ mod tests {
 
     #[test]
     fn secrets_and_long_text_are_left_out() {
-        let kept = redact(&json!({ "id": "s1", "password": "hunter2", "dbPassword": "x", "apiKey": "k", "rule": "keepInventory", "text": "a".repeat(1000) }));
+        let kept = redact(
+            &json!({ "id": "s1", "password": "hunter2", "dbPassword": "x", "apiKey": "k", "rule": "keepInventory", "text": "a".repeat(1000) }),
+        );
         assert_eq!(kept["id"], "s1");
         assert_eq!(kept["password"], "(hidden)");
         assert_eq!(kept["dbPassword"], "(hidden)");
@@ -152,7 +156,14 @@ mod tests {
     fn one_line_per_request_in_the_app_shape() {
         let data = crate::files::tests::sandbox("teamlog");
         let log = TeamLog::new(&data);
-        log.record("@bob", "team · viewer", "DEV", "save_editable_file", &json!({ "id": "s", "path": "a.yml", "content": "x" }), &Err("no".into()));
+        log.record(
+            "@bob",
+            "team · viewer",
+            "DEV",
+            "save_editable_file",
+            &json!({ "id": "s", "path": "a.yml", "content": "x" }),
+            &Err("no".into()),
+        );
         log.record("@bob", "team · viewer", "DEV", "list_instances", &json!({}), &Ok(json!([])));
         let file = fs::read_dir(data.join("team-log")).unwrap().next().unwrap().unwrap().path();
         use std::os::unix::fs::PermissionsExt;

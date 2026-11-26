@@ -33,7 +33,11 @@ impl Row {
 #[derive(Clone, Debug)]
 enum Op {
     /// The value at `path` changes from `before` to `after`.
-    Set { path: Path, before: Tag, after: Tag },
+    Set {
+        path: Path,
+        before: Tag,
+        after: Tag,
+    },
     /// A child appears in the container at `parent`, at `at`, named `step`.
     Add {
         parent: Path,
@@ -58,42 +62,10 @@ enum Op {
 impl Op {
     fn inverse(&self) -> Op {
         match self.clone() {
-            Op::Set {
-                path,
-                before,
-                after,
-            } => Op::Set {
-                path,
-                before: after,
-                after: before,
-            },
-            Op::Add {
-                parent,
-                step,
-                at,
-                tag,
-            } => Op::Remove {
-                parent,
-                step,
-                at,
-                tag,
-            },
-            Op::Remove {
-                parent,
-                step,
-                at,
-                tag,
-            } => Op::Add {
-                parent,
-                step,
-                at,
-                tag,
-            },
-            Op::Rename { parent, from, to } => Op::Rename {
-                parent,
-                from: to,
-                to: from,
-            },
+            Op::Set { path, before, after } => Op::Set { path, before: after, after: before },
+            Op::Add { parent, step, at, tag } => Op::Remove { parent, step, at, tag },
+            Op::Remove { parent, step, at, tag } => Op::Add { parent, step, at, tag },
+            Op::Rename { parent, from, to } => Op::Rename { parent, from: to, to: from },
         }
     }
 }
@@ -127,26 +99,14 @@ pub fn preview(tag: &Tag) -> String {
             if list.items.is_empty() {
                 "empty".into()
             } else {
-                format!(
-                    "{} · {}",
-                    count(list.items.len(), "item", "items"),
-                    list.kind.name()
-                )
+                format!("{} · {}", count(list.items.len(), "item", "items"), list.kind.name())
             }
         }
         Tag::ByteArray(_) | Tag::IntArray(_) | Tag::LongArray(_) => {
             let text = snbt::to_snbt(tag, false);
             if text.len() > 96 {
-                let cut = text
-                    .char_indices()
-                    .nth(90)
-                    .map(|(i, _)| i)
-                    .unwrap_or(text.len());
-                format!(
-                    "{}… ({})",
-                    &text[..cut],
-                    count(tag.len(), "value", "values")
-                )
+                let cut = text.char_indices().nth(90).map(|(i, _)| i).unwrap_or(text.len());
+                format!("{}… ({})", &text[..cut], count(tag.len(), "value", "values"))
             } else {
                 text
             }
@@ -196,11 +156,7 @@ impl Editor {
 
     /// The document as it should be written back.
     pub fn file(&self) -> NbtFile {
-        NbtFile {
-            name: self.name.clone(),
-            root: self.root().clone(),
-            compression: self.compression,
-        }
+        NbtFile { name: self.name.clone(), root: self.root().clone(), compression: self.compression }
     }
 
     pub fn dirty(&self) -> bool {
@@ -275,14 +231,7 @@ impl Editor {
         out
     }
 
-    fn walk(
-        &self,
-        tag: &Tag,
-        path: &mut Path,
-        step: Option<&Step>,
-        depth: usize,
-        out: &mut Vec<Row>,
-    ) {
+    fn walk(&self, tag: &Tag, path: &mut Path, step: Option<&Step>, depth: usize, out: &mut Vec<Row>) {
         let open = self.open.contains(path.as_slice());
         out.push(Row {
             path: path.clone(),
@@ -324,12 +273,7 @@ impl Editor {
             Op::Set { path, after, .. } => {
                 *self.root.at_mut(path).ok_or_else(gone)? = after.clone();
             }
-            Op::Add {
-                parent,
-                step,
-                at,
-                tag,
-            } => match (self.root.at_mut(parent).ok_or_else(gone)?, step) {
+            Op::Add { parent, step, at, tag } => match (self.root.at_mut(parent).ok_or_else(gone)?, step) {
                 (Tag::Compound(map), Step::Key(key)) => {
                     if map.contains(key) {
                         return Err(format!("\"{key}\" already exists here."));
@@ -339,26 +283,20 @@ impl Editor {
                 (Tag::List(list), Step::Index(_)) => list.insert(*at, tag.clone())?,
                 _ => return Err("Values can only be added to a compound or a list.".into()),
             },
-            Op::Remove { parent, step, .. } => {
-                match (self.root.at_mut(parent).ok_or_else(gone)?, step) {
-                    (Tag::Compound(map), Step::Key(key)) => {
-                        map.remove(key).ok_or_else(gone)?;
-                    }
-                    (Tag::List(list), Step::Index(at)) => {
-                        if *at >= list.items.len() {
-                            return Err(gone());
-                        }
-                        list.items.remove(*at);
-                    }
-                    _ => return Err(gone()),
+            Op::Remove { parent, step, .. } => match (self.root.at_mut(parent).ok_or_else(gone)?, step) {
+                (Tag::Compound(map), Step::Key(key)) => {
+                    map.remove(key).ok_or_else(gone)?;
                 }
-            }
+                (Tag::List(list), Step::Index(at)) => {
+                    if *at >= list.items.len() {
+                        return Err(gone());
+                    }
+                    list.items.remove(*at);
+                }
+                _ => return Err(gone()),
+            },
             Op::Rename { parent, from, to } => {
-                let map = self
-                    .root
-                    .at_mut(parent)
-                    .and_then(Tag::as_compound_mut)
-                    .ok_or_else(gone)?;
+                let map = self.root.at_mut(parent).and_then(Tag::as_compound_mut).ok_or_else(gone)?;
                 map.rename(from, to)?;
             }
         }
@@ -389,35 +327,21 @@ impl Editor {
                     other => other.clone(),
                 })
             }),
-            Op::Add {
-                parent,
-                step: Step::Index(_),
-                at,
-                ..
-            } => shift(&self.open, parent, &|step| {
+            Op::Add { parent, step: Step::Index(_), at, .. } => shift(&self.open, parent, &|step| {
                 Some(match step {
                     Step::Index(i) if i >= at => Step::Index(i + 1),
                     other => other.clone(),
                 })
             }),
-            Op::Remove { parent, step, .. } => {
-                shift(&self.open, parent, &|one| match (one, step) {
-                    (Step::Index(i), Step::Index(at)) if i == at => None,
-                    (Step::Index(i), Step::Index(at)) if i > at => Some(Step::Index(i - 1)),
-                    (Step::Key(a), Step::Key(b)) if a == b => None,
-                    (other, _) => Some(other.clone()),
-                })
+            Op::Remove { parent, step, .. } => shift(&self.open, parent, &|one| match (one, step) {
+                (Step::Index(i), Step::Index(at)) if i == at => None,
+                (Step::Index(i), Step::Index(at)) if i > at => Some(Step::Index(i - 1)),
+                (Step::Key(a), Step::Key(b)) if a == b => None,
+                (other, _) => Some(other.clone()),
+            }),
+            Op::Set { path, before, after } if before.kind() != after.kind() => {
+                self.open.iter().filter(|one| !(one.len() > path.len() && one.starts_with(path))).cloned().collect()
             }
-            Op::Set {
-                path,
-                before,
-                after,
-            } if before.kind() != after.kind() => self
-                .open
-                .iter()
-                .filter(|one| !(one.len() > path.len() && one.starts_with(path)))
-                .cloned()
-                .collect(),
             _ => return,
         };
     }
@@ -452,10 +376,7 @@ impl Editor {
 
     /// Replaces a value with what the user typed, read as the same type.
     pub fn set_text(&mut self, path: &[Step], text: &str) -> Result<(), String> {
-        let before = self
-            .get(path)
-            .ok_or("That value no longer exists.")?
-            .clone();
+        let before = self.get(path).ok_or("That value no longer exists.")?.clone();
         let after = snbt::parse_as(before.kind(), text)?;
         self.set(path, after)
     }
@@ -464,30 +385,18 @@ impl Editor {
         if path.is_empty() && after.kind() != Kind::Compound {
             return Err("The root must stay a compound.".into());
         }
-        let before = self
-            .get(path)
-            .ok_or("That value no longer exists.")?
-            .clone();
+        let before = self.get(path).ok_or("That value no longer exists.")?.clone();
         if before == after {
             return Ok(());
         }
-        if let (Some((Step::Index(_), parent)), true) =
-            (path.split_last(), before.kind() != after.kind())
-        {
+        if let (Some((Step::Index(_), parent)), true) = (path.split_last(), before.kind() != after.kind()) {
             if let Some(Tag::List(list)) = self.get(parent) {
                 if list.items.len() > 1 {
-                    return Err(format!(
-                        "Every item in this list must be a {}.",
-                        list.kind.name()
-                    ));
+                    return Err(format!("Every item in this list must be a {}.", list.kind.name()));
                 }
             }
         }
-        self.run(Op::Set {
-            path: path.to_vec(),
-            before,
-            after,
-        })
+        self.run(Op::Set { path: path.to_vec(), before, after })
     }
 
     pub fn rename(&mut self, path: &[Step], to: &str) -> Result<(), String> {
@@ -497,39 +406,23 @@ impl Editor {
         if from == to {
             return Ok(());
         }
-        if self
-            .get(parent)
-            .and_then(Tag::as_compound)
-            .is_some_and(|map| map.contains(to))
-        {
+        if self.get(parent).and_then(Tag::as_compound).is_some_and(|map| map.contains(to)) {
             return Err(format!("\"{to}\" already exists here."));
         }
-        self.run(Op::Rename {
-            parent: parent.to_vec(),
-            from: from.clone(),
-            to: to.to_string(),
-        })
+        self.run(Op::Rename { parent: parent.to_vec(), from: from.clone(), to: to.to_string() })
     }
 
     pub fn remove(&mut self, path: &[Step]) -> Result<(), String> {
         let Some((step, parent)) = path.split_last() else {
             return Err("The root cannot be removed.".into());
         };
-        let tag = self
-            .get(path)
-            .ok_or("That value no longer exists.")?
-            .clone();
+        let tag = self.get(path).ok_or("That value no longer exists.")?.clone();
         let at = match (self.get(parent), step) {
             (Some(Tag::Compound(map)), Step::Key(key)) => map.position(key).unwrap_or(0),
             (_, Step::Index(at)) => *at,
             _ => 0,
         };
-        self.run(Op::Remove {
-            parent: parent.to_vec(),
-            step: step.clone(),
-            at,
-            tag,
-        })
+        self.run(Op::Remove { parent: parent.to_vec(), step: step.clone(), at, tag })
     }
 
     /// Adds `tag` inside the container at `parent` (or after `parent` when it
@@ -541,18 +434,14 @@ impl Editor {
         } else {
             let (last, parent) = target.split_last().ok_or("Nothing to add to.")?;
             let at = match (self.get(parent), last) {
-                (Some(Tag::Compound(map)), Step::Key(key)) => {
-                    map.position(key).map_or(usize::MAX, |at| at + 1)
-                }
+                (Some(Tag::Compound(map)), Step::Key(key)) => map.position(key).map_or(usize::MAX, |at| at + 1),
                 (_, Step::Index(at)) => at + 1,
                 _ => usize::MAX,
             };
             (parent.to_vec(), at)
         };
         let step = match self.get(&parent) {
-            Some(Tag::Compound(map)) => {
-                Step::Key(map.free_key(if name.is_empty() { "new" } else { name }))
-            }
+            Some(Tag::Compound(map)) => Step::Key(map.free_key(if name.is_empty() { "new" } else { name })),
             Some(Tag::List(list)) => {
                 if !list.accepts(&tag) {
                     return Err(format!("This list holds {} values.", list.kind.name()));
@@ -565,12 +454,7 @@ impl Editor {
             Step::Index(i) => *i,
             Step::Key(_) => at,
         };
-        self.run(Op::Add {
-            parent: parent.clone(),
-            step: step.clone(),
-            at,
-            tag,
-        })?;
+        self.run(Op::Add { parent: parent.clone(), step: step.clone(), at, tag })?;
         self.open.insert(parent.clone());
         let mut path = parent;
         path.push(step);
@@ -599,19 +483,11 @@ fn child_steps(tag: &Tag) -> Vec<Step> {
 }
 
 /// Pushes rows for every match under `tag`; returns whether anything matched.
-fn search_walk(
-    tag: &Tag,
-    path: &mut Path,
-    step: Option<&Step>,
-    depth: usize,
-    needle: &str,
-    out: &mut Vec<Row>,
-) -> bool {
+fn search_walk(tag: &Tag, path: &mut Path, step: Option<&Step>, depth: usize, needle: &str, out: &mut Vec<Row>) -> bool {
     let name = label(step);
     let hit = !path.is_empty()
         && (name.to_lowercase().contains(needle)
-            || (!matches!(tag, Tag::Compound(_) | Tag::List(_))
-                && preview(tag).to_lowercase().contains(needle)));
+            || (!matches!(tag, Tag::Compound(_) | Tag::List(_)) && preview(tag).to_lowercase().contains(needle)));
     let mark = out.len();
     out.push(Row {
         path: path.clone(),

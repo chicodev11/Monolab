@@ -68,7 +68,11 @@ pub fn daily_due(data: &Data, minute: &str, day: &str) -> bool {
 
 pub fn problems(data: &Data) -> Vec<String> {
     let mut out = Vec::new();
-    if data.get("schedule").and_then(|one| one.as_str()).is_some_and(|given| !SCHEDULES.contains(&given.trim().to_ascii_lowercase().as_str())) {
+    if data
+        .get("schedule")
+        .and_then(|one| one.as_str())
+        .is_some_and(|given| !SCHEDULES.contains(&given.trim().to_ascii_lowercase().as_str()))
+    {
         out.push(format!("\"schedule\" must be one of: {}.", SCHEDULES.join(", ")));
     }
     if schedule(data) == "daily" {

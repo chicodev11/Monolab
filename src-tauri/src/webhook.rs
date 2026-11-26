@@ -45,16 +45,24 @@ fn load(app: &AppHandle) -> Saved {
 
 /// Only Discord's own webhook addresses, so the alerts can't be pointed anywhere else.
 pub fn valid_url(url: &str) -> bool {
-    let Some(rest) = ["https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/", "https://canary.discord.com/api/webhooks/", "https://ptb.discord.com/api/webhooks/"]
-        .iter()
-        .find_map(|start| url.strip_prefix(start))
-    else {
+    let Some(rest) = [
+        "https://discord.com/api/webhooks/",
+        "https://discordapp.com/api/webhooks/",
+        "https://canary.discord.com/api/webhooks/",
+        "https://ptb.discord.com/api/webhooks/",
+    ]
+    .iter()
+    .find_map(|start| url.strip_prefix(start)) else {
         return false;
     };
     let mut parts = rest.split('/');
     let id = parts.next().unwrap_or_default();
     let token = parts.next().unwrap_or_default();
-    !id.is_empty() && id.bytes().all(|one| one.is_ascii_digit()) && !token.is_empty() && token.bytes().all(|one| one.is_ascii_alphanumeric() || one == b'-' || one == b'_') && parts.next().is_none()
+    !id.is_empty()
+        && id.bytes().all(|one| one.is_ascii_digit())
+        && !token.is_empty()
+        && token.bytes().all(|one| one.is_ascii_alphanumeric() || one == b'-' || one == b'_')
+        && parts.next().is_none()
 }
 
 fn hint_of(url: &str) -> String {
@@ -72,7 +80,9 @@ pub fn save(app: &AppHandle, url: Option<String>, events: Vec<String>, servers: 
     if let Some(url) = url {
         let url = url.trim().to_string();
         if !url.is_empty() && !valid_url(&url) {
-            return Err("That isn't a Discord webhook address. In Discord: channel settings > Integrations > Webhooks > Copy Webhook URL.".into());
+            return Err(
+                "That isn't a Discord webhook address. In Discord: channel settings > Integrations > Webhooks > Copy Webhook URL.".into()
+            );
         }
         saved.url = url;
     }
@@ -111,7 +121,11 @@ fn clean(text: &str) -> String {
 }
 
 fn post(url: &str, body: &serde_json::Value) -> Result<(), String> {
-    let client = crate::net::builder().user_agent(crate::net::USER_AGENT).timeout(Duration::from_secs(10)).build().map_err(|error| error.to_string())?;
+    let client = crate::net::builder()
+        .user_agent(crate::net::USER_AGENT)
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|error| error.to_string())?;
     let answer = client.post(url).json(body).send().map_err(|error| format!("Could not reach Discord: {error}"))?;
     if answer.status().is_success() {
         Ok(())
@@ -135,7 +149,10 @@ pub fn test(app: &AppHandle) -> Result<(), String> {
 /// crash loop or a busy server can't flood the channel (Discord would block the webhook).
 pub fn send(app: &AppHandle, server_id: &str, server: &str, event: &str, message: &str) {
     let saved = load(app);
-    if saved.url.is_empty() || !saved.events.iter().any(|one| one == event) || (!saved.servers.is_empty() && !saved.servers.iter().any(|one| one == server_id)) {
+    if saved.url.is_empty()
+        || !saved.events.iter().any(|one| one == event)
+        || (!saved.servers.is_empty() && !saved.servers.iter().any(|one| one == server_id))
+    {
         return;
     }
     static SENT: Mutex<Vec<u64>> = Mutex::new(Vec::new());

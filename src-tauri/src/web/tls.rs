@@ -60,9 +60,7 @@ fn make(dir: &Path) -> Result<(), String> {
 
 fn fresh(dir: &Path) -> bool {
     let made: i64 = std::fs::read_to_string(dir.join("made.txt")).ok().and_then(|text| text.trim().parse().ok()).unwrap_or(0);
-    dir.join("cert.der").is_file()
-        && dir.join("key.der").is_file()
-        && now() - made < (LIFETIME_DAYS - RENEW_DAYS) * 86_400
+    dir.join("cert.der").is_file() && dir.join("key.der").is_file() && now() - made < (LIFETIME_DAYS - RENEW_DAYS) * 86_400
 }
 
 /// Makes the certificate if there is none or it runs out within a month. Called when HTTPS is turned on

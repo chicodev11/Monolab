@@ -1,112 +1,112 @@
 mod acp;
-mod data_root;
-mod tray;
 mod acp_binary;
+mod acp_chats;
 mod acp_host;
 mod addons;
-mod viewer;
-mod integrations;
-mod extensions;
-mod forks;
-mod gitlink;
-mod liveinv;
-mod markdown;
+mod app_crash;
+mod authorship;
 mod backups;
 mod catalog;
+mod cfpack;
+mod child_job;
+mod chunkstats;
+mod chunky;
+mod claude_accounts;
+mod claude_agent;
+mod claude_chat;
 mod client_content;
 mod client_launch;
 mod clients;
-mod cfpack;
-mod claude_chat;
-mod claude_accounts;
-mod claude_agent;
+mod cloud;
+mod codex_chat;
+mod cores;
+mod crash;
+mod curseforge;
+mod data_root;
+mod databases;
+mod db_tls;
+mod device;
+mod direct;
+mod discord;
+mod disk;
+mod doctor;
+mod editing;
+mod events;
+mod extensions;
+mod forks;
+mod geyser;
+mod gitlink;
+mod hashes;
+mod integrations;
+mod java;
+mod kinds;
+mod lag;
+mod lang;
+mod launch;
+mod liveinv;
+mod logbatch;
+mod logs;
+mod mapshare;
+mod markdown;
+mod market;
+mod mcp;
+mod memo;
+mod mojang;
+mod monolink_account;
+mod monolink_team;
+mod msmp;
+mod nbt;
+mod nbt_edit;
+mod net;
+mod panel;
+mod panel_live;
+mod paths;
+mod pending;
+mod pfs;
+mod ping;
+mod player_info;
+mod playit;
+mod progress;
+mod properties;
+mod proposals;
+mod proxy;
+mod pumpkin;
+mod rcon;
+mod remote;
+mod rewind;
+mod runlog;
+mod sftp;
+mod shell;
 mod skills;
+mod sniff;
+mod spark;
+mod store;
 mod studio;
 mod studio_bundle;
 mod studio_expansions;
 mod studio_held;
-mod studio_structure;
 mod studio_pack;
+mod studio_pack_blocks;
 mod studio_pack_fonts;
 mod studio_pack_items;
-mod studio_pack_blocks;
 mod studio_pack_models;
-mod msmp;
-mod progress;
-mod device;
-mod direct;
-mod acp_chats;
-mod teamlog;
-mod tidy;
-mod player_info;
-mod memo;
-mod databases;
-mod db_tls;
-mod child_job;
-mod market;
-mod codex_chat;
-mod cores;
-mod hashes;
-mod java;
-mod lag;
-mod lang;
-mod launch;
-mod logbatch;
-mod pending;
-mod panel;
-mod panel_live;
-mod pfs;
-mod sftp;
-mod shell;
-mod authorship;
-mod editing;
+mod studio_structure;
+mod tasks;
+mod team_agent;
 mod team_notice;
 mod team_storage;
-mod proposals;
+mod teamlog;
+mod textures;
+mod tidy;
+mod tray;
+mod trim;
+mod updates;
+mod viewer;
 mod vps_tunnel;
-mod paths;
-mod ping;
-mod events;
+mod web;
+mod webhook;
 mod worldmap;
 mod zips;
-mod logs;
-mod mcp;
-mod properties;
-mod proxy;
-mod pumpkin;
-mod chunky;
-mod kinds;
-mod mapshare;
-mod chunkstats;
-mod crash;
-mod app_crash;
-mod curseforge;
-mod discord;
-mod disk;
-mod doctor;
-mod mojang;
-mod nbt;
-mod nbt_edit;
-mod net;
-mod playit;
-mod rcon;
-mod runlog;
-mod monolink_account;
-mod monolink_team;
-mod team_agent;
-mod remote;
-mod rewind;
-mod sniff;
-mod store;
-mod spark;
-mod geyser;
-mod webhook;
-mod cloud;
-mod tasks;
-mod trim;
-mod textures;
-mod web;
-mod updates;
 
 use crate::data_root::MonolabDirs;
 use cores::download_server_jar;
@@ -142,9 +142,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 static INSTANCE_STORE: Mutex<()> = Mutex::new(());
 
 fn lock_instance_store() -> std::sync::MutexGuard<'static, ()> {
-    INSTANCE_STORE
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    INSTANCE_STORE.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn in_parallel<T, R, F>(items: Vec<T>, work: F) -> Vec<R>
@@ -153,10 +151,7 @@ where
     R: Send,
     F: Fn(T) -> R + Send + Sync,
 {
-    let lanes = std::thread::available_parallelism()
-        .map(|one| one.get())
-        .unwrap_or(4)
-        .clamp(1, 8);
+    let lanes = std::thread::available_parallelism().map(|one| one.get()).unwrap_or(4).clamp(1, 8);
     if lanes == 1 || items.len() < 2 {
         return items.into_iter().map(work).collect();
     }
@@ -169,15 +164,8 @@ where
         parts.push(rest.drain(..take).collect());
     }
     std::thread::scope(|scope| {
-        let handles: Vec<_> = parts
-            .into_iter()
-            .map(|part| scope.spawn(move || part.into_iter().map(work).collect::<Vec<R>>()))
-            .collect();
-        handles
-            .into_iter()
-            .filter_map(|handle| handle.join().ok())
-            .flatten()
-            .collect()
+        let handles: Vec<_> = parts.into_iter().map(|part| scope.spawn(move || part.into_iter().map(work).collect::<Vec<R>>())).collect();
+        handles.into_iter().filter_map(|handle| handle.join().ok()).flatten().collect()
     })
 }
 
@@ -186,18 +174,10 @@ where
     F: FnOnce() -> T + Send,
     T: Send,
 {
-    let run = || {
-        std::thread::scope(|scope| {
-            scope
-                .spawn(work)
-                .join()
-                .unwrap_or_else(|_| panic!("The network worker thread ended unexpectedly."))
-        })
-    };
+    let run =
+        || std::thread::scope(|scope| scope.spawn(work).join().unwrap_or_else(|_| panic!("The network worker thread ended unexpectedly.")));
     match tokio::runtime::Handle::try_current() {
-        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
-            tokio::task::block_in_place(run)
-        }
+        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => tokio::task::block_in_place(run),
         _ => run(),
     }
 }
@@ -226,9 +206,7 @@ pub(crate) fn hidden_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
 fn kill_process_tree(pid: u32) {
     #[cfg(windows)]
     {
-        let _ = hidden_command("taskkill")
-            .args(["/PID", &pid.to_string(), "/T", "/F"])
-            .status();
+        let _ = hidden_command("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"]).status();
     }
     #[cfg(not(windows))]
     {
@@ -450,12 +428,7 @@ pub(crate) struct DownloadSource {
 
 impl DownloadSource {
     pub fn unchecked(url: impl Into<String>) -> Self {
-        Self {
-            url: url.into(),
-            sha1: None,
-            sha256: None,
-            md5: None,
-        }
+        Self { url: url.into(), sha1: None, sha256: None, md5: None }
     }
 }
 
@@ -687,22 +660,14 @@ struct ResourceSample {
 }
 
 fn instances_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let data_dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?;
-    fs::create_dir_all(&data_dir)
-        .map_err(|error| format!("Could not create the app data folder: {error}"))?;
+    let data_dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?;
+    fs::create_dir_all(&data_dir).map_err(|error| format!("Could not create the app data folder: {error}"))?;
     Ok(data_dir.join("instances.json"))
 }
 
 fn trash_entries_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let data_dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?;
-    fs::create_dir_all(&data_dir)
-        .map_err(|error| format!("Could not create the app data folder: {error}"))?;
+    let data_dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?;
+    fs::create_dir_all(&data_dir).map_err(|error| format!("Could not create the app data folder: {error}"))?;
     Ok(data_dir.join("instance-trash.json"))
 }
 
@@ -711,11 +676,8 @@ fn load_trash_entries(app: &AppHandle) -> Result<Vec<TrashEntry>, String> {
 }
 
 fn save_trash_entries(app: &AppHandle, entries: &[TrashEntry]) -> Result<(), String> {
-    store::write(
-        &trash_entries_path(app)?,
-        &serde_json::to_string_pretty(entries).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| format!("Could not save the trash record: {error}"))
+    store::write(&trash_entries_path(app)?, &serde_json::to_string_pretty(entries).map_err(|error| error.to_string())?)
+        .map_err(|error| format!("Could not save the trash record: {error}"))
 }
 
 fn announce(app: &AppHandle, server_id: &str, kind: &str, message: &str) -> Result<(), String> {
@@ -739,32 +701,20 @@ fn announce(app: &AppHandle, server_id: &str, kind: &str, message: &str) -> Resu
 }
 
 fn automation_history_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let data_dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?;
-    fs::create_dir_all(&data_dir)
-        .map_err(|error| format!("Could not create the app data folder: {error}"))?;
+    let data_dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?;
+    fs::create_dir_all(&data_dir).map_err(|error| format!("Could not create the app data folder: {error}"))?;
     Ok(data_dir.join("automation-history.json"))
 }
 
 fn audit_log_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let data_dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?;
-    fs::create_dir_all(&data_dir)
-        .map_err(|error| format!("Could not create the app data folder: {error}"))?;
+    let data_dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?;
+    fs::create_dir_all(&data_dir).map_err(|error| format!("Could not create the app data folder: {error}"))?;
     Ok(data_dir.join("audit-log.json"))
 }
 
 fn upgrade_history_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let data_dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?;
-    fs::create_dir_all(&data_dir)
-        .map_err(|error| format!("Could not create the app data folder: {error}"))?;
+    let data_dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?;
+    fs::create_dir_all(&data_dir).map_err(|error| format!("Could not create the app data folder: {error}"))?;
     Ok(data_dir.join("upgrade-history.json"))
 }
 
@@ -792,10 +742,8 @@ fn record_automation(app: &AppHandle, server_id: &str, action: &str, detail: &st
     let Ok(path) = automation_history_path(app) else {
         return;
     };
-    let mut entries = fs::read_to_string(&path)
-        .ok()
-        .and_then(|text| serde_json::from_str::<Vec<AutomationHistoryEntry>>(&text).ok())
-        .unwrap_or_default();
+    let mut entries =
+        fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Vec<AutomationHistoryEntry>>(&text).ok()).unwrap_or_default();
     entries.push(AutomationHistoryEntry {
         server_id: server_id.into(),
         action: action.into(),
@@ -842,14 +790,9 @@ fn record_audit(app: &AppHandle, server_id: &str, category: &str, action: &str, 
     let Ok(path) = audit_log_path(app) else {
         return;
     };
-    let mut entries = fs::read_to_string(&path)
-        .ok()
-        .and_then(|text| serde_json::from_str::<Vec<AuditEntry>>(&text).ok())
-        .unwrap_or_default();
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
+    let mut entries =
+        fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Vec<AuditEntry>>(&text).ok()).unwrap_or_default();
+    let millis = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
     entries.push(AuditEntry {
         id: format!("audit-{millis}"),
         server_id: server_id.into(),
@@ -868,19 +811,12 @@ fn record_audit(app: &AppHandle, server_id: &str, category: &str, action: &str, 
 
 fn load_instances(app: &AppHandle) -> Result<Vec<ServerInstance>, String> {
     let path = instances_path(app)?;
-    let mut instances: Vec<ServerInstance> = store::read(&path)
-        .map_err(|error| format!("Could not read the server list: {error}"))?
-        .unwrap_or_default();
+    let mut instances: Vec<ServerInstance> =
+        store::read(&path).map_err(|error| format!("Could not read the server list: {error}"))?.unwrap_or_default();
     for instance in &mut instances {
-        instance.path = plain_path(PathBuf::from(&instance.path))
-            .to_string_lossy()
-            .to_string();
+        instance.path = plain_path(PathBuf::from(&instance.path)).to_string_lossy().to_string();
         if let Some(jar) = &instance.server_jar {
-            instance.server_jar = Some(
-                plain_path(PathBuf::from(jar))
-                    .to_string_lossy()
-                    .to_string(),
-            );
+            instance.server_jar = Some(plain_path(PathBuf::from(jar)).to_string_lossy().to_string());
         }
     }
     let homes = app_server_homes(app);
@@ -892,14 +828,8 @@ fn load_instances(app: &AppHandle) -> Result<Vec<ServerInstance>, String> {
 
 fn app_server_homes(app: &AppHandle) -> Vec<String> {
     let mut homes = Vec::new();
-    for root in [managed_servers_root(app).ok(), default_servers_root(app).ok()]
-        .into_iter()
-        .flatten()
-    {
-        for one in [Some(root.clone()), root.canonicalize().ok().map(plain_path)]
-            .into_iter()
-            .flatten()
-        {
+    for root in [managed_servers_root(app).ok(), default_servers_root(app).ok()].into_iter().flatten() {
+        for one in [Some(root.clone()), root.canonicalize().ok().map(plain_path)].into_iter().flatten() {
             let text = one.to_string_lossy().replace('\\', "/").to_lowercase();
             let text = text.trim_end_matches('/').to_string();
             if !text.is_empty() && !homes.contains(&text) {
@@ -912,9 +842,7 @@ fn app_server_homes(app: &AppHandle) -> Vec<String> {
 
 fn inside_any(path: &str, homes: &[String]) -> bool {
     let path = path.replace('\\', "/").to_lowercase();
-    homes
-        .iter()
-        .any(|home| path.strip_prefix(home.as_str()).is_some_and(|rest| rest.starts_with('/')))
+    homes.iter().any(|home| path.strip_prefix(home.as_str()).is_some_and(|rest| rest.starts_with('/')))
 }
 
 fn save_instances(app: &AppHandle, instances: &[ServerInstance]) -> Result<(), String> {
@@ -935,22 +863,12 @@ fn mark_last_run(app: &AppHandle, id: &str) {
 }
 
 fn unix_now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
 }
 
 fn peek_next_server_name(app: &AppHandle) -> String {
-    let taken: HashSet<String> = load_instances(app)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|instance| instance.name)
-        .collect();
-    (1_u32..)
-        .map(|number| format!("Server {number}"))
-        .find(|name| !taken.contains(name))
-        .unwrap_or_else(|| "New server".to_string())
+    let taken: HashSet<String> = load_instances(app).unwrap_or_default().into_iter().map(|instance| instance.name).collect();
+    (1_u32..).map(|number| format!("Server {number}")).find(|name| !taken.contains(name)).unwrap_or_else(|| "New server".to_string())
 }
 
 #[tauri::command(async)]
@@ -960,10 +878,7 @@ fn suggest_server_name(app: AppHandle) -> Result<String, String> {
 }
 
 fn instance_id() -> String {
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
+    let millis = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
     format!("instance-{millis}")
 }
 
@@ -988,17 +903,12 @@ fn normalized_existing_path(value: &str) -> Result<PathBuf, String> {
     if !path.is_dir() {
         return Err("Server folder not found. Check the path.".into());
     }
-    path.canonicalize().map(plain_path)
-        .map_err(|error| format!("Could not verify the server folder: {error}"))
+    path.canonicalize().map(plain_path).map_err(|error| format!("Could not verify the server folder: {error}"))
 }
 
 fn servers_root_setting_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let data_dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?;
-    fs::create_dir_all(&data_dir)
-        .map_err(|error| format!("Could not create the app data folder: {error}"))?;
+    let data_dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?;
+    fs::create_dir_all(&data_dir).map_err(|error| format!("Could not create the app data folder: {error}"))?;
     Ok(data_dir.join("servers-root.txt"))
 }
 
@@ -1010,11 +920,7 @@ fn default_servers_root(app: &AppHandle) -> Result<PathBuf, String> {
             return Ok(path);
         }
     }
-    let fallback = app
-        .path()
-        .monolab_data_dir()
-        .or_else(|_| app.path().document_dir())
-        .map_err(|error| error.to_string())?;
+    let fallback = app.path().monolab_data_dir().or_else(|_| app.path().document_dir()).map_err(|error| error.to_string())?;
     Ok(fallback.join("servers"))
 }
 
@@ -1029,8 +935,7 @@ fn managed_servers_root(app: &AppHandle) -> Result<PathBuf, String> {
         Some(path) => path,
         None => default_servers_root(app)?,
     };
-    fs::create_dir_all(&root)
-        .map_err(|error| format!("Could not create the default server folder: {error}"))?;
+    fs::create_dir_all(&root).map_err(|error| format!("Could not create the default server folder: {error}"))?;
     Ok(root)
 }
 
@@ -1143,12 +1048,8 @@ impl Default for AppSettings {
 }
 
 fn app_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let data_dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?;
-    fs::create_dir_all(&data_dir)
-        .map_err(|error| format!("Could not create the app data folder: {error}"))?;
+    let data_dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?;
+    fs::create_dir_all(&data_dir).map_err(|error| format!("Could not create the app data folder: {error}"))?;
     Ok(data_dir.join("settings.json"))
 }
 
@@ -1210,11 +1111,8 @@ fn set_app_settings(app: AppHandle, settings: AppSettings) -> Result<AppSettings
         web_bind: saved.web_bind,
         ..settings
     };
-    store::write(
-        &app_settings_path(&app)?,
-        &serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| format!("Could not save settings: {error}"))?;
+    store::write(&app_settings_path(&app)?, &serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?)
+        .map_err(|error| format!("Could not save settings: {error}"))?;
     if !settings.discord_presence {
         discord::set(None);
     }
@@ -1339,7 +1237,12 @@ fn monolink_uploads() -> &'static Mutex<HashMap<String, MonolinkUpload>> {
 
 /// Receives a file from a guest in order: begin (name and size) → parts → end, which gives the same
 /// token the web panel's upload gives, for the commands that take uploaded files.
-fn monolink_upload(app: &AppHandle, peer: &relay_proto::DeviceId, command: &str, body: &serde_json::Value) -> Result<serde_json::Value, String> {
+fn monolink_upload(
+    app: &AppHandle,
+    peer: &relay_proto::DeviceId,
+    command: &str,
+    body: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
     use base64::Engine;
     use std::io::Write;
     let text = |name: &str| body.get(name).and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
@@ -1376,7 +1279,9 @@ fn monolink_upload(app: &AppHandle, peer: &relay_proto::DeviceId, command: &str,
             if at != upload.written {
                 return Err("A piece of the file went missing. Try again.".into());
             }
-            let bytes = base64::engine::general_purpose::STANDARD.decode(text("data")).map_err(|_| "A piece of the file was damaged.".to_string())?;
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(text("data"))
+                .map_err(|_| "A piece of the file was damaged.".to_string())?;
             if bytes.len() > MONOLINK_UPLOAD_PART || upload.written + bytes.len() as u64 > upload.size {
                 return Err("The file is bigger than it said.".into());
             }
@@ -1600,12 +1505,8 @@ fn local_minutes_of_day() -> u32 {
 }
 
 fn tasks_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let data_dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?;
-    fs::create_dir_all(&data_dir)
-        .map_err(|error| format!("Could not create the app data folder: {error}"))?;
+    let data_dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?;
+    fs::create_dir_all(&data_dir).map_err(|error| format!("Could not create the app data folder: {error}"))?;
     Ok(data_dir.join("tasks.json"))
 }
 
@@ -1619,11 +1520,8 @@ fn read_tasks(app: &AppHandle) -> Vec<tasks::Task> {
 }
 
 fn write_tasks(app: &AppHandle, list: &[tasks::Task]) -> Result<(), String> {
-    store::write(
-        &tasks_path(app)?,
-        &serde_json::to_string_pretty(list).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| format!("Could not save the task: {error}"))
+    store::write(&tasks_path(app)?, &serde_json::to_string_pretty(list).map_err(|error| error.to_string())?)
+        .map_err(|error| format!("Could not save the task: {error}"))
 }
 
 #[tauri::command(async)]
@@ -1661,15 +1559,8 @@ fn delete_task(app: AppHandle, id: String) -> Result<Vec<tasks::Task>, String> {
 
 #[tauri::command(async)]
 #[specta::specta]
-fn run_task_now(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<String, String> {
-    let task = read_tasks(&app)
-        .into_iter()
-        .find(|item| item.id == id)
-        .ok_or("Task not found.")?;
+fn run_task_now(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<String, String> {
+    let task = read_tasks(&app).into_iter().find(|item| item.id == id).ok_or("Task not found.")?;
     let marks = tasks::warn_marks(&task);
     if !marks.is_empty() && matches!(task.kind.as_str(), "restart" | "stop") {
         let worker = app.clone();
@@ -1819,11 +1710,7 @@ fn backup_for_task(app: &AppHandle, state: &AppState, id: &str) -> Result<String
     cloud::copy_after_backup(app, vault.join(&made.file_name), &instance.name);
     let (keep, count) = (set.keep_backup_days, set.keep_auto_backups);
     off_runtime(move || backups::sweep(&vault, keep, count));
-    Ok(if running {
-        format!("Paused saving and backed up: {}", made.file_name)
-    } else {
-        format!("Backed up: {}", made.file_name)
-    })
+    Ok(if running { format!("Paused saving and backed up: {}", made.file_name) } else { format!("Backed up: {}", made.file_name) })
 }
 
 /// A scheduled update: every plugin and mod with a newer version that has no known problem (those are left for
@@ -1831,7 +1718,11 @@ fn backup_for_task(app: &AppHandle, state: &AppState, id: &str) -> Result<String
 async fn update_task(app: &AppHandle, id: &str) -> Result<String, String> {
     let updates = check_addon_updates(app.clone(), id.to_string()).await?;
     let (safe, risky): (Vec<_>, Vec<_>) = updates.into_iter().partition(|one| one.issues.is_empty());
-    let skipped = if risky.is_empty() { String::new() } else { format!(" Skipped {} that may not work with this server; update those by hand.", risky.len()) };
+    let skipped = if risky.is_empty() {
+        String::new()
+    } else {
+        format!(" Skipped {} that may not work with this server; update those by hand.", risky.len())
+    };
     if safe.is_empty() {
         return Ok(format!("Everything is up to date.{skipped}"));
     }
@@ -1881,7 +1772,13 @@ async fn far_task(app: &AppHandle, instance: &ServerInstance, task: &tasks::Task
     }
 }
 
-async fn remote_backup(app: &AppHandle, instance: &ServerInstance, label: &str, worlds_only: bool, picked: &[String]) -> Result<String, String> {
+async fn remote_backup(
+    app: &AppHandle,
+    instance: &ServerInstance,
+    label: &str,
+    worlds_only: bool,
+    picked: &[String],
+) -> Result<String, String> {
     let mut only = picked.to_vec();
     if worlds_only {
         for (name, dir, _) in server_names(app, instance, "").await {
@@ -1989,10 +1886,7 @@ fn rewind_store(app: &AppHandle, id: &str) -> Result<(rewind::Store, PathBuf), S
     if !instance.remote_host.is_empty() || !instance.panel_host.is_empty() {
         return Err("Rewind keeps history for servers on this PC only.".into());
     }
-    let root = Path::new(&instance.path)
-        .canonicalize()
-        .map(plain_path)
-        .map_err(|_| "The server folder is missing.".to_string())?;
+    let root = Path::new(&instance.path).canonicalize().map(plain_path).map_err(|_| "The server folder is missing.".to_string())?;
     Ok((rewind::Store::open(instance_data_dir(app, id)?.join("rewind")), root))
 }
 
@@ -2100,7 +1994,12 @@ pub(crate) fn update_todo(app: &AppHandle, id: &str, change: &memo::TodoChange) 
     memo_changed(app, id);
     if change.action == "assign" {
         if let Some(who) = change.assignee.filter(|one| !one.is_empty()) {
-            let text = change.todo.and_then(|wanted| doc["todos"].as_array()?.iter().find(|one| one["id"].as_str() == Some(wanted))?["text"].as_str().map(str::to_string)).unwrap_or_default();
+            let text = change
+                .todo
+                .and_then(|wanted| {
+                    doc["todos"].as_array()?.iter().find(|one| one["id"].as_str() == Some(wanted))?["text"].as_str().map(str::to_string)
+                })
+                .unwrap_or_default();
             team_notice::send(app, id, team_notice::NoticeKind::Assigned, Some(who), &text);
         }
     }
@@ -2124,9 +2023,17 @@ pub(crate) fn team_storage_of(app: &AppHandle, team: &str) -> Result<team_storag
 }
 
 /// Puts a Storage file into a server folder (`folder` inside it). Gives the path it went to.
-pub(crate) async fn storage_into_server(app: &AppHandle, team: &str, item: &str, version: u32, server: &str, folder: &str) -> Result<String, String> {
+pub(crate) async fn storage_into_server(
+    app: &AppHandle,
+    team: &str,
+    item: &str,
+    version: u32,
+    server: &str,
+    folder: &str,
+) -> Result<String, String> {
     let storage = team_storage_of(app, team)?;
-    let name = storage.index().items.into_iter().find(|one| one.id == item).map(|one| one.name).ok_or("There is no such file in Storage.")?;
+    let name =
+        storage.index().items.into_iter().find(|one| one.id == item).map(|one| one.name).ok_or("There is no such file in Storage.")?;
     let source = storage.file(item, version)?;
     let target = team_storage::target_in_server(folder, &name)?;
     let instance = instance_by_id(app, server)?;
@@ -2150,7 +2057,13 @@ pub(crate) async fn storage_into_server(app: &AppHandle, team: &str, item: &str,
 }
 
 /// Keeps a file of a server in Storage (a new item, or a new version of the same name).
-pub(crate) async fn storage_from_server(app: &AppHandle, team: &str, server: &str, path: &str, by: &str) -> Result<team_storage::StorageItem, String> {
+pub(crate) async fn storage_from_server(
+    app: &AppHandle,
+    team: &str,
+    server: &str,
+    path: &str,
+    by: &str,
+) -> Result<team_storage::StorageItem, String> {
     let instance = instance_by_id(app, server)?;
     let name = path.replace('\\', "/").rsplit('/').next().unwrap_or_default().to_string();
     let storage = team_storage_of(app, team)?;
@@ -2162,7 +2075,8 @@ pub(crate) async fn storage_from_server(app: &AppHandle, team: &str, server: &st
         let _ = fs::remove_file(&temp);
         done?
     } else {
-        let source = paths::resolve_in_server(Path::new(&instance.path), path).map_err(|_| "There is no such file in the server.".to_string())?;
+        let source =
+            paths::resolve_in_server(Path::new(&instance.path), path).map_err(|_| "There is no such file in the server.".to_string())?;
         storage.put(&source, &name, "", &[], by)?
     };
     monolink_team::report(app, server, "storage_added", serde_json::json!({ "name": item.name }));
@@ -2178,7 +2092,14 @@ fn storage_view(app: AppHandle, team: String) -> Result<team_storage::StorageVie
 /// Adds a file on this PC to the team's Storage (the host's own window).
 #[tauri::command(async)]
 #[specta::specta]
-fn storage_put_file(app: AppHandle, team: String, path: String, name: String, note: String, tags: Vec<String>) -> Result<team_storage::StorageItem, String> {
+fn storage_put_file(
+    app: AppHandle,
+    team: String,
+    path: String,
+    name: String,
+    note: String,
+    tags: Vec<String>,
+) -> Result<team_storage::StorageItem, String> {
     team_storage_of(&app, &team)?.put(Path::new(&path), &name, &note, &tags, "host")
 }
 
@@ -2248,7 +2169,13 @@ async fn hashes_now(app: &AppHandle, instance: &ServerInstance, command: &str, b
 }
 
 /// Holds a teammate's change for review (F8) and tells the server's people.
-pub(crate) async fn propose(app: &AppHandle, server: &str, by: &str, command: &str, body: &serde_json::Value) -> Result<proposals::Proposal, String> {
+pub(crate) async fn propose(
+    app: &AppHandle,
+    server: &str,
+    by: &str,
+    command: &str,
+    body: &serde_json::Value,
+) -> Result<proposals::Proposal, String> {
     let instance = instance_by_id(app, server)?;
     let before = hashes_now(app, &instance, command, body).await;
     let upload = if command == "studio_asset_add_upload" {
@@ -2304,20 +2231,35 @@ pub(crate) async fn merge_proposal(app: &AppHandle, server: &str, id: &str, by: 
     } else {
         command
     };
-    let run = { let app = app.clone(); let command = command.clone(); let body = body.clone(); tauri::async_runtime::spawn_blocking(move || web_invoke(&app, &command, &body)).await.map_err(|error| error.to_string())? };
+    let run = {
+        let app = app.clone();
+        let command = command.clone();
+        let body = body.clone();
+        tauri::async_runtime::spawn_blocking(move || web_invoke(&app, &command, &body)).await.map_err(|error| error.to_string())?
+    };
     run?;
     for one in &proposal.before {
         authorship::note(server, &one.path, &proposal.by);
     }
     store.close(server, id, "merged", "")?;
-    team_notice::send(app, server, team_notice::NoticeKind::ProposalDone, Some(proposal.by.trim_end_matches("'s AI")), &format!("{by} merged your change to {}.", proposal.before.iter().map(|one| one.path.as_str()).collect::<Vec<_>>().join(", ")));
+    team_notice::send(
+        app,
+        server,
+        team_notice::NoticeKind::ProposalDone,
+        Some(proposal.by.trim_end_matches("'s AI")),
+        &format!("{by} merged your change to {}.", proposal.before.iter().map(|one| one.path.as_str()).collect::<Vec<_>>().join(", ")),
+    );
     Ok(())
 }
 
 pub(crate) fn reject_proposal(app: &AppHandle, server: &str, id: &str, reason: &str) -> Result<(), String> {
     let done = proposals_store(app)?.close(server, id, "rejected", reason)?;
     let paths = done.before.iter().map(|one| one.path.as_str()).collect::<Vec<_>>().join(", ");
-    let said = if reason.trim().is_empty() { format!("Your change to {paths} was not taken.") } else { format!("Your change to {paths} was not taken: {}", reason.trim()) };
+    let said = if reason.trim().is_empty() {
+        format!("Your change to {paths} was not taken.")
+    } else {
+        format!("Your change to {paths} was not taken: {}", reason.trim())
+    };
     team_notice::send(app, server, team_notice::NoticeKind::ProposalDone, Some(done.by.trim_end_matches("'s AI")), &said);
     Ok(())
 }
@@ -2394,15 +2336,37 @@ fn agent_read_memo(app: AppHandle, id: String) -> Result<String, String> {
 #[tauri::command(async)]
 #[specta::specta]
 #[allow(clippy::too_many_arguments)]
-fn agent_update_todo(app: AppHandle, id: String, action: String, todo: Option<String>, text: Option<String>, status: Option<String>, assignee: Option<String>) -> Result<String, String> {
+fn agent_update_todo(
+    app: AppHandle,
+    id: String,
+    action: String,
+    todo: Option<String>,
+    text: Option<String>,
+    status: Option<String>,
+    assignee: Option<String>,
+) -> Result<String, String> {
     instance_by_id(&app, &id)?;
-    update_todo(&app, &id, &memo::TodoChange { action: &action, todo: todo.as_deref(), words: text.as_deref(), status: status.as_deref(), assignee: assignee.as_deref(), by: "AI" })
+    update_todo(
+        &app,
+        &id,
+        &memo::TodoChange {
+            action: &action,
+            todo: todo.as_deref(),
+            words: text.as_deref(),
+            status: status.as_deref(),
+            assignee: assignee.as_deref(),
+            by: "AI",
+        },
+    )
 }
 
 /// A picture kept with a server's memo: a file name the app made, so it never points outside the memo folder.
 fn memo_image_path(app: &AppHandle, id: &str, name: &str) -> Result<PathBuf, String> {
     instance_by_id(app, id)?;
-    let fine = !name.is_empty() && name.len() < 80 && !name.starts_with('.') && name.chars().all(|one| one.is_ascii_alphanumeric() || one == '-' || one == '.');
+    let fine = !name.is_empty()
+        && name.len() < 80
+        && !name.starts_with('.')
+        && name.chars().all(|one| one.is_ascii_alphanumeric() || one == '-' || one == '.');
     if !fine || !matches!(image_kind(name), Some("image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/bmp")) {
         return Err("This isn't a memo picture.".into());
     }
@@ -2455,36 +2419,20 @@ fn delete_memo_image(app: AppHandle, id: String, name: String) -> Result<(), Str
 }
 
 fn instance_data_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
-    let safe: String = id
-        .chars()
-        .map(|letter| {
-            if letter.is_ascii_alphanumeric() || letter == '-' || letter == '_' {
-                letter
-            } else {
-                '_'
-            }
-        })
-        .collect();
+    let safe: String =
+        id.chars().map(|letter| if letter.is_ascii_alphanumeric() || letter == '-' || letter == '_' { letter } else { '_' }).collect();
     if safe.is_empty() {
         return Err("The server number is malformed.".into());
     }
-    let path = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?
-        .join("server-data")
-        .join(safe);
-    fs::create_dir_all(&path)
-        .map_err(|error| format!("Could not create the server storage folder: {error}"))?;
+    let path = app.path().monolab_data_dir().map_err(|error| error.to_string())?.join("server-data").join(safe);
+    fs::create_dir_all(&path).map_err(|error| format!("Could not create the server storage folder: {error}"))?;
     Ok(path)
 }
 
 fn backup_folder(app: &AppHandle, instance: &ServerInstance) -> Result<PathBuf, String> {
     if let Some(root) = backup_root(app) {
-        let name = Path::new(&instance.path)
-            .file_name()
-            .map(|one| one.to_string_lossy().to_string())
-            .unwrap_or_else(|| instance.id.clone());
+        let name =
+            Path::new(&instance.path).file_name().map(|one| one.to_string_lossy().to_string()).unwrap_or_else(|| instance.id.clone());
         return Ok(root.join(name));
     }
     Ok(instance_data_dir(app, &instance.id)?.join("backups"))
@@ -2496,15 +2444,13 @@ fn pending_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
 
 fn upgrade_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
     let path = instance_data_dir(app, id)?.join("upgrade");
-    fs::create_dir_all(&path)
-        .map_err(|error| format!("Could not create the upgrade storage folder: {error}"))?;
+    fs::create_dir_all(&path).map_err(|error| format!("Could not create the upgrade storage folder: {error}"))?;
     Ok(path)
 }
 
 fn addon_trash_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
     let path = instance_data_dir(app, id)?.join("trash");
-    fs::create_dir_all(&path)
-        .map_err(|error| format!("Could not create the trash folder: {error}"))?;
+    fs::create_dir_all(&path).map_err(|error| format!("Could not create the trash folder: {error}"))?;
     Ok(path)
 }
 
@@ -2571,10 +2517,7 @@ async fn create_backup(
         tell_job(&app, "backup", &instance.name, "done", 0, 0);
         let name = made?;
         record_audit(&app, &id, "Backup", "Create backup (SSH)", &name);
-        let made = remote::backups(&app, &instance.remote_host, &instance.path)
-            .await
-            .into_iter()
-            .find(|one| one.name == name);
+        let made = remote::backups(&app, &instance.remote_host, &instance.path).await.into_iter().find(|one| one.name == name);
         return Ok(backups::BackupFile {
             size_mib: made.as_ref().map(|one| one.size_bytes as f64 / 1_048_576.0).unwrap_or(0.0),
             created_at: made.as_ref().map(|one| one.modified_at).unwrap_or(0),
@@ -2583,11 +2526,7 @@ async fn create_backup(
             worlds_only,
         });
     }
-    let note = if note.trim().is_empty() {
-        "Manual".to_string()
-    } else {
-        note.trim().to_string()
-    };
+    let note = if note.trim().is_empty() { "Manual".to_string() } else { note.trim().to_string() };
     let vault = backup_folder(&app, &instance)?;
     let task = progress::begin(&app, "createBackup", &id);
     let made = if picks.is_empty() {
@@ -2652,12 +2591,7 @@ async fn list_backups(app: AppHandle, id: String) -> Result<Vec<backups::BackupF
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn restore_backup(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    file_name: String,
-) -> Result<backups::BackupFile, String> {
+async fn restore_backup(app: AppHandle, state: State<'_, AppState>, id: String, file_name: String) -> Result<backups::BackupFile, String> {
     {
         let instance = instance_by_id(&app, &id)?;
         if !instance.panel_host.is_empty() {
@@ -2697,14 +2631,9 @@ async fn restore_backup(
         }
         if !instance.remote_host.is_empty() {
             ensure_remote_stopped(&app, &state, &instance).await?;
-            let safety =
-                remote::restore_backup(&app, &instance.remote_host, &instance.path, &file_name)
-                    .await?;
+            let safety = remote::restore_backup(&app, &instance.remote_host, &instance.path, &file_name).await?;
             record_audit(&app, &id, "Backup", "Restore backup (SSH)", &file_name);
-            let made = remote::backups(&app, &instance.remote_host, &instance.path)
-                .await
-                .into_iter()
-                .find(|one| one.name == safety);
+            let made = remote::backups(&app, &instance.remote_host, &instance.path).await.into_iter().find(|one| one.name == safety);
             return Ok(backups::BackupFile {
                 size_mib: made.as_ref().map(|one| one.size_bytes as f64 / 1_048_576.0).unwrap_or(0.0),
                 created_at: made.as_ref().map(|one| one.modified_at).unwrap_or(0),
@@ -2717,8 +2646,7 @@ async fn restore_backup(
     ensure_stopped(&state, &id)?;
     let instance = instance_by_id(&app, &id)?;
     let vault = backup_folder(&app, &instance)?;
-    let made =
-        off_runtime(|| backups::restore(Path::new(&instance.path), &file_name, &vault))?;
+    let made = off_runtime(|| backups::restore(Path::new(&instance.path), &file_name, &vault))?;
     record_audit(&app, &id, "Server", "Backup restore", &file_name);
     Ok(made)
 }
@@ -2804,7 +2732,11 @@ fn proxy_neighbors(app: &AppHandle, proxy: &ServerInstance) -> Result<Vec<Server
 }
 
 fn backend_port(instance: &ServerInstance) -> u16 {
-    if is_far(instance) { instance.port } else { port_from_properties(instance) }
+    if is_far(instance) {
+        instance.port
+    } else {
+        port_from_properties(instance)
+    }
 }
 
 async fn proxy_secret(app: &AppHandle, proxy: &ServerInstance, file: &str, make: bool) -> Result<Option<String>, String> {
@@ -2825,7 +2757,9 @@ async fn backend_state(app: &AppHandle, backend: &ServerInstance, secret: Option
             let started = server_text(app, backend, "server.properties").await?.is_some();
             return Ok(if started { "Unsupported" } else { "StartFirst" }.into());
         };
-        let offline = server_text(app, backend, "server.properties").await?.and_then(|text| proxy::property(&text, "online-mode")).as_deref() == Some("false");
+        let offline =
+            server_text(app, backend, "server.properties").await?.and_then(|text| proxy::property(&text, "online-mode")).as_deref()
+                == Some("false");
         let ready = secret.is_some_and(|secret| proxy::paper_velocity_on(&yaml, secret)) && offline;
         return Ok(if ready { "Ready" } else { "Setup" }.into());
     }
@@ -2834,7 +2768,9 @@ async fn backend_state(app: &AppHandle, backend: &ServerInstance, secret: Option
             return Ok("NeedsMod".into());
         }
         let config = server_text(app, backend, "config/FabricProxy-Lite.toml").await?.unwrap_or_default();
-        let offline = server_text(app, backend, "server.properties").await?.and_then(|text| proxy::property(&text, "online-mode")).as_deref() == Some("false");
+        let offline =
+            server_text(app, backend, "server.properties").await?.and_then(|text| proxy::property(&text, "online-mode")).as_deref()
+                == Some("false");
         let ready = secret.is_some_and(|secret| proxy::fabric_proxy_on(&config, secret)) && offline;
         return Ok(if ready { "Ready" } else { "Setup" }.into());
     }
@@ -2857,7 +2793,11 @@ fn backend_address(app: &AppHandle, proxy: &ServerInstance, backend: &ServerInst
 }
 
 fn same_backend(listed: &str, address: &str, port: u16) -> bool {
-    if address.starts_with("127.0.0.1:") { is_local_address(listed, port) } else { listed.eq_ignore_ascii_case(address) }
+    if address.starts_with("127.0.0.1:") {
+        is_local_address(listed, port)
+    } else {
+        listed.eq_ignore_ascii_case(address)
+    }
 }
 
 async fn answers(address: &str) -> bool {
@@ -2931,7 +2871,10 @@ async fn link_proxy(app: AppHandle, id: String, servers: Vec<String>, first: Str
         let mut port = backend_port(one);
         if taken_ports.iter().any(|(host, used)| *host == one.remote_host && *used == port) {
             if is_far(one) {
-                return Err(format!("{} uses port {port}, which the proxy or another linked server already has. Change one of the ports first.", one.name));
+                return Err(format!(
+                    "{} uses port {port}, which the proxy or another linked server already has. Change one of the ports first.",
+                    one.name
+                ));
             }
             // A server on this PC moves to the next free port by itself (applies when it restarts).
             let mut next = next_free_port(&everyone, port.max(25565));
@@ -2951,7 +2894,10 @@ async fn link_proxy(app: AppHandle, id: String, servers: Vec<String>, first: Str
                 continue;
             }
             "Unsupported" => {
-                notes.push(format!("{} can't take players from Velocity: it needs Paper or a fork of it, or Fabric with FabricProxy-Lite.", one.name));
+                notes.push(format!(
+                    "{} can't take players from Velocity: it needs Paper or a fork of it, or Fabric with FabricProxy-Lite.",
+                    one.name
+                ));
                 continue;
             }
             "NeedsMod" => {
@@ -2976,7 +2922,10 @@ async fn link_proxy(app: AppHandle, id: String, servers: Vec<String>, first: Str
         }
         let address = backend_address(&app, &instance, one)?;
         if !address.starts_with("127.0.0.1:") && !answers(&address).await {
-            notes.push(format!("{address} ({}) didn't answer from this PC. Open that port on the SSH server's firewall and start the server.", one.name));
+            notes.push(format!(
+                "{address} ({}) didn't answer from this PC. Open that port on the SSH server's firewall and start the server.",
+                one.name
+            ));
         }
         entries.push((key, address));
     }
@@ -2999,7 +2948,13 @@ async fn link_proxy(app: AppHandle, id: String, servers: Vec<String>, first: Str
         }
     }
     server_write_text(&app, &instance, "velocity.toml", &proxy::write_velocity(&text, &entries, &first_key)?).await?;
-    record_audit(&app, &id, "Server", "Link servers to the proxy", &entries.iter().map(|(key, address)| format!("{key}={address}")).collect::<Vec<_>>().join(", "));
+    record_audit(
+        &app,
+        &id,
+        "Server",
+        "Link servers to the proxy",
+        &entries.iter().map(|(key, address)| format!("{key}={address}")).collect::<Vec<_>>().join(", "),
+    );
     notes.push("Restart the proxy and the linked servers to apply.".into());
     Ok(notes)
 }
@@ -3094,12 +3049,7 @@ async fn delete_backup(app: AppHandle, id: String, file_name: String) -> Result<
             let name = plain_name(&file_name)?;
             let vault = remote::backup_vault(&instance.path);
             let conn = remote::connect(&app, &instance.remote_host).await?;
-            conn.run(&format!(
-                "rm -f {}",
-                remote::quote(&format!("{vault}/{name}"))
-            ))
-            .await?
-            .ok()?;
+            conn.run(&format!("rm -f {}", remote::quote(&format!("{vault}/{name}")))).await?.ok()?;
             record_audit(&app, &id, "Backup", "Delete backup (SSH)", name);
             return Ok(());
         }
@@ -3120,11 +3070,7 @@ async fn list_remote_javas(app: AppHandle, id: String) -> Result<Vec<java::JavaR
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn precheck_instance(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<Vec<doctor::Finding>, String> {
+async fn precheck_instance(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<Vec<doctor::Finding>, String> {
     if panel_instance(&app, &id)?.is_some() {
         return Ok(Vec::new());
     }
@@ -3138,37 +3084,23 @@ async fn precheck_instance(
             String::new()
         };
         let needs = java::required_java_major_for(&instance.core, &instance.version);
-        return remote::precheck(
-            &app,
-            &instance.remote_host,
-            &instance.path,
-            &jar,
-            &instance.java_path,
-            needs,
-        )
-        .await;
+        return remote::precheck(&app, &instance.remote_host, &instance.path, &jar, &instance.java_path, needs).await;
     }
     let instance = instance_by_id(&app, &id)?;
     let root = Path::new(&instance.path);
     let native = pumpkin::is_pumpkin(&instance.core);
-    let jar = instance
-        .server_jar
-        .as_ref()
-        .map(|name| root.join(name))
-        .filter(|_| !native && instance.launch_mode != "script" && instance.start_script.trim().is_empty() && !needs_args_file(&instance));
+    let jar =
+        instance.server_jar.as_ref().map(|name| root.join(name)).filter(|_| {
+            !native && instance.launch_mode != "script" && instance.start_script.trim().is_empty() && !needs_args_file(&instance)
+        });
     let port = port_from_properties(&instance);
     let needs = java::required_java_major_for(&instance.core, &instance.version);
     let java_major = if native {
         None
     } else {
-        java::resolve_java_runtime(
-            &app,
-            &instance.core,
-            &instance.version,
-            &instance.java_path,
-        )
-        .ok()
-        .and_then(|path| java::ask_java_major(&path))
+        java::resolve_java_runtime(&app, &instance.core, &instance.version, &instance.java_path)
+            .ok()
+            .and_then(|path| java::ask_java_major(&path))
     };
     let machine = {
         let mut system = sysinfo::System::new();
@@ -3177,13 +3109,8 @@ async fn precheck_instance(
     };
     let _ = &state;
     let max_memory = if native { 0 } else { instance.max_memory_mib };
-    let exe_missing = native
-        && !instance
-            .server_jar
-            .as_ref()
-            .map(|name| root.join(name))
-            .unwrap_or_else(|| root.join(cores::PUMPKIN_EXE))
-            .is_file();
+    let exe_missing =
+        native && !instance.server_jar.as_ref().map(|name| root.join(name)).unwrap_or_else(|| root.join(cores::PUMPKIN_EXE)).is_file();
     Ok(off_runtime(move || {
         let mut findings = Vec::new();
         if exe_missing {
@@ -3192,15 +3119,7 @@ async fn precheck_instance(
                 "There is no pumpkin.exe in the server folder. Create the server again, or download the release again from the Upgrade tab.",
             ));
         }
-        findings.extend(doctor::precheck(
-            root,
-            jar.as_deref(),
-            port,
-            max_memory,
-            machine,
-            java_major,
-            needs,
-        ));
+        findings.extend(doctor::precheck(root, jar.as_deref(), port, max_memory, machine, java_major, needs));
         findings
     }))
 }
@@ -3211,10 +3130,7 @@ async fn server_commands(app: AppHandle, id: String) -> Result<events::CommandBo
     let instance = instance_by_id(&app, &id)?;
     if is_far(&instance) {
         let path = format!("{}/commands.json", remote_addon_data_dir(&instance));
-        return Ok(far_read(&app, &instance, &path)
-            .await
-            .map(|text| events::command_book_from_text(&text))
-            .unwrap_or_default());
+        return Ok(far_read(&app, &instance, &path).await.map(|text| events::command_book_from_text(&text)).unwrap_or_default());
     }
     Ok(events::read_command_book(Path::new(&instance.path)))
 }
@@ -3223,10 +3139,7 @@ async fn server_commands(app: AppHandle, id: String) -> Result<events::CommandBo
 #[specta::specta]
 fn required_java(app: AppHandle, id: String) -> Result<u32, String> {
     let instance = instance_by_id(&app, &id)?;
-    Ok(java::required_java_major_for(
-        &instance.core,
-        &instance.version,
-    ))
+    Ok(java::required_java_major_for(&instance.core, &instance.version))
 }
 
 #[tauri::command(async)]
@@ -3237,11 +3150,7 @@ fn download_java(app: AppHandle, major: u32) -> Result<java::JavaRuntime, String
 
 #[tauri::command(async)]
 #[specta::specta]
-fn item_icons(
-    app: AppHandle,
-    version: String,
-    ids: Vec<String>,
-) -> Result<HashMap<String, String>, String> {
+fn item_icons(app: AppHandle, version: String, ids: Vec<String>) -> Result<HashMap<String, String>, String> {
     off_runtime(|| textures::icons(&app, &version, &ids))
 }
 
@@ -3336,11 +3245,7 @@ fn remove_java_runtime(app: AppHandle, path: String) -> Result<String, String> {
             save_instances(&app, &instances)?;
         }
     }
-    Ok(if major > 0 {
-        format!("Removed Java {major}.")
-    } else {
-        "Java removed.".into()
-    })
+    Ok(if major > 0 { format!("Removed Java {major}.") } else { "Java removed.".into() })
 }
 
 #[derive(Clone, Debug, Serialize, specta::Type)]
@@ -3403,15 +3308,8 @@ fn remember_for_web<T: serde::Serialize>(app: &AppHandle, event: &str, payload: 
     }
 }
 
-pub(crate) fn web_invoke(
-    app: &AppHandle,
-    command: &str,
-    body: &serde_json::Value,
-) -> Result<serde_json::Value, String> {
-    fn arg<T: serde::de::DeserializeOwned>(
-        body: &serde_json::Value,
-        name: &str,
-    ) -> Result<T, String> {
+pub(crate) fn web_invoke(app: &AppHandle, command: &str, body: &serde_json::Value) -> Result<serde_json::Value, String> {
+    fn arg<T: serde::de::DeserializeOwned>(body: &serde_json::Value, name: &str) -> Result<T, String> {
         serde_json::from_value(body.get(name).cloned().unwrap_or(serde_json::Value::Null))
             .map_err(|error| format!("{name} is invalid: {error}"))
     }
@@ -3429,7 +3327,15 @@ pub(crate) fn web_invoke(
         "server_memo" => ok(server_memo(app.clone(), arg(body, "id")?)?),
         "set_server_memo" => ok(set_server_memo(app.clone(), arg(body, "id")?, arg(body, "memo")?, arg(body, "expectHash")?)?),
         "agent_read_memo" => ok(agent_read_memo(app.clone(), arg(body, "id")?)?),
-        "agent_update_todo" => ok(agent_update_todo(app.clone(), arg(body, "id")?, arg(body, "action")?, arg(body, "todo")?, arg(body, "text")?, arg(body, "status")?, arg(body, "assignee")?)?),
+        "agent_update_todo" => ok(agent_update_todo(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "action")?,
+            arg(body, "todo")?,
+            arg(body, "text")?,
+            arg(body, "status")?,
+            arg(body, "assignee")?,
+        )?),
         "rewind_scan" => ok(rewind_scan(app.clone(), arg(body, "id")?)?),
         "rewind_list" => ok(rewind_list(app.clone(), arg(body, "id")?, arg(body, "path")?, arg(body, "limit")?)?),
         "rewind_versions" => ok(rewind_versions(app.clone(), arg(body, "id")?, arg(body, "entry")?)?),
@@ -3439,9 +3345,13 @@ pub(crate) fn web_invoke(
         "msmp_state" => ok(tauri::async_runtime::block_on(msmp_state(app.clone(), app.state(), arg(body, "id")?))?),
         "msmp_setup" => ok(tauri::async_runtime::block_on(msmp_setup(app.clone(), arg(body, "id")?))?),
         "msmp_settings" => ok(tauri::async_runtime::block_on(msmp_settings(app.clone(), arg(body, "id")?))?),
-        "msmp_set_setting" => ok(tauri::async_runtime::block_on(msmp_set_setting(app.clone(), arg(body, "id")?, arg(body, "key")?, arg(body, "value")?))?),
+        "msmp_set_setting" => {
+            ok(tauri::async_runtime::block_on(msmp_set_setting(app.clone(), arg(body, "id")?, arg(body, "key")?, arg(body, "value")?))?)
+        }
         "msmp_rules" => ok(tauri::async_runtime::block_on(msmp_rules(app.clone(), arg(body, "id")?))?),
-        "msmp_set_rule" => ok(tauri::async_runtime::block_on(msmp_set_rule(app.clone(), arg(body, "id")?, arg(body, "key")?, arg(body, "value")?))?),
+        "msmp_set_rule" => {
+            ok(tauri::async_runtime::block_on(msmp_set_rule(app.clone(), arg(body, "id")?, arg(body, "key")?, arg(body, "value")?))?)
+        }
         "set_rewind_enabled" => ok(set_rewind_enabled(app.clone(), arg(body, "id")?, arg(body, "on")?)?),
         "create_web_invite" => ok(create_web_invite(app.clone(), app.state(), arg(body, "id")?, arg(body, "role")?)?),
         "list_web_invites" => ok(list_web_invites(app.clone(), arg(body, "id")?)?),
@@ -3452,27 +3362,64 @@ pub(crate) fn web_invoke(
         "add_memo_image" => ok(add_memo_image(app.clone(), arg(body, "id")?, arg(body, "extension")?, arg(body, "data")?)?),
         "memo_image" => ok(memo_image(app.clone(), arg(body, "id")?, arg(body, "name")?)?),
         "delete_memo_image" => ok(delete_memo_image(app.clone(), arg(body, "id")?, arg(body, "name")?)?),
-        "map_surface_height" => ok(map_surface_height(app.state(), arg(body, "id")?, arg(body, "realm")?, arg(body, "x")?, arg(body, "z")?)),
+        "map_surface_height" => {
+            ok(map_surface_height(app.state(), arg(body, "id")?, arg(body, "realm")?, arg(body, "x")?, arg(body, "z")?))
+        }
         "disk_usage" => ok(tauri::async_runtime::block_on(disk_usage(app.clone(), arg(body, "id")?))?),
-        "chunk_stats" => ok(tauri::async_runtime::block_on(chunk_stats(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?, arg(body, "metric")?, arg(body, "rx")?, arg(body, "rz")?))?),
+        "chunk_stats" => ok(tauri::async_runtime::block_on(chunk_stats(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            arg(body, "realm")?,
+            arg(body, "metric")?,
+            arg(body, "rx")?,
+            arg(body, "rz")?,
+        ))?),
         "chunky_status" => ok(tauri::async_runtime::block_on(chunky_status(app.clone(), app.state(), arg(body, "id")?))?),
-        "chunky_run" => ok(tauri::async_runtime::block_on(chunky_run(app.clone(), app.state(), arg(body, "id")?, arg(body, "action")?, arg(body, "world")?, arg(body, "x")?, arg(body, "z")?, arg(body, "radius")?, arg(body, "radiusZ")?, arg(body, "shape")?))?),
+        "chunky_run" => ok(tauri::async_runtime::block_on(chunky_run(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            arg(body, "action")?,
+            arg(body, "world")?,
+            arg(body, "x")?,
+            arg(body, "z")?,
+            arg(body, "radius")?,
+            arg(body, "radiusZ")?,
+            arg(body, "shape")?,
+        ))?),
         "clean_disk" => ok(tauri::async_runtime::block_on(clean_disk(app.clone(), arg(body, "id")?, arg(body, "kind")?))?),
         "read_loaded_chunks" => ok(tauri::async_runtime::block_on(read_loaded_chunks(app.clone(), arg(body, "id")?))?),
         "diagnose_lag" => ok(tauri::async_runtime::block_on(diagnose_lag(app.clone(), app.state(), arg(body, "id")?))?),
         "addon_status" => ok(tauri::async_runtime::block_on(addon_status(app.clone(), app.state(), arg(body, "id")?))?),
         "read_server_properties" => ok(tauri::async_runtime::block_on(read_server_properties(app.clone(), arg(body, "id")?))?),
         "list_worlds" => ok(tauri::async_runtime::block_on(list_worlds(app.clone(), arg(body, "id")?))?),
-        "browse_server_files" => ok(tauri::async_runtime::block_on(browse_server_files(app.clone(), arg(body, "id")?, arg(body, "path")?, arg(body, "offset")?, arg(body, "limit")?))?),
+        "browse_server_files" => ok(tauri::async_runtime::block_on(browse_server_files(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "path")?,
+            arg(body, "offset")?,
+            arg(body, "limit")?,
+        ))?),
         "list_clients" => ok(clients::list_clients(app.clone())?),
         "create_client" => ok(clients::create_client(app.clone(), arg(body, "name")?, arg(body, "version")?, arg(body, "loader")?)?),
         "rename_client" => ok(clients::rename_client(app.clone(), arg(body, "id")?, arg(body, "name")?)?),
         "delete_client" => ok(clients::delete_client(app.clone(), arg(body, "id")?)?),
         "client_content" => ok(client_content::client_content(app.clone(), arg(body, "id")?)?),
         "client_content_cards" => ok(client_content::client_content_cards(app.clone(), arg(body, "id")?)?),
-        "set_client_content_enabled" => ok(client_content::set_client_content_enabled(app.clone(), arg(body, "id")?, arg(body, "kind")?, arg(body, "fileName")?, arg(body, "enabled")?)?),
-        "remove_client_content" => ok(client_content::remove_client_content(app.clone(), arg(body, "id")?, arg(body, "kind")?, arg(body, "fileNames")?)?),
-        "update_client_content" => ok(client_content::update_client_content(app.clone(), arg(body, "id")?, arg(body, "kind")?, arg(body, "fileNames")?)?),
+        "set_client_content_enabled" => ok(client_content::set_client_content_enabled(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "kind")?,
+            arg(body, "fileName")?,
+            arg(body, "enabled")?,
+        )?),
+        "remove_client_content" => {
+            ok(client_content::remove_client_content(app.clone(), arg(body, "id")?, arg(body, "kind")?, arg(body, "fileNames")?)?)
+        }
+        "update_client_content" => {
+            ok(client_content::update_client_content(app.clone(), arg(body, "id")?, arg(body, "kind")?, arg(body, "fileNames")?)?)
+        }
         "get_client_account" => ok(client_launch::get_client_account(app.clone())?),
         "set_offline_name" => ok(client_launch::set_offline_name(app.clone(), arg(body, "name")?)?),
         "launch_client" => ok(client_launch::launch_client(app.clone(), arg(body, "id")?)?),
@@ -3493,7 +3440,9 @@ pub(crate) fn web_invoke(
             ok(())
         }
         "studio_overview" => ok(tauri::async_runtime::block_on(studio_overview(app.clone(), arg(body, "id")?))?),
-        "studio_read" => ok(tauri::async_runtime::block_on(studio_read(app.clone(), arg(body, "id")?, arg(body, "kind")?, arg(body, "name")?))?),
+        "studio_read" => {
+            ok(tauri::async_runtime::block_on(studio_read(app.clone(), arg(body, "id")?, arg(body, "kind")?, arg(body, "name")?))?)
+        }
         "studio_save" => ok(tauri::async_runtime::block_on(studio_save(
             app.clone(),
             arg(body, "id")?,
@@ -3524,8 +3473,12 @@ pub(crate) fn web_invoke(
         "read_editable_file" => ok(tauri::async_runtime::block_on(read_editable_file(app.clone(), arg(body, "id")?, arg(body, "path")?))?),
         "read_server_image" => ok(tauri::async_runtime::block_on(read_server_image(app.clone(), arg(body, "id")?, arg(body, "path")?))?),
         "view_server_file" => ok(tauri::async_runtime::block_on(view_server_file(app.clone(), arg(body, "id")?, arg(body, "path")?))?),
-        "read_texture_animation" => ok(tauri::async_runtime::block_on(read_texture_animation(app.clone(), arg(body, "id")?, arg(body, "path")?))?),
-        "read_server_file_download" => ok(tauri::async_runtime::block_on(read_server_file_download(app.clone(), arg(body, "id")?, arg(body, "path")?))?),
+        "read_texture_animation" => {
+            ok(tauri::async_runtime::block_on(read_texture_animation(app.clone(), arg(body, "id")?, arg(body, "path")?))?)
+        }
+        "read_server_file_download" => {
+            ok(tauri::async_runtime::block_on(read_server_file_download(app.clone(), arg(body, "id")?, arg(body, "path")?))?)
+        }
         "list_backups" => ok(tauri::async_runtime::block_on(list_backups(app.clone(), arg(body, "id")?))?),
         "list_log_files" => ok(tauri::async_runtime::block_on(list_log_files(app.clone(), arg(body, "id")?))?),
         "list_crash_reports" => ok(tauri::async_runtime::block_on(list_crash_reports(app.clone(), arg(body, "id")?))?),
@@ -3543,10 +3496,17 @@ pub(crate) fn web_invoke(
         "system_memory_mib" => ok(system_memory_mib(app.state())),
         "get_server_icon" => ok(tauri::async_runtime::block_on(get_server_icon(app.clone(), arg(body, "id")?))?),
         "list_players" => ok(tauri::async_runtime::block_on(list_players(app.clone(), arg(body, "id")?))?),
-        "read_world_settings" => ok(tauri::async_runtime::block_on(read_world_settings(app.clone(), arg(body, "id")?, arg(body, "world")?))?),
+        "read_world_settings" => {
+            ok(tauri::async_runtime::block_on(read_world_settings(app.clone(), arg(body, "id")?, arg(body, "world")?))?)
+        }
         "list_bookmarks" => ok(list_bookmarks(app.clone(), arg(body, "id")?)?),
         "summarize_logs" => ok(tauri::async_runtime::block_on(summarize_logs(app.clone(), arg(body, "id")?))?),
-        "read_log_timeline" => ok(tauri::async_runtime::block_on(read_log_timeline(app.clone(), arg(body, "id")?, arg(body, "fileName")?, arg(body, "kind")?))?),
+        "read_log_timeline" => ok(tauri::async_runtime::block_on(read_log_timeline(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "fileName")?,
+            arg(body, "kind")?,
+        ))?),
         "list_log_entries" => ok(tauri::async_runtime::block_on(list_log_entries(
             app.clone(),
             app.state(),
@@ -3559,35 +3519,98 @@ pub(crate) fn web_invoke(
         "list_core_versions" => ok(list_core_versions(arg(body, "core")?, arg(body, "snapshots")?)?),
         "precheck_instance" => ok(tauri::async_runtime::block_on(precheck_instance(app.clone(), app.state(), arg(body, "id")?))?),
         "list_remote_javas" => ok(tauri::async_runtime::block_on(list_remote_javas(app.clone(), arg(body, "id")?))?),
-        "start_instance" => ok(tauri::async_runtime::block_on(start_instance_as(app.clone(), app.state::<AppState>().inner(), arg(body, "id")?, false))?),
+        "start_instance" => {
+            ok(tauri::async_runtime::block_on(start_instance_as(app.clone(), app.state::<AppState>().inner(), arg(body, "id")?, false))?)
+        }
         "stop_instance" => ok(tauri::async_runtime::block_on(stop_instance(app.clone(), app.state(), arg(body, "id")?))?),
-        "restart_instance" => ok(tauri::async_runtime::block_on(restart_instance_as(app.clone(), app.state::<AppState>().inner(), arg(body, "id")?, false))?),
-        "send_console_command" => ok(tauri::async_runtime::block_on(send_console_command(app.clone(), app.state(), arg(body, "id")?, arg(body, "command")?))?),
+        "restart_instance" => {
+            ok(tauri::async_runtime::block_on(restart_instance_as(app.clone(), app.state::<AppState>().inner(), arg(body, "id")?, false))?)
+        }
+        "send_console_command" => {
+            ok(tauri::async_runtime::block_on(send_console_command(app.clone(), app.state(), arg(body, "id")?, arg(body, "command")?))?)
+        }
         "plugin_integrations" => ok(tauri::async_runtime::block_on(plugin_integrations(app.clone(), arg(body, "id")?))?),
         "essentials_data" => ok(tauri::async_runtime::block_on(essentials_data(app.clone(), arg(body, "id")?))?),
-        "essentials_set_setting" => ok(tauri::async_runtime::block_on(essentials_set_setting(app.clone(), arg(body, "id")?, arg(body, "key")?, arg(body, "value")?))?),
+        "essentials_set_setting" => ok(tauri::async_runtime::block_on(essentials_set_setting(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "key")?,
+            arg(body, "value")?,
+        ))?),
         "luckperms_data" => ok(tauri::async_runtime::block_on(luckperms_data(app.clone(), app.state(), arg(body, "id")?))?),
         "addon_config" => ok(tauri::async_runtime::block_on(addon_config(app.clone(), arg(body, "id")?))?),
-        "set_addon_config" => ok(tauri::async_runtime::block_on(set_addon_config(app.clone(), arg(body, "id")?, arg(body, "key")?, arg(body, "on")?))?),
+        "set_addon_config" => {
+            ok(tauri::async_runtime::block_on(set_addon_config(app.clone(), arg(body, "id")?, arg(body, "key")?, arg(body, "on")?))?)
+        }
         "extension_data" => ok(tauri::async_runtime::block_on(extension_data(app.clone(), arg(body, "id")?))?),
-        "run_extension_action" => ok(tauri::async_runtime::block_on(run_extension_action(app.clone(), arg(body, "id")?, arg(body, "folder")?, arg(body, "label")?, arg(body, "argsJson")?))?),
-        "extension_set" => ok(tauri::async_runtime::block_on(extension_set(app.clone(), arg(body, "id")?, arg(body, "folder")?, arg(body, "index")?, arg(body, "value")?))?),
+        "run_extension_action" => ok(tauri::async_runtime::block_on(run_extension_action(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "folder")?,
+            arg(body, "label")?,
+            arg(body, "argsJson")?,
+        ))?),
+        "extension_set" => ok(tauri::async_runtime::block_on(extension_set(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "folder")?,
+            arg(body, "index")?,
+            arg(body, "value")?,
+        ))?),
         "save_server_properties" => ok(tauri::async_runtime::block_on(save_server_properties(
             app.clone(),
             app.state(),
             arg(body, "id")?,
             arg(body, "properties")?,
         ))?),
-        "save_editable_file" => ok(tauri::async_runtime::block_on(save_editable_file(app.clone(), app.state(), arg(body, "id")?, arg(body, "path")?, arg(body, "content")?, arg(body, "expectHash")?))?),
-        "rename_server_path" => ok(tauri::async_runtime::block_on(rename_server_path(app.clone(), app.state(), arg(body, "id")?, arg(body, "path")?, arg(body, "newName")?))?),
-        "trash_server_path" => ok(tauri::async_runtime::block_on(trash_server_path(app.clone(), app.state(), arg(body, "id")?, arg(body, "path")?))?),
+        "save_editable_file" => ok(tauri::async_runtime::block_on(save_editable_file(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            arg(body, "path")?,
+            arg(body, "content")?,
+            arg(body, "expectHash")?,
+        ))?),
+        "rename_server_path" => ok(tauri::async_runtime::block_on(rename_server_path(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            arg(body, "path")?,
+            arg(body, "newName")?,
+        ))?),
+        "trash_server_path" => {
+            ok(tauri::async_runtime::block_on(trash_server_path(app.clone(), app.state(), arg(body, "id")?, arg(body, "path")?))?)
+        }
         "list_server_trash" => ok(tauri::async_runtime::block_on(list_server_trash(app.clone(), arg(body, "id")?))?),
-        "restore_server_trash" => ok(tauri::async_runtime::block_on(restore_server_trash(app.clone(), app.state(), arg(body, "id")?, arg(body, "stored")?))?),
-        "delete_server_trash" => ok(tauri::async_runtime::block_on(delete_server_trash(app.clone(), arg(body, "id")?, arg(body, "stored")?))?),
+        "restore_server_trash" => {
+            ok(tauri::async_runtime::block_on(restore_server_trash(app.clone(), app.state(), arg(body, "id")?, arg(body, "stored")?))?)
+        }
+        "delete_server_trash" => {
+            ok(tauri::async_runtime::block_on(delete_server_trash(app.clone(), arg(body, "id")?, arg(body, "stored")?))?)
+        }
         "empty_server_trash" => ok(tauri::async_runtime::block_on(empty_server_trash(app.clone(), arg(body, "id")?))?),
-        "create_server_folder" => ok(tauri::async_runtime::block_on(create_server_folder(app.clone(), app.state(), arg(body, "id")?, arg(body, "path")?, arg(body, "name")?))?),
-        "create_server_file" => ok(tauri::async_runtime::block_on(create_server_file(app.clone(), app.state(), arg(body, "id")?, arg(body, "path")?, arg(body, "name")?))?),
-        "add_server_files" => ok(tauri::async_runtime::block_on(add_server_files(app.clone(), app.state(), arg(body, "id")?, arg(body, "path")?, arg(body, "sources")?, arg::<Option<bool>>(body, "merge")?.unwrap_or(false)))?),
+        "create_server_folder" => ok(tauri::async_runtime::block_on(create_server_folder(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            arg(body, "path")?,
+            arg(body, "name")?,
+        ))?),
+        "create_server_file" => ok(tauri::async_runtime::block_on(create_server_file(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            arg(body, "path")?,
+            arg(body, "name")?,
+        ))?),
+        "add_server_files" => ok(tauri::async_runtime::block_on(add_server_files(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            arg(body, "path")?,
+            arg(body, "sources")?,
+            arg::<Option<bool>>(body, "merge")?.unwrap_or(false),
+        ))?),
         "add_server_uploads" => ok(tauri::async_runtime::block_on(add_server_uploads(
             app.clone(),
             app.state(),
@@ -3595,15 +3618,31 @@ pub(crate) fn web_invoke(
             arg(body, "path")?,
             arg(body, "uploads")?,
         ))?),
-        "zip_server_paths" => ok(tauri::async_runtime::block_on(zip_server_paths(app.clone(), arg(body, "id")?, arg(body, "paths")?, arg(body, "name")?))?),
-        "unzip_server_path" => ok(tauri::async_runtime::block_on(unzip_server_path(app.clone(), app.state(), arg(body, "id")?, arg(body, "path")?))?),
-        "create_backup" => ok(tauri::async_runtime::block_on(create_backup(app.clone(), arg(body, "id")?, arg(body, "note")?, arg(body, "worldsOnly").unwrap_or(false), arg(body, "paths").unwrap_or_default()))?),
+        "zip_server_paths" => {
+            ok(tauri::async_runtime::block_on(zip_server_paths(app.clone(), arg(body, "id")?, arg(body, "paths")?, arg(body, "name")?))?)
+        }
+        "unzip_server_path" => {
+            ok(tauri::async_runtime::block_on(unzip_server_path(app.clone(), app.state(), arg(body, "id")?, arg(body, "path")?))?)
+        }
+        "create_backup" => ok(tauri::async_runtime::block_on(create_backup(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "note")?,
+            arg(body, "worldsOnly").unwrap_or(false),
+            arg(body, "paths").unwrap_or_default(),
+        ))?),
         "update_launch_settings" => {
             let input: LaunchSettingsInput = arg(body, "input")?;
             remote_java_allowed(app, &input)?;
             ok(update_launch_settings(app.clone(), app.state(), input)?)
         }
-        "toggle_addon" => ok(tauri::async_runtime::block_on(toggle_addon(app.clone(), app.state(), arg(body, "id")?, arg(body, "fileName")?, arg(body, "kind")?))?),
+        "toggle_addon" => ok(tauri::async_runtime::block_on(toggle_addon(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            arg(body, "fileName")?,
+            arg(body, "kind")?,
+        ))?),
         "save_task" => ok(save_task(app.clone(), arg(body, "task")?)?),
         "delete_task" => ok(delete_task(app.clone(), arg(body, "id")?)?),
         "run_task_now" => ok(run_task_now(app.clone(), app.state(), arg(body, "id")?)?),
@@ -3617,10 +3656,7 @@ pub(crate) fn web_invoke(
         "get_resource_history" => ok(get_resource_history(app.state(), arg(body, "id")?)),
         "get_tps_snapshot" => ok(get_tps_snapshot(app.clone(), app.state(), arg(body, "id")?)?),
         "check_core_build" => ok(check_core_build(app.clone(), arg(body, "id")?)?),
-        "list_core_builds" => ok(cores::list_core_builds(
-            &arg::<String>(body, "core")?,
-            &arg::<String>(body, "version")?,
-        )?),
+        "list_core_builds" => ok(cores::list_core_builds(&arg::<String>(body, "core")?, &arg::<String>(body, "version")?)?),
         "suggest_server_name" => ok(suggest_server_name(app.clone())?),
         "create_instance" => ok(create_instance(app.clone(), app.state(), arg(body, "input")?)?),
         "create_from_modpack" => ok(create_from_modpack(app.clone(), app.state(), arg(body, "input")?)?),
@@ -3630,12 +3666,9 @@ pub(crate) fn web_invoke(
             arg(body, "name")?,
             arg(body, "data")?,
         ))?),
-        "add_addon_upload" => ok(tauri::async_runtime::block_on(add_addon_upload(
-            app.clone(),
-            app.state(),
-            arg(body, "id")?,
-            arg(body, "files")?,
-        ))?),
+        "add_addon_upload" => {
+            ok(tauri::async_runtime::block_on(add_addon_upload(app.clone(), app.state(), arg(body, "id")?, arg(body, "files")?))?)
+        }
         "stash_upload" => ok(stash_upload(app.clone(), arg(body, "name")?, arg(body, "data")?)?),
         "preview_mrpack" => ok(preview_mrpack(remote_upload_path(app, &arg::<String>(body, "path")?)?)?),
         "search_modpacks" => ok(search_modpacks(arg(body, "query")?, arg(body, "page")?)?),
@@ -3649,7 +3682,12 @@ pub(crate) fn web_invoke(
             ok(tauri::async_runtime::block_on(import_mrpack(app.clone(), app.state(), input))?)
         }
         "preview_cfpack" => ok(preview_cfpack(remote_upload_path(app, &arg::<String>(body, "path")?)?)?),
-        "import_cfpack" => ok(tauri::async_runtime::block_on(import_cfpack(app.clone(), app.state(), arg(body, "id")?, remote_upload_path(app, &arg::<String>(body, "path")?)?))?),
+        "import_cfpack" => ok(tauri::async_runtime::block_on(import_cfpack(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            remote_upload_path(app, &arg::<String>(body, "path")?)?,
+        ))?),
         "list_java_processes" => ok(list_java_processes(app.clone(), app.state())?),
         "list_pending_addons" => ok(list_pending_addons(app.clone(), arg(body, "id")?)?),
         "item_icons" => ok(item_icons(app.clone(), arg(body, "version")?, arg(body, "ids")?)?),
@@ -3660,13 +3698,39 @@ pub(crate) fn web_invoke(
         "studio_asset_list" => ok(tauri::async_runtime::block_on(studio_asset_list(app.clone(), arg(body, "id")?))?),
         "studio_asset_image" => ok(tauri::async_runtime::block_on(studio_asset_image(app.clone(), arg(body, "id")?, arg(body, "file")?))?),
         "studio_expansions" => ok(tauri::async_runtime::block_on(studio_expansions::studio_expansions(app.clone(), arg(body, "id")?))?),
-        "studio_asset_add_upload" => ok(tauri::async_runtime::block_on(studio_asset_add_upload(app.clone(), arg(body, "id")?, arg(body, "folder")?, arg(body, "file")?, arg(body, "upload")?))?),
+        "studio_asset_add_upload" => ok(tauri::async_runtime::block_on(studio_asset_add_upload(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "folder")?,
+            arg(body, "file")?,
+            arg(body, "upload")?,
+        ))?),
         // This PC's own agent passes the file's bytes (base64); never reachable from the web (not in the lists).
-        "studio_asset_add" => ok(tauri::async_runtime::block_on(studio_asset_add(app.clone(), arg(body, "id")?, arg(body, "folder")?, arg(body, "file")?, arg(body, "data")?))?),
-        "studio_asset_remove" => ok(tauri::async_runtime::block_on(studio_asset_remove(app.clone(), arg(body, "id")?, arg(body, "folder")?, arg(body, "file")?))?),
+        "studio_asset_add" => ok(tauri::async_runtime::block_on(studio_asset_add(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "folder")?,
+            arg(body, "file")?,
+            arg(body, "data")?,
+        ))?),
+        "studio_asset_remove" => ok(tauri::async_runtime::block_on(studio_asset_remove(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "folder")?,
+            arg(body, "file")?,
+        ))?),
         "studio_pack_build" => ok(tauri::async_runtime::block_on(studio_pack_build(app.clone(), arg(body, "id")?))?),
-        "studio_bundle_peek_upload" => ok(tauri::async_runtime::block_on(studio_bundle::studio_bundle_peek_upload(app.clone(), arg(body, "id")?, arg(body, "upload")?))?),
-        "studio_bundle_import_upload" => ok(tauri::async_runtime::block_on(studio_bundle::studio_bundle_import_upload(app.clone(), arg(body, "id")?, arg(body, "upload")?, arg(body, "replace")?))?),
+        "studio_bundle_peek_upload" => ok(tauri::async_runtime::block_on(studio_bundle::studio_bundle_peek_upload(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "upload")?,
+        ))?),
+        "studio_bundle_import_upload" => ok(tauri::async_runtime::block_on(studio_bundle::studio_bundle_import_upload(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "upload")?,
+            arg(body, "replace")?,
+        ))?),
         "download_studio_assets" => ok(download_studio_assets(app.clone(), arg(body, "id")?)?),
         "item_names" => ok(lang::item_names(app.clone(), arg(body, "version")?, arg(body, "ids")?)?),
         "enchantment_names" => ok(lang::enchantment_names(app.clone(), arg(body, "version")?, arg(body, "ids")?)?),
@@ -3675,7 +3739,8 @@ pub(crate) fn web_invoke(
         "export_mrpack_download" => ok(tauri::async_runtime::block_on(export_mrpack_download(app.clone(), arg(body, "id")?))?),
         "add_addon_files" => {
             // From the web panel or Monolink: only files uploaded to this PC first, never any other path here.
-            let paths: Vec<String> = arg::<Vec<String>>(body, "paths")?.iter().map(|one| remote_upload_path(app, one)).collect::<Result<_, _>>()?;
+            let paths: Vec<String> =
+                arg::<Vec<String>>(body, "paths")?.iter().map(|one| remote_upload_path(app, one)).collect::<Result<_, _>>()?;
             let done = tauri::async_runtime::block_on(add_addon_files(app.clone(), app.state(), arg(body, "id")?, paths.clone()));
             for one in &paths {
                 unstash(Path::new(one));
@@ -3684,40 +3749,99 @@ pub(crate) fn web_invoke(
         }
         "get_rcon_status" => ok(get_rcon_status(app.clone(), arg(body, "id")?)?),
         "get_server_ping" => ok(get_server_ping(app.clone(), app.state(), arg(body, "id")?)?),
-        "list_addon_versions" => ok(list_addon_versions(app.clone(), arg(body, "id")?, arg(body, "projectId")?, arg(body, "projectType")?)?),
+        "list_addon_versions" => {
+            ok(list_addon_versions(app.clone(), arg(body, "id")?, arg(body, "projectId")?, arg(body, "projectType")?)?)
+        }
         "modrinth_project_detail" => ok(modrinth_project_detail(arg(body, "projectId")?)?),
-        "list_player_spots" => ok(tauri::async_runtime::block_on(list_player_spots(
-            app.clone(),
-            arg(body, "id")?,
-        ))?),
+        "list_player_spots" => ok(tauri::async_runtime::block_on(list_player_spots(app.clone(), arg(body, "id")?))?),
         "lookup_mojang_profile" => ok(lookup_mojang_profile(app.clone(), arg(body, "name")?)?),
         "plan_addon_install" => ok(plan_addon_install(app.clone(), arg(body, "id")?, arg(body, "projectId")?, arg(body, "installed")?)?),
         "read_player_nbt" => ok(tauri::async_runtime::block_on(read_player_nbt(app.clone(), arg(body, "id")?, arg(body, "uuid")?))?),
-        "edit_player_item" => ok(tauri::async_runtime::block_on(edit_player_item(app.clone(), app.state(), arg(body, "id")?, arg(body, "uuid")?, arg(body, "ender")?, arg(body, "slot")?, arg(body, "count")?))?),
-        "render_map_tile" => ok(tauri::async_runtime::block_on(render_map_tile(app.clone(), arg(body, "id")?, arg(body, "realm")?, arg(body, "z")?, arg(body, "tx")?, arg(body, "ty")?, arg(body, "night")?))?),
-        "world_map_bounds" => ok(tauri::async_runtime::block_on(world_map_bounds(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?))?),
+        "edit_player_item" => ok(tauri::async_runtime::block_on(edit_player_item(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            arg(body, "uuid")?,
+            arg(body, "ender")?,
+            arg(body, "slot")?,
+            arg(body, "count")?,
+        ))?),
+        "render_map_tile" => ok(tauri::async_runtime::block_on(render_map_tile(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "realm")?,
+            arg(body, "z")?,
+            arg(body, "tx")?,
+            arg(body, "ty")?,
+            arg(body, "night")?,
+        ))?),
+        "world_map_bounds" => {
+            ok(tauri::async_runtime::block_on(world_map_bounds(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?))?)
+        }
         "map_changes" => ok(tauri::async_runtime::block_on(map_changes(app.clone(), app.state(), arg(body, "id")?, arg(body, "realm")?))?),
-        "search_addon_catalog" => ok(search_addon_catalog(app.clone(), arg(body, "id")?, arg(body, "query")?, arg(body, "page")?, arg(body, "categories")?, arg(body, "environment")?, arg(body, "versions")?, arg(body, "loader")?)?),
+        "search_addon_catalog" => ok(search_addon_catalog(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "query")?,
+            arg(body, "page")?,
+            arg(body, "categories")?,
+            arg(body, "environment")?,
+            arg(body, "versions")?,
+            arg(body, "loader")?,
+        )?),
         "check_addon_updates" => ok(tauri::async_runtime::block_on(check_addon_updates(app.clone(), arg(body, "id")?))?),
         "enrich_addons" => ok(tauri::async_runtime::block_on(enrich_addons(app.clone(), arg(body, "id")?))?),
-        "apply_addon_updates" => ok(tauri::async_runtime::block_on(apply_addon_updates(app.clone(), app.state(), arg(body, "id")?, arg(body, "fileNames")?))?),
-        "delete_addon" => ok(tauri::async_runtime::block_on(delete_addon(app.clone(), app.state(), arg(body, "id")?, arg(body, "fileName")?, arg(body, "kind")?))?),
+        "apply_addon_updates" => {
+            ok(tauri::async_runtime::block_on(apply_addon_updates(app.clone(), app.state(), arg(body, "id")?, arg(body, "fileNames")?))?)
+        }
+        "delete_addon" => ok(tauri::async_runtime::block_on(delete_addon(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            arg(body, "fileName")?,
+            arg(body, "kind")?,
+        ))?),
         "delete_backup" => ok(tauri::async_runtime::block_on(delete_backup(app.clone(), arg(body, "id")?, arg(body, "fileName")?))?),
         "delete_bookmark" => ok(delete_bookmark(app.clone(), arg(body, "id")?)?),
         "force_stop_instance" => ok(tauri::async_runtime::block_on(force_stop_instance(app.clone(), app.state(), arg(body, "id")?))?),
         "install_addon" => ok(tauri::async_runtime::block_on(install_addon(app.clone(), app.state(), arg(body, "id")?))?),
         "pumpkin_addon_allowed" => ok(tauri::async_runtime::block_on(pumpkin_addon_allowed(app.clone(), arg(body, "id")?))?),
-        "set_pumpkin_addon_allowed" => ok(tauri::async_runtime::block_on(set_pumpkin_addon_allowed(app.clone(), arg(body, "id")?, arg(body, "allow")?))?),
-        "pumpkin_refused_permissions" => ok(tauri::async_runtime::block_on(pumpkin_refused_permissions(app.clone(), arg(body, "id")?, arg(body, "plugin")?))?),
-        "allow_pumpkin_plugin" => ok(tauri::async_runtime::block_on(allow_pumpkin_plugin(app.clone(), arg(body, "id")?, arg(body, "plugin")?, arg(body, "permissions")?))?),
-        "install_addon_with_dependencies" => ok(install_addon_with_dependencies(app.clone(), app.state(), arg(body, "id")?, arg(body, "projectId")?, arg(body, "dependencies")?, arg(body, "installed")?)?),
-        "install_modrinth" => ok(install_modrinth(app.clone(), app.state(), arg(body, "id")?, arg(body, "projectId")?, arg(body, "projectType")?, arg(body, "versionId")?)?),
+        "set_pumpkin_addon_allowed" => {
+            ok(tauri::async_runtime::block_on(set_pumpkin_addon_allowed(app.clone(), arg(body, "id")?, arg(body, "allow")?))?)
+        }
+        "pumpkin_refused_permissions" => {
+            ok(tauri::async_runtime::block_on(pumpkin_refused_permissions(app.clone(), arg(body, "id")?, arg(body, "plugin")?))?)
+        }
+        "allow_pumpkin_plugin" => ok(tauri::async_runtime::block_on(allow_pumpkin_plugin(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "plugin")?,
+            arg(body, "permissions")?,
+        ))?),
+        "install_addon_with_dependencies" => ok(install_addon_with_dependencies(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            arg(body, "projectId")?,
+            arg(body, "dependencies")?,
+            arg(body, "installed")?,
+        )?),
+        "install_modrinth" => ok(install_modrinth(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            arg(body, "projectId")?,
+            arg(body, "projectType")?,
+            arg(body, "versionId")?,
+        )?),
         "remove_addon" => ok(tauri::async_runtime::block_on(remove_addon(app.clone(), app.state(), arg(body, "id")?))?),
         "rollback_addon_update" => ok(rollback_addon_update(app.clone(), app.state(), arg(body, "id")?, arg(body, "storedName")?)?),
         "send_rcon_command" => ok(send_rcon_command(app.clone(), arg(body, "id")?, arg(body, "command")?)?),
         "clear_server_icon" => ok(tauri::async_runtime::block_on(clear_server_icon(app.clone(), arg(body, "id")?))?),
         "share_log" => ok(tauri::async_runtime::block_on(share_log(app.clone(), arg(body, "id")?, arg(body, "fileName")?))?),
-        "preview_share_log" => ok(tauri::async_runtime::block_on(preview_share_log(app.clone(), arg(body, "id")?, arg(body, "fileName")?))?),
+        "preview_share_log" => {
+            ok(tauri::async_runtime::block_on(preview_share_log(app.clone(), arg(body, "id")?, arg(body, "fileName")?))?)
+        }
         "set_start_with_app" => ok(set_start_with_app(app.clone(), arg(body, "id")?, arg(body, "on")?)?),
         "set_crash_restart" => ok(set_crash_restart(app.clone(), arg(body, "id")?, arg(body, "on")?)?),
         "rename_instance" => ok(rename_instance(app.clone(), app.state(), arg(body, "input")?)?),
@@ -3731,19 +3855,41 @@ pub(crate) fn web_invoke(
         "reorder_instances" => ok(reorder_instances(app.clone(), arg(body, "ids")?)?),
         "upgrade_instance" => ok(tauri::async_runtime::block_on(upgrade_instance(app.clone(), app.state(), arg(body, "input")?))?),
         "rollback_last_upgrade" => ok(tauri::async_runtime::block_on(rollback_last_upgrade(app.clone(), app.state(), arg(body, "id")?))?),
-        "restore_backup" => ok(tauri::async_runtime::block_on(restore_backup(app.clone(), app.state(), arg(body, "id")?, arg(body, "fileName")?))?),
+        "restore_backup" => {
+            ok(tauri::async_runtime::block_on(restore_backup(app.clone(), app.state(), arg(body, "id")?, arg(body, "fileName")?))?)
+        }
         "proxy_network" => ok(tauri::async_runtime::block_on(proxy_network(app.clone(), arg(body, "id")?))?),
-        "link_proxy" => ok(tauri::async_runtime::block_on(link_proxy(app.clone(), arg(body, "id")?, arg(body, "servers")?, arg(body, "first")?))?),
+        "link_proxy" => {
+            ok(tauri::async_runtime::block_on(link_proxy(app.clone(), arg(body, "id")?, arg(body, "servers")?, arg(body, "first")?))?)
+        }
         "backup_contents" => ok(tauri::async_runtime::block_on(backup_contents(app.clone(), arg(body, "id")?, arg(body, "fileName")?))?),
-        "backup_entry_text" => ok(tauri::async_runtime::block_on(backup_entry_text(app.clone(), arg(body, "id")?, arg(body, "fileName")?, arg(body, "path")?))?),
-        "restore_backup_paths" => ok(tauri::async_runtime::block_on(restore_backup_paths(app.clone(), app.state(), arg(body, "id")?, arg(body, "fileName")?, arg(body, "paths")?))?),
+        "backup_entry_text" => ok(tauri::async_runtime::block_on(backup_entry_text(
+            app.clone(),
+            arg(body, "id")?,
+            arg(body, "fileName")?,
+            arg(body, "path")?,
+        ))?),
+        "restore_backup_paths" => ok(tauri::async_runtime::block_on(restore_backup_paths(
+            app.clone(),
+            app.state(),
+            arg(body, "id")?,
+            arg(body, "fileName")?,
+            arg(body, "paths")?,
+        ))?),
         "set_app_settings" => ok(set_app_settings(app.clone(), arg(body, "settings")?)?),
         "playit_state" => ok(playit_state(app.clone())),
         "lan_ip" => ok(lan_ip()),
         "playit_expose" => ok(playit_expose(app.clone(), arg(body, "id")?)?),
         "playit_unexpose" => ok(playit_unexpose(app.clone(), arg(body, "id")?)?),
         "list_web_accounts" => ok(list_web_accounts(app.clone())),
-        "save_web_account" => ok(save_web_account(app.clone(), app.state(), arg(body, "name")?, arg(body, "password")?, arg(body, "role")?, arg(body, "servers")?)?),
+        "save_web_account" => ok(save_web_account(
+            app.clone(),
+            app.state(),
+            arg(body, "name")?,
+            arg(body, "password")?,
+            arg(body, "role")?,
+            arg(body, "servers")?,
+        )?),
         "delete_web_account" => ok(delete_web_account(app.clone(), app.state(), arg(body, "name")?)?),
         "role_catalog" => ok(role_catalog(app.clone())),
         "save_custom_role" => ok(save_custom_role(app.clone(), arg(body, "id")?, arg(body, "name")?, arg(body, "perms")?)?),
@@ -3757,9 +3903,7 @@ pub(crate) fn web_invoke(
 
 fn stash(app: &AppHandle, name: &str, data: &str) -> Result<PathBuf, String> {
     use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(data)
-        .map_err(|_| "Could not read the uploaded file.".to_string())?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data).map_err(|_| "Could not read the uploaded file.".to_string())?;
     let path = stash_slot(app, name)?;
     fs::write(&path, bytes).map_err(|error| format!("Could not store the uploaded file: {error}"))?;
     Ok(path)
@@ -3800,7 +3944,8 @@ fn sweep_uploads(dir: &Path) -> Result<(), String> {
     let mut total = 0u64;
     for entry in fs::read_dir(dir).map_err(|error| error.to_string())?.flatten() {
         let path = entry.path();
-        let old = entry.metadata().and_then(|one| one.modified()).ok().and_then(|at| at.elapsed().ok()).is_some_and(|age| age > UPLOADS_KEEP);
+        let old =
+            entry.metadata().and_then(|one| one.modified()).ok().and_then(|at| at.elapsed().ok()).is_some_and(|age| age > UPLOADS_KEEP);
         if old {
             let _ = if path.is_dir() { fs::remove_dir_all(&path) } else { fs::remove_file(&path) };
             continue;
@@ -3815,16 +3960,16 @@ fn sweep_uploads(dir: &Path) -> Result<(), String> {
 
 fn folder_size(path: &Path) -> u64 {
     fs::read_dir(path)
-        .map(|list| list.flatten().map(|one| if one.path().is_dir() { folder_size(&one.path()) } else { one.metadata().map(|meta| meta.len()).unwrap_or(0) }).sum())
+        .map(|list| {
+            list.flatten()
+                .map(|one| if one.path().is_dir() { folder_size(&one.path()) } else { one.metadata().map(|meta| meta.len()).unwrap_or(0) })
+                .sum()
+        })
         .unwrap_or(0)
 }
 
 fn uploads_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?
-        .join("uploads");
+    let dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?.join("uploads");
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     Ok(dir)
 }
@@ -3864,12 +4009,7 @@ fn unstash(path: &Path) {
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn set_server_icon_upload(
-    app: AppHandle,
-    id: String,
-    name: String,
-    data: String,
-) -> Result<String, String> {
+async fn set_server_icon_upload(app: AppHandle, id: String, name: String, data: String) -> Result<String, String> {
     let path = stash(&app, &name, &data)?;
     let done = set_server_icon(app.clone(), id, path.to_string_lossy().to_string()).await;
     unstash(&path);
@@ -3888,13 +4028,7 @@ async fn add_addon_upload(
     for one in &files {
         paths.push(stash(&app, &one.name, &one.data)?);
     }
-    let done = add_addon_files(
-        app.clone(),
-        state,
-        id,
-        paths.iter().map(|one| one.to_string_lossy().to_string()).collect(),
-    )
-    .await;
+    let done = add_addon_files(app.clone(), state, id, paths.iter().map(|one| one.to_string_lossy().to_string()).collect()).await;
     for one in &paths {
         unstash(one);
     }
@@ -4035,18 +4169,11 @@ fn set_web_bind(app: AppHandle, running: State<'_, web::Running>, bind: String) 
 
 #[tauri::command(async)]
 #[specta::specta]
-fn set_web_direct(
-    app: AppHandle,
-    running: State<'_, web::Running>,
-    on: bool,
-) -> Result<WebPanelView, String> {
+fn set_web_direct(app: AppHandle, running: State<'_, web::Running>, on: bool) -> Result<WebPanelView, String> {
     let mut settings = read_app_settings(&app);
     settings.web_direct = on;
-    store::write(
-        &app_settings_path(&app)?,
-        &serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| format!("Could not save settings: {error}"))?;
+    store::write(&app_settings_path(&app)?, &serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?)
+        .map_err(|error| format!("Could not save settings: {error}"))?;
     Ok(web_panel_state(app.clone(), running))
 }
 
@@ -4061,14 +4188,7 @@ struct WebAccountView {
 #[tauri::command(async)]
 #[specta::specta]
 fn list_web_accounts(app: AppHandle) -> Vec<WebAccountView> {
-    web_accounts(&app)
-        .into_iter()
-        .map(|one| WebAccountView {
-            name: one.name,
-            role: one.role,
-            servers: one.servers,
-        })
-        .collect()
+    web_accounts(&app).into_iter().map(|one| WebAccountView { name: one.name, role: one.role, servers: one.servers }).collect()
 }
 
 #[tauri::command(async)]
@@ -4090,10 +4210,7 @@ fn save_web_account(
     if !web::auth::is_role(&role) && !web::auth::is_server_role(&role, &settings.custom_roles) {
         return Err("Pick Admin, Manager, Viewer or one of your own roles.".into());
     }
-    let found = settings
-        .web_accounts
-        .iter()
-        .position(|one| one.name == name);
+    let found = settings.web_accounts.iter().position(|one| one.name == name);
     if !password.is_empty() && password.chars().count() < 8 {
         return Err("Passwords must be at least 8 characters.".into());
     }
@@ -4101,23 +4218,12 @@ fn save_web_account(
         return Err("A new account needs a password.".into());
     }
     let hash = if password.is_empty() {
-        settings.web_accounts[found.expect("Would have been rejected above if missing")]
-            .hash
-            .clone()
+        settings.web_accounts[found.expect("Would have been rejected above if missing")].hash.clone()
     } else {
         web::auth::Guard::hash(password)?
     };
-    let servers = if role == web::auth::ADMIN {
-        Vec::new()
-    } else {
-        servers
-    };
-    let account = web::auth::Account {
-        name,
-        hash,
-        role,
-        servers,
-    };
+    let servers = if role == web::auth::ADMIN { Vec::new() } else { servers };
+    let account = web::auth::Account { name, hash, role, servers };
     match found {
         Some(at) => settings.web_accounts[at] = account,
         None => settings.web_accounts.push(account),
@@ -4127,11 +4233,7 @@ fn save_web_account(
 
 #[tauri::command(async)]
 #[specta::specta]
-fn delete_web_account(
-    app: AppHandle,
-    running: State<'_, web::Running>,
-    name: String,
-) -> Result<(), String> {
+fn delete_web_account(app: AppHandle, running: State<'_, web::Running>, name: String) -> Result<(), String> {
     let mut settings = read_app_settings(&app);
     settings.web_accounts.retain(|one| one.name != name);
     save_web_accounts(&app, &running, settings)
@@ -4160,7 +4262,12 @@ fn role_users(settings: &AppSettings, role: &str) -> u32 {
 fn move_role(settings: &mut AppSettings, from: &str, to: &str) {
     settings.web_accounts.iter_mut().filter(|one| one.role == from).for_each(|one| one.role = to.to_string());
     settings.web_invites.iter_mut().filter(|one| one.role == from).for_each(|one| one.role = to.to_string());
-    settings.monolink_teams.iter_mut().flat_map(|one| one.people.iter_mut()).filter(|one| one.role == from).for_each(|one| one.role = to.to_string());
+    settings
+        .monolink_teams
+        .iter_mut()
+        .flat_map(|one| one.people.iter_mut())
+        .filter(|one| one.role == from)
+        .for_each(|one| one.role = to.to_string());
 }
 
 fn role_views(settings: &AppSettings) -> Vec<RoleView> {
@@ -4236,11 +4343,8 @@ fn delete_custom_role(app: AppHandle, id: String, move_to: Option<String>) -> Re
 }
 
 pub(crate) fn write_app_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), String> {
-    store::write(
-        &app_settings_path(app)?,
-        &serde_json::to_string_pretty(settings).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| format!("Could not save settings: {error}"))
+    store::write(&app_settings_path(app)?, &serde_json::to_string_pretty(settings).map_err(|error| error.to_string())?)
+        .map_err(|error| format!("Could not save settings: {error}"))
 }
 
 #[derive(Clone, Debug, Serialize, specta::Type)]
@@ -4267,12 +4371,7 @@ fn web_panel_base(running: &State<'_, web::Running>) -> Result<String, String> {
 /// A one-time link that lets someone make their own account for this server, as Manager or Viewer.
 #[tauri::command(async)]
 #[specta::specta]
-fn create_web_invite(
-    app: AppHandle,
-    running: State<'_, web::Running>,
-    id: String,
-    role: String,
-) -> Result<InviteLink, String> {
+fn create_web_invite(app: AppHandle, running: State<'_, web::Running>, id: String, role: String) -> Result<InviteLink, String> {
     let instance = instance_by_id(&app, &id)?;
     let base = web_panel_base(&running)?;
     let now = unix_now();
@@ -4384,7 +4483,13 @@ pub(crate) fn accept_web_invite(app: &AppHandle, token: &str, name: &str, passwo
     settings.web_invites.retain(|one| one.id != invite.id && one.expires > now);
     // Only rights were added, so nobody else has to sign in again.
     write_app_settings(app, &settings)?;
-    record_audit(app, &invite.server, "People", "Joined", &format!("{} joined as {}", name.trim(), role_name(&invite.role, &settings.custom_roles)));
+    record_audit(
+        app,
+        &invite.server,
+        "People",
+        "Joined",
+        &format!("{} joined as {}", name.trim(), role_name(&invite.role, &settings.custom_roles)),
+    );
     Ok(name.trim().to_string())
 }
 
@@ -4444,16 +4549,9 @@ pub(crate) fn web_audit(app: &AppHandle, server: &str, who: &str, command: &str)
     record_audit(app, server, "Web", &command.replace('_', " "), &format!("by {who}"));
 }
 
-fn save_web_accounts(
-    app: &AppHandle,
-    running: &State<'_, web::Running>,
-    settings: AppSettings,
-) -> Result<(), String> {
-    store::write(
-        &app_settings_path(app)?,
-        &serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| format!("Could not save settings: {error}"))?;
+fn save_web_accounts(app: &AppHandle, running: &State<'_, web::Running>, settings: AppSettings) -> Result<(), String> {
+    store::write(&app_settings_path(app)?, &serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?)
+        .map_err(|error| format!("Could not save settings: {error}"))?;
     if let Some(panel) = running.lock().expect("web panel poisoned").as_ref() {
         panel.forget_everyone();
     }
@@ -4518,7 +4616,13 @@ fn drop_servers_of(app: &AppHandle, matches: impl Fn(&ServerInstance) -> bool) -
     instances.retain(|one| !matches(one));
     save_instances(app, &instances)?;
     for id in &gone {
-        record_audit(app, id, "Server", "Remove from list (connection deleted)", "Removed from the list because the connection was deleted. Files are untouched.");
+        record_audit(
+            app,
+            id,
+            "Server",
+            "Remove from list (connection deleted)",
+            "Removed from the list because the connection was deleted. Files are untouched.",
+        );
     }
     Ok(gone)
 }
@@ -4553,10 +4657,7 @@ async fn test_panel_host(
     let kind = api.detect_kind(&servers).await;
     let api = api.with_kind(kind);
     let (daemon, permissions) = match servers.first().filter(|_| api.has_account_key()) {
-        Some(one) => (
-            api.daemon(&one.identifier).await.unwrap_or_default(),
-            api.permissions(&one.identifier).await.unwrap_or_default(),
-        ),
+        Some(one) => (api.daemon(&one.identifier).await.unwrap_or_default(), api.permissions(&one.identifier).await.unwrap_or_default()),
         None => (String::new(), Vec::new()),
     };
     Ok(PanelProbe {
@@ -4618,11 +4719,7 @@ async fn probe_ssh_host(app: AppHandle, address: String, port: u16) -> Result<re
 
 #[tauri::command(async)]
 #[specta::specta]
-fn save_ssh_host(
-    app: AppHandle,
-    host: remote::SshHost,
-    secret: Option<String>,
-) -> Result<(), String> {
+fn save_ssh_host(app: AppHandle, host: remote::SshHost, secret: Option<String>) -> Result<(), String> {
     remote::save_host(&app, host, secret)
 }
 
@@ -4644,20 +4741,13 @@ fn delete_ssh_host(app: AppHandle, state: State<'_, AppState>, id: String) -> Re
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn scan_remote_servers(
-    app: AppHandle,
-    host_id: String,
-) -> Result<Vec<remote::FoundFolder>, String> {
+async fn scan_remote_servers(app: AppHandle, host_id: String) -> Result<Vec<remote::FoundFolder>, String> {
     remote::scan(&app, &host_id).await
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn browse_remote_dir(
-    app: AppHandle,
-    host_id: String,
-    path: String,
-) -> Result<Vec<remote::RemoteEntry>, String> {
+async fn browse_remote_dir(app: AppHandle, host_id: String, path: String) -> Result<Vec<remote::RemoteEntry>, String> {
     remote::browse(&app, &host_id, &path).await
 }
 
@@ -4677,56 +4767,45 @@ async fn import_remote_instance(
     let found = remote::detect(&app, &host_id, &folder).await?;
 
     let instance = {
-    let _store = lock_instance_store();
-    let mut instances = load_instances(&app)?;
-    if instances
-        .iter()
-        .any(|one| one.remote_host == host_id && one.path == folder)
-    {
-        return Err("This folder is already registered.".into());
-    }
-    let name = folder
-        .rsplit('/')
-        .find(|bit| !bit.is_empty())
-        .unwrap_or("Unnamed server")
-        .to_string();
-    let instance = ServerInstance {
-        id: instance_id(),
-        name,
-        path: folder,
-        core: found.core,
-        version: if found.version.is_empty() {
-            "Needs review".into()
-        } else {
-            found.version
-        },
-        launch_mode: default_launch_mode(),
-        server_jar: (!found.jar.is_empty()).then(|| found.jar.clone()),
-        java_path: "java".into(),
-        max_memory_mib: 4096,
-        min_memory_mib: 4096,
-        jvm_args: String::new(),
-        port: found.port,
-        sort_order: 0,
-        group: String::new(),
-        start_with_app: false,
-        crash_restart: false,
-        core_build: String::new(),
-        created_at: unix_now(),
-        last_run_at: 0,
-        custom_command: String::new(),
-        start_script: String::new(),
-        start_script_hash: String::new(),
-        remote_host: host.id,
-        linked: true,
-        panel_host: String::new(),
-        panel_server: String::new(),
-        panel_daemon: String::new(),
-        named: false,
-    };
-    instances.push(instance.clone());
-    save_instances(&app, &instances)?;
-    instance
+        let _store = lock_instance_store();
+        let mut instances = load_instances(&app)?;
+        if instances.iter().any(|one| one.remote_host == host_id && one.path == folder) {
+            return Err("This folder is already registered.".into());
+        }
+        let name = folder.rsplit('/').find(|bit| !bit.is_empty()).unwrap_or("Unnamed server").to_string();
+        let instance = ServerInstance {
+            id: instance_id(),
+            name,
+            path: folder,
+            core: found.core,
+            version: if found.version.is_empty() { "Needs review".into() } else { found.version },
+            launch_mode: default_launch_mode(),
+            server_jar: (!found.jar.is_empty()).then(|| found.jar.clone()),
+            java_path: "java".into(),
+            max_memory_mib: 4096,
+            min_memory_mib: 4096,
+            jvm_args: String::new(),
+            port: found.port,
+            sort_order: 0,
+            group: String::new(),
+            start_with_app: false,
+            crash_restart: false,
+            core_build: String::new(),
+            created_at: unix_now(),
+            last_run_at: 0,
+            custom_command: String::new(),
+            start_script: String::new(),
+            start_script_hash: String::new(),
+            remote_host: host.id,
+            linked: true,
+            panel_host: String::new(),
+            panel_server: String::new(),
+            panel_daemon: String::new(),
+            named: false,
+        };
+        instances.push(instance.clone());
+        save_instances(&app, &instances)?;
+        instance
     };
     adopt_remote(&app, &state, &instance).await;
     Ok(instance_view(instance, &state))
@@ -4738,9 +4817,7 @@ fn game_version_of(text: &str) -> String {
 
 fn is_game_version(text: &str) -> bool {
     let text = text.trim();
-    text.contains('.')
-        && text.starts_with(|c: char| c.is_ascii_digit())
-        && text.chars().all(|c| c.is_ascii_digit() || c == '.')
+    text.contains('.') && text.starts_with(|c: char| c.is_ascii_digit()) && text.chars().all(|c| c.is_ascii_digit() || c == '.')
 }
 
 async fn panel_new_instance(api: &panel::Api, host_id: &str, row: &panel::PanelServer) -> ServerInstance {
@@ -4803,15 +4880,9 @@ async fn sync_panel_all(app: &AppHandle, state: &AppState) -> PanelSync {
                 continue;
             }
         };
-        let wanted: Vec<&panel::PanelServer> = listed
-            .iter()
-            .filter(|one| host.role != panel::PanelRole::Admin || one.owner)
-            .collect();
-        let have: Vec<ServerInstance> = load_instances(app)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|one| one.panel_host == host.id)
-            .collect();
+        let wanted: Vec<&panel::PanelServer> = listed.iter().filter(|one| host.role != panel::PanelRole::Admin || one.owner).collect();
+        let have: Vec<ServerInstance> =
+            load_instances(app).unwrap_or_default().into_iter().filter(|one| one.panel_host == host.id).collect();
         let mut made = Vec::new();
         for row in &wanted {
             if have.iter().any(|one| one.panel_server == row.identifier) || host.hidden.contains(&row.identifier) {
@@ -4829,12 +4900,13 @@ async fn sync_panel_all(app: &AppHandle, state: &AppState) -> PanelSync {
                 learned.push((one.id.clone(), core, version, jar));
             }
         }
-        let gone: Vec<String> = have
-            .iter()
-            .filter(|one| !wanted.iter().any(|row| row.identifier == one.panel_server))
-            .map(|one| one.id.clone())
-            .collect();
-        if made.is_empty() && gone.is_empty() && learned.is_empty() && !have.iter().any(|one| wanted.iter().any(|row| row.identifier == one.panel_server && row.name != one.name)) {
+        let gone: Vec<String> =
+            have.iter().filter(|one| !wanted.iter().any(|row| row.identifier == one.panel_server)).map(|one| one.id.clone()).collect();
+        if made.is_empty()
+            && gone.is_empty()
+            && learned.is_empty()
+            && !have.iter().any(|one| wanted.iter().any(|row| row.identifier == one.panel_server && row.name != one.name))
+        {
             continue;
         }
         let _store = lock_instance_store();
@@ -4956,9 +5028,7 @@ fn claude_account_logout(app: AppHandle, id: String) -> Result<(), String> {
 #[tauri::command]
 #[specta::specta]
 async fn claude_account_login(app: AppHandle, id: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || claude_accounts::login(&app, &id))
-        .await
-        .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || claude_accounts::login(&app, &id)).await.map_err(|error| error.to_string())?
 }
 
 #[tauri::command(async)]
@@ -4991,9 +5061,7 @@ fn codex_models(app: AppHandle) -> Vec<codex_chat::CodexModel> {
 #[tauri::command]
 #[specta::specta]
 async fn codex_login(app: AppHandle) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || codex_chat::login(&app))
-        .await
-        .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || codex_chat::login(&app)).await.map_err(|error| error.to_string())?
 }
 
 #[tauri::command(async)]
@@ -5056,7 +5124,14 @@ fn claude_chat_delete(app: AppHandle, server: String, session: String) -> Result
 
 #[tauri::command(async)]
 #[specta::specta]
-fn claude_chat_open(app: AppHandle, server: String, session: String, mode: String, model: String, engine: String) -> Result<String, String> {
+fn claude_chat_open(
+    app: AppHandle,
+    server: String,
+    session: String,
+    mode: String,
+    model: String,
+    engine: String,
+) -> Result<String, String> {
     if engine == "codex" {
         codex_chat::open(&app, &server, session.is_empty(), &mode, &model)
     } else {
@@ -5105,9 +5180,8 @@ fn claude_attach_paths(app: AppHandle, server: String, paths: Vec<String>) -> Re
 #[specta::specta]
 fn claude_attach_bytes(app: AppHandle, server: String, name: String, data: String) -> Result<String, String> {
     use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(data.as_bytes())
-        .map_err(|_| "Could not read the attached file.".to_string())?;
+    let bytes =
+        base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|_| "Could not read the attached file.".to_string())?;
     claude_agent::attach(&app, &server, &name, &bytes)
 }
 
@@ -5369,13 +5443,7 @@ fn shell_close(session: String) {
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn panel_call(
-    app: AppHandle,
-    host_id: String,
-    method: String,
-    path: String,
-    body: Option<String>,
-) -> Result<String, String> {
+async fn panel_call(app: AppHandle, host_id: String, method: String, path: String, body: Option<String>) -> Result<String, String> {
     let body = match body {
         Some(text) if !text.trim().is_empty() => {
             Some(serde_json::from_str(&text).map_err(|_| "The value to send is not JSON.".to_string())?)
@@ -5406,19 +5474,11 @@ async fn panel_detect(api: &panel::Api, target: &panel::Target) -> (String, Stri
         }
     }
     if let Ok(rows) = api.list(target, "").await {
-        let jars: Vec<&str> = rows
-            .iter()
-            .filter(|one| !one.directory && one.name.ends_with(".jar"))
-            .map(|one| one.name.as_str())
-            .collect();
+        let jars: Vec<&str> = rows.iter().filter(|one| !one.directory && one.name.ends_with(".jar")).map(|one| one.name.as_str()).collect();
         if jar.is_empty() {
             jar = jars.iter().find(|one| **one == "server.jar").or(jars.first()).map(|one| one.to_string()).unwrap_or_default();
         }
-        core = jars
-            .iter()
-            .chain(std::iter::once(&jar.as_str()))
-            .find_map(|one| sniff::core_in_name(one))
-            .unwrap_or_default();
+        core = jars.iter().chain(std::iter::once(&jar.as_str())).find_map(|one| sniff::core_in_name(one)).unwrap_or_default();
     }
     if core.is_empty() {
         if let Some(egg) = api.egg_name(&target.ident).await {
@@ -5458,7 +5518,11 @@ async fn panel_detect(api: &panel::Api, target: &panel::Target) -> (String, Stri
             let text = String::from_utf8_lossy(&bytes);
             if let Some(found) = text.lines().find_map(|line| {
                 let lower = line.to_lowercase();
-                if !(line.contains("(MC: ") || lower.contains("running") || lower.contains("server version") || lower.contains("starting pumpkin")) {
+                if !(line.contains("(MC: ")
+                    || lower.contains("running")
+                    || lower.contains("server version")
+                    || lower.contains("starting pumpkin"))
+                {
                     return None;
                 }
                 let one = remote::version_in_log(line)?;
@@ -5469,26 +5533,13 @@ async fn panel_detect(api: &panel::Api, target: &panel::Target) -> (String, Stri
             }
         }
     }
-    (
-        if core.is_empty() { sniff::UNKNOWN.to_string() } else { core },
-        if version.is_empty() { "Needs review".into() } else { version },
-        jar,
-    )
+    (if core.is_empty() { sniff::UNKNOWN.to_string() } else { core }, if version.is_empty() { "Needs review".into() } else { version }, jar)
 }
 
 async fn adopt_remote(app: &AppHandle, state: &AppState, instance: &ServerInstance) {
-    let live = remote::live_state(
-        app,
-        &instance.remote_host,
-        &[(instance.id.clone(), instance.path.clone())],
-    )
-    .await;
+    let live = remote::live_state(app, &instance.remote_host, &[(instance.id.clone(), instance.path.clone())]).await;
     if !live.is_empty() {
-        state
-            .remote_running
-            .lock()
-            .expect("remote state poisoned")
-            .extend(live);
+        state.remote_running.lock().expect("remote state poisoned").extend(live);
     }
     state.remote_kick.notify_one();
 }
@@ -5511,15 +5562,9 @@ async fn import_remote_archive(
         .map(str::trim)
         .filter(|one| !one.is_empty())
         .map(str::to_owned)
-        .unwrap_or_else(|| {
-            archive
-                .file_stem()
-                .map(|one| one.to_string_lossy().to_string())
-                .unwrap_or_else(|| "server".into())
-        });
+        .unwrap_or_else(|| archive.file_stem().map(|one| one.to_string_lossy().to_string()).unwrap_or_else(|| "server".into()));
     tell_upload(&app, &wanted, "reading", 0, 0);
-    let bytes = fs::read(&archive)
-        .map_err(|error| format!("Could not read the archive: {error}"));
+    let bytes = fs::read(&archive).map_err(|error| format!("Could not read the archive: {error}"));
     let bytes = match bytes {
         Ok(bytes) => bytes,
         Err(error) => {
@@ -5533,24 +5578,14 @@ async fn import_remote_archive(
 }
 
 fn tell_job(app: &AppHandle, kind: &str, name: &str, stage: &str, sent: u64, total: u64) {
-    let _ = app.emit(
-        "remote-upload",
-        serde_json::json!({ "kind": kind, "name": name, "stage": stage, "sent": sent, "total": total }),
-    );
+    let _ = app.emit("remote-upload", serde_json::json!({ "kind": kind, "name": name, "stage": stage, "sent": sent, "total": total }));
 }
 
 fn tell_upload(app: &AppHandle, name: &str, stage: &str, sent: u64, total: u64) {
     tell_job(app, "upload", name, stage, sent, total);
 }
 
-async fn watched_upload(
-    app: &AppHandle,
-    host: &str,
-    folder: &str,
-    relative: &str,
-    bytes: &[u8],
-    shown: &str,
-) -> Result<(), String> {
+async fn watched_upload(app: &AppHandle, host: &str, folder: &str, relative: &str, bytes: &[u8], shown: &str) -> Result<(), String> {
     let step = std::sync::atomic::AtomicU64::new(u64::MAX);
     let done = remote::upload_watched(app, host, folder, relative, bytes, &|sent, total| {
         let at = (sent * 100).checked_div(total).unwrap_or(0);
@@ -5563,13 +5598,7 @@ async fn watched_upload(
     done
 }
 
-async fn send_zip_to_host(
-    app: &AppHandle,
-    state: &AppState,
-    host_id: &str,
-    name: &str,
-    bytes: &[u8],
-) -> Result<InstanceView, String> {
+async fn send_zip_to_host(app: &AppHandle, state: &AppState, host_id: &str, name: &str, bytes: &[u8]) -> Result<InstanceView, String> {
     let root = remote::server_root(app, host_id).await?;
     let folder = ascii_folder_name(name);
     let last = std::sync::atomic::AtomicU64::new(u64::MAX);
@@ -5588,12 +5617,7 @@ async fn send_zip_to_host(
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn upload_instance_to_host(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    host_id: String,
-) -> Result<InstanceView, String> {
+async fn upload_instance_to_host(app: AppHandle, state: State<'_, AppState>, id: String, host_id: String) -> Result<InstanceView, String> {
     ensure_stopped(&state, &id)?;
     let instance = instance_by_id(&app, &id)?;
     if !instance.remote_host.is_empty() {
@@ -5622,12 +5646,7 @@ async fn upload_instance_to_host(
 /// Creating on an SSH machine: the server is built here first, then moved over and the local copy removed.
 #[tauri::command]
 #[specta::specta]
-async fn move_instance_to_host(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    host_id: String,
-) -> Result<InstanceView, String> {
+async fn move_instance_to_host(app: AppHandle, state: State<'_, AppState>, id: String, host_id: String) -> Result<InstanceView, String> {
     let instance = instance_by_id(&app, &id)?;
     if pumpkin::is_pumpkin(&instance.core) {
         let conn = remote::connect(&app, &host_id).await?;
@@ -5677,51 +5696,44 @@ async fn register_remote_folder(
 ) -> Result<InstanceView, String> {
     let found = remote::detect(app, host_id, folder).await?;
     let instance = {
-    let _store = lock_instance_store();
-    let mut instances = load_instances(app)?;
-    if instances
-        .iter()
-        .any(|one| one.remote_host == host_id && one.path == folder)
-    {
-        return Err("This folder is already registered.".into());
-    }
-    let instance = ServerInstance {
-        id: instance_id(),
-        name: name.to_string(),
-        path: folder.to_string(),
-        core: found.core,
-        version: if found.version.is_empty() {
-            "Needs review".into()
-        } else {
-            found.version
-        },
-        launch_mode: default_launch_mode(),
-        server_jar: (!found.jar.is_empty()).then(|| found.jar.clone()),
-        java_path: "java".into(),
-        max_memory_mib: 4096,
-        min_memory_mib: 4096,
-        jvm_args: String::new(),
-        port: found.port,
-        sort_order: instances.len() as u32,
-        group: String::new(),
-        start_with_app: false,
-        crash_restart: false,
-        core_build: String::new(),
-        created_at: unix_now(),
-        last_run_at: 0,
-        custom_command: String::new(),
-        start_script: String::new(),
-        start_script_hash: String::new(),
-        remote_host: host_id.to_string(),
-        linked: true,
-        panel_host: String::new(),
-        panel_server: String::new(),
-        panel_daemon: String::new(),
-        named: false,
-    };
-    instances.push(instance.clone());
-    save_instances(app, &instances)?;
-    instance
+        let _store = lock_instance_store();
+        let mut instances = load_instances(app)?;
+        if instances.iter().any(|one| one.remote_host == host_id && one.path == folder) {
+            return Err("This folder is already registered.".into());
+        }
+        let instance = ServerInstance {
+            id: instance_id(),
+            name: name.to_string(),
+            path: folder.to_string(),
+            core: found.core,
+            version: if found.version.is_empty() { "Needs review".into() } else { found.version },
+            launch_mode: default_launch_mode(),
+            server_jar: (!found.jar.is_empty()).then(|| found.jar.clone()),
+            java_path: "java".into(),
+            max_memory_mib: 4096,
+            min_memory_mib: 4096,
+            jvm_args: String::new(),
+            port: found.port,
+            sort_order: instances.len() as u32,
+            group: String::new(),
+            start_with_app: false,
+            crash_restart: false,
+            core_build: String::new(),
+            created_at: unix_now(),
+            last_run_at: 0,
+            custom_command: String::new(),
+            start_script: String::new(),
+            start_script_hash: String::new(),
+            remote_host: host_id.to_string(),
+            linked: true,
+            panel_host: String::new(),
+            panel_server: String::new(),
+            panel_daemon: String::new(),
+            named: false,
+        };
+        instances.push(instance.clone());
+        save_instances(app, &instances)?;
+        instance
     };
     adopt_remote(app, state, &instance).await;
     Ok(instance_view(instance, state))
@@ -5793,12 +5805,7 @@ fn vps_tunnel_stop(app: AppHandle, id: String, forget: bool) -> Result<vps_tunne
 
 #[tauri::command(async)]
 #[specta::specta]
-fn set_web_panel(
-    app: AppHandle,
-    running: State<'_, web::Running>,
-    on: bool,
-    port: u16,
-) -> Result<WebPanelView, String> {
+fn set_web_panel(app: AppHandle, running: State<'_, web::Running>, on: bool, port: u16) -> Result<WebPanelView, String> {
     let mut settings = read_app_settings(&app);
     if on && port < 1024 {
         return Err("Choose a port above 1024.".into());
@@ -5809,11 +5816,8 @@ fn set_web_panel(
     }
     settings.web_panel = on;
     settings.web_panel_port = port;
-    store::write(
-        &app_settings_path(&app)?,
-        &serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| format!("Could not save settings: {error}"))?;
+    store::write(&app_settings_path(&app)?, &serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?)
+        .map_err(|error| format!("Could not save settings: {error}"))?;
     Ok(web_panel_state(app.clone(), running))
 }
 
@@ -5897,10 +5901,7 @@ async fn get_server_icon(app: AppHandle, id: String) -> Result<Option<String>, S
         return Ok(Some(large));
     }
     use base64::Engine;
-    Ok(Some(format!(
-        "data:image/png;base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(bytes)
-    )))
+    Ok(Some(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes))))
 }
 
 #[tauri::command(async)]
@@ -5915,15 +5916,12 @@ async fn set_server_icon(app: AppHandle, id: String, source: String) -> Result<S
     if bytes.len() > 10 * 1024 * 1024 {
         return Err("Images larger than 10 MB cannot be used.".into());
     }
-    let picture = image::load_from_memory(&bytes)
-        .map_err(|_| "Not an image, or an unsupported format.".to_string())?;
+    let picture = image::load_from_memory(&bytes).map_err(|_| "Not an image, or an unsupported format.".to_string())?;
     let square = picture.resize_to_fill(64, 64, image::imageops::FilterType::Lanczos3);
     save_large_icon(&app, &id, &picture);
     if !instance.panel_host.is_empty() {
         let mut png = std::io::Cursor::new(Vec::new());
-        square
-            .write_to(&mut png, image::ImageFormat::Png)
-            .map_err(|error| format!("Could not create the icon: {error}"))?;
+        square.write_to(&mut png, image::ImageFormat::Png).map_err(|error| format!("Could not create the icon: {error}"))?;
         let png = png.into_inner();
         let (api, target) = panel_of(&app, &instance)?;
         api.upload(&target, "", "server-icon.png", png.clone()).await?;
@@ -5932,16 +5930,11 @@ async fn set_server_icon(app: AppHandle, id: String, source: String) -> Result<S
             return Ok(large);
         }
         use base64::Engine;
-        return Ok(format!(
-            "data:image/png;base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(png)
-        ));
+        return Ok(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png)));
     }
     if !instance.remote_host.is_empty() {
         let mut png = std::io::Cursor::new(Vec::new());
-        square
-            .write_to(&mut png, image::ImageFormat::Png)
-            .map_err(|error| format!("Could not create the icon: {error}"))?;
+        square.write_to(&mut png, image::ImageFormat::Png).map_err(|error| format!("Could not create the icon: {error}"))?;
         let png = png.into_inner();
         // Don't use `block_on` here: this runs on a tokio worker and would deadlock.
         remote::upload(&app, &instance.remote_host, &instance.path, "server-icon.png", &png).await?;
@@ -5950,25 +5943,14 @@ async fn set_server_icon(app: AppHandle, id: String, source: String) -> Result<S
             return Ok(large);
         }
         use base64::Engine;
-        return Ok(format!(
-            "data:image/png;base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(png)
-        ));
+        return Ok(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png)));
     }
     let target = Path::new(&instance.path).join("server-icon.png");
-    square
-        .save_with_format(&target, image::ImageFormat::Png)
-        .map_err(|error| format!("Could not save the icon: {error}"))?;
+    square.save_with_format(&target, image::ImageFormat::Png).map_err(|error| format!("Could not save the icon: {error}"))?;
     if pumpkin::is_pumpkin(&instance.core) {
         pumpkin::set_favicon(Path::new(&instance.path), Some("server-icon.png"))?;
     }
-    record_audit(
-        &app,
-        &id,
-        "Server",
-        "Icon changed",
-        "Saved server-icon.png at 64×64.",
-    );
+    record_audit(&app, &id, "Server", "Icon changed", "Saved server-icon.png at 64×64.");
     // Saved after server-icon.png, so it counts as fresh.
     save_large_icon(&app, &id, &picture);
     if let Some(large) = large_icon_url(&app, &id, Some(&target)) {
@@ -5976,10 +5958,7 @@ async fn set_server_icon(app: AppHandle, id: String, source: String) -> Result<S
     }
     let saved = fs::read(&target).map_err(|error| error.to_string())?;
     use base64::Engine;
-    Ok(format!(
-        "data:image/png;base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(saved)
-    ))
+    Ok(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(saved)))
 }
 
 #[tauri::command(async)]
@@ -6014,10 +5993,7 @@ fn guess_java(command: &str) -> (String, Option<String>) {
     let flat = command.replace('\\', "/");
     let low = flat.to_lowercase();
 
-    if low.contains("net.minecraft.client.main.main")
-        || low.contains("--assetsdir")
-        || low.contains("--gamedir")
-    {
+    if low.contains("net.minecraft.client.main.main") || low.contains("--assetsdir") || low.contains("--gamedir") {
         return ("Minecraft game".into(), Some("Not a server".into()));
     }
 
@@ -6031,11 +6007,10 @@ fn guess_java(command: &str) -> (String, Option<String>) {
     }
 
     let jar_path = flat
-        .split(|letter: char| letter.is_whitespace() || letter == '"').rfind(|piece| piece.to_lowercase().ends_with(".jar"))
+        .split(|letter: char| letter.is_whitespace() || letter == '"')
+        .rfind(|piece| piece.to_lowercase().ends_with(".jar"))
         .map(|one| one.to_string());
-    let jar = jar_path
-        .as_deref()
-        .map(|path| path.rsplit('/').next().unwrap_or(path).to_string());
+    let jar = jar_path.as_deref().map(|path| path.rsplit('/').next().unwrap_or(path).to_string());
 
     let name = jar.clone().unwrap_or_default().to_lowercase();
     let core = [
@@ -6065,11 +6040,7 @@ fn guess_java(command: &str) -> (String, Option<String>) {
         .find(|piece| piece.contains('.') && piece.starts_with(|one: char| one.is_ascii_digit()))
         .map(|piece| piece.to_string());
 
-    let folder = jar_path
-        .as_deref()
-        .filter(|path| path.contains('/'))
-        .and_then(|path| path.rsplit('/').nth(1))
-        .map(|one| one.to_string());
+    let folder = jar_path.as_deref().filter(|path| path.contains('/')).and_then(|path| path.rsplit('/').nth(1)).map(|one| one.to_string());
 
     let why: Vec<String> = folder.into_iter().chain(jar.clone()).collect();
     let why = (!why.is_empty()).then(|| why.join(" · "));
@@ -6099,17 +6070,11 @@ struct JavaProcess {
 
 #[tauri::command(async)]
 #[specta::specta]
-fn list_java_processes(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<Vec<JavaProcess>, String> {
+fn list_java_processes(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<JavaProcess>, String> {
     let instances = load_instances(&app).unwrap_or_default();
     let managed: HashMap<u32, String> = {
         let processes = state.processes.lock().expect("process state poisoned");
-        processes
-            .iter()
-            .map(|(id, process)| (process.pid, id.clone()))
-            .collect()
+        processes.iter().map(|(id, process)| (process.pid, id.clone())).collect()
     };
     let output = off_runtime(|| {
         hidden_command("powershell")
@@ -6126,8 +6091,7 @@ fn list_java_processes(
     let text = text.trim();
     let mut found = Vec::new();
     if !text.is_empty() {
-        let parsed: serde_json::Value =
-            serde_json::from_str(text).unwrap_or(serde_json::Value::Null);
+        let parsed: serde_json::Value = serde_json::from_str(text).unwrap_or(serde_json::Value::Null);
         let rows: Vec<&serde_json::Value> = match &parsed {
             serde_json::Value::Array(items) => items.iter().collect(),
             serde_json::Value::Null => Vec::new(),
@@ -6138,26 +6102,16 @@ fn list_java_processes(
                 continue;
             };
             let pid = pid as u32;
-            let raw = row
-                .get("CommandLine")
-                .and_then(|value| value.as_str())
-                .unwrap_or_default()
-                .to_string();
+            let raw = row.get("CommandLine").and_then(|value| value.as_str()).unwrap_or_default().to_string();
             let command = raw.replace('\\', "/").to_lowercase();
-            let memory = row
-                .get("WorkingSetSize")
-                .and_then(|value| value.as_u64())
-                .unwrap_or(0);
+            let memory = row.get("WorkingSetSize").and_then(|value| value.as_u64()).unwrap_or(0);
             let owner = instances.iter().find(|instance| {
                 let path = instance.path.replace('\\', "/").to_lowercase();
                 !path.is_empty() && command.contains(&path)
             });
             let server_id = managed.get(&pid).cloned();
             let (label, detail) = match owner {
-                Some(instance) => (
-                    instance.name.clone(),
-                    Some(format!("{} {}", instance.core, instance.version)),
-                ),
+                Some(instance) => (instance.name.clone(), Some(format!("{} {}", instance.core, instance.version))),
                 None => guess_java(&raw),
             };
             found.push(JavaProcess {
@@ -6178,13 +6132,7 @@ fn list_java_processes(
 #[specta::specta]
 fn kill_java_process(app: AppHandle, pid: u32) -> Result<(), String> {
     kill_process_tree(pid);
-    record_audit(
-        &app,
-        "",
-        "Server",
-        "Leftover process terminated",
-        &format!("Terminated process {pid}."),
-    );
+    record_audit(&app, "", "Server", "Leftover process terminated", &format!("Terminated process {pid}."));
     Ok(())
 }
 
@@ -6232,11 +6180,7 @@ fn version_span(versions: &[String]) -> String {
     }
 }
 
-fn addon_fit(
-    addon: &addons::InstalledAddon,
-    card: &addons::ProjectCard,
-    instance: &ServerInstance,
-) -> (String, bool) {
+fn addon_fit(addon: &addons::InstalledAddon, card: &addons::ProjectCard, instance: &ServerInstance) -> (String, bool) {
     if card.server_side == "unsupported" {
         return ("Client only".into(), true);
     }
@@ -6244,10 +6188,7 @@ fn addon_fit(
         .or_else(|_| modrinth_loader(instance, "plugin"))
         .map(|(_, loader)| loader.to_string())
         .unwrap_or_default();
-    if !wanted.is_empty()
-        && !addon.loaders.is_empty()
-        && !addon.loaders.iter().any(|one| one == &wanted)
-    {
+    if !wanted.is_empty() && !addon.loaders.is_empty() && !addon.loaders.iter().any(|one| one == &wanted) {
         return (
             format!(
                 "{} only · {} not supported",
@@ -6257,17 +6198,8 @@ fn addon_fit(
             true,
         );
     }
-    if !addon.game_versions.is_empty()
-        && !addon.game_versions.iter().any(|one| one == &instance.version)
-    {
-        return (
-            format!(
-                "Supports {} · {} not supported",
-                version_span(&addon.game_versions),
-                instance.version
-            ),
-            true,
-        );
+    if !addon.game_versions.is_empty() && !addon.game_versions.iter().any(|one| one == &instance.version) {
+        return (format!("Supports {} · {} not supported", version_span(&addon.game_versions), instance.version), true);
     }
     (String::new(), false)
 }
@@ -6296,10 +6228,7 @@ async fn enrich_addons(app: AppHandle, id: String) -> Result<Vec<AddonCard>, Str
         if addons::identify(&client, &mut found).is_err() {
             return Ok(Vec::new());
         }
-        let ids: std::collections::HashSet<&str> = found
-            .iter()
-            .filter_map(|addon| addon.project_id.as_deref())
-            .collect();
+        let ids: std::collections::HashSet<&str> = found.iter().filter_map(|addon| addon.project_id.as_deref()).collect();
         let cards = addons::fetch_project_cards(&client, &ids).unwrap_or_default();
         Ok(found
             .iter()
@@ -6339,13 +6268,9 @@ fn set_servers_root(app: AppHandle, folder: String) -> Result<String, String> {
     if !path.is_dir() {
         return Err("That folder was not found.".into());
     }
-    let path = path
-        .canonicalize()
-        .map(plain_path)
-        .map_err(|error| format!("Could not verify the folder: {error}"))?;
+    let path = path.canonicalize().map(plain_path).map_err(|error| format!("Could not verify the folder: {error}"))?;
     let probe = path.join(".monolab-write-test");
-    fs::write(&probe, b"ok")
-        .map_err(|error| format!("Cannot write to that folder: {error}"))?;
+    fs::write(&probe, b"ok").map_err(|error| format!("Cannot write to that folder: {error}"))?;
     let _ = fs::remove_file(&probe);
     fs::write(servers_root_setting_path(&app)?, path.to_string_lossy().as_bytes())
         .map_err(|error| format!("Could not remember the storage location: {error}"))?;
@@ -6357,8 +6282,7 @@ fn set_servers_root(app: AppHandle, folder: String) -> Result<String, String> {
 fn reset_servers_root(app: AppHandle) -> Result<String, String> {
     let path = servers_root_setting_path(&app)?;
     if path.is_file() {
-        fs::remove_file(&path)
-            .map_err(|error| format!("Could not reset the storage location: {error}"))?;
+        fs::remove_file(&path).map_err(|error| format!("Could not reset the storage location: {error}"))?;
     }
     Ok(managed_servers_root(&app)?.to_string_lossy().to_string())
 }
@@ -6398,24 +6322,13 @@ fn find_jar(folder: &Path) -> Option<PathBuf> {
     if standard.is_file() {
         return Some(standard);
     }
-    fs::read_dir(folder)
-        .ok()?
-        .flatten()
-        .map(|entry| entry.path())
-        .find(|path| {
-            path.extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("jar"))
-                && !path
-                    .file_name()
-                    .is_some_and(|name| name.to_string_lossy().contains("installer"))
-        })
+    fs::read_dir(folder).ok()?.flatten().map(|entry| entry.path()).find(|path| {
+        path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("jar"))
+            && !path.file_name().is_some_and(|name| name.to_string_lossy().contains("installer"))
+    })
 }
 
-pub(crate) fn download_file(
-    client: &reqwest::blocking::Client,
-    url: &str,
-    destination: &Path,
-) -> Result<(), String> {
+pub(crate) fn download_file(client: &reqwest::blocking::Client, url: &str, destination: &Path) -> Result<(), String> {
     download_file_watched(client, url, destination, &mut |_, _| {})
 }
 
@@ -6435,26 +6348,21 @@ pub(crate) fn download_file_watched(
         .map_err(|error| format!("The download server did not provide the file: {error}"))?;
     let total = response.content_length();
     let temporary = destination.with_extension("part");
-    let mut file = fs::File::create(&temporary)
-        .map_err(|error| format!("Could not create the download file: {error}"))?;
+    let mut file = fs::File::create(&temporary).map_err(|error| format!("Could not create the download file: {error}"))?;
     let mut buffer = [0_u8; 64 * 1024];
     let mut received = 0_u64;
     loop {
-        let read = response
-            .read(&mut buffer)
-            .map_err(|error| format!("Problem while downloading: {error}"))?;
+        let read = response.read(&mut buffer).map_err(|error| format!("Problem while downloading: {error}"))?;
         if read == 0 {
             break;
         }
-        file.write_all(&buffer[..read])
-            .map_err(|error| format!("Could not save the file: {error}"))?;
+        file.write_all(&buffer[..read]).map_err(|error| format!("Could not save the file: {error}"))?;
         received += read as u64;
         tick(received, total);
     }
     file.flush().map_err(|error| error.to_string())?;
     drop(file);
-    fs::rename(&temporary, destination)
-        .map_err(|error| format!("Could not finish the download file: {error}"))
+    fs::rename(&temporary, destination).map_err(|error| format!("Could not finish the download file: {error}"))
 }
 
 fn tell_addon_download(app: &AppHandle, server_id: &str, project_id: &str, file: &str, received: u64, total: Option<u64>) {
@@ -6464,13 +6372,7 @@ fn tell_addon_download(app: &AppHandle, server_id: &str, project_id: &str, file:
 }
 
 fn download_cancelled(app: &AppHandle, operation_id: &str) -> bool {
-    !operation_id.is_empty()
-        && app
-            .state::<AppState>()
-            .cancelled_downloads
-            .lock()
-            .expect("download state poisoned")
-            .contains(operation_id)
+    !operation_id.is_empty() && app.state::<AppState>().cancelled_downloads.lock().expect("download state poisoned").contains(operation_id)
 }
 
 const CONSOLE_FLAGS: [&str; 3] = ["-Dterminal.ansi=true", "-Duser.language=en", "-Duser.country=US"];
@@ -6515,8 +6417,7 @@ pub(crate) fn download_server_file(
 ) -> Result<(), String> {
     net::check_download_url(&source.url)?;
     let temporary = destination.with_extension("part");
-    let mut file = fs::File::create(&temporary)
-        .map_err(|error| format!("Could not create the download file: {error}"))?;
+    let mut file = fs::File::create(&temporary).map_err(|error| format!("Could not create the download file: {error}"))?;
     let mut buffer = [0_u8; 64 * 1024];
     let mut received = 0_u64;
     let mut total: Option<u64> = None;
@@ -6550,10 +6451,7 @@ pub(crate) fn download_server_file(
             if download_cancelled(app, operation_id) {
                 drop(file);
                 let _ = fs::remove_file(&temporary);
-                let _ = app.emit(
-                    "server-download",
-                    serde_json::json!({ "stage": "cancelled", "core": core, "version": version }),
-                );
+                let _ = app.emit("server-download", serde_json::json!({ "stage": "cancelled", "core": core, "version": version }));
                 return Err("Download cancelled.".into());
             }
             let read = match response.read(&mut buffer) {
@@ -6563,10 +6461,12 @@ pub(crate) fn download_server_file(
             if read == 0 {
                 break None;
             }
-            file.write_all(&buffer[..read])
-                .map_err(|error| format!("Could not save the file: {error}"))?;
+            file.write_all(&buffer[..read]).map_err(|error| format!("Could not save the file: {error}"))?;
             received += read as u64;
-            let _ = app.emit("server-download", serde_json::json!({ "stage": "downloading", "core": core, "version": version, "received": received, "total": total }));
+            let _ = app.emit(
+                "server-download",
+                serde_json::json!({ "stage": "downloading", "core": core, "version": version, "received": received, "total": total }),
+            );
         };
         let short = total.is_some_and(|whole| received < whole);
         match stalled {
@@ -6597,18 +6497,13 @@ pub(crate) fn download_server_file(
         }
     }
     if source.sha256.is_none() && source.sha1.is_none() && source.md5.is_none() {
-        let check = if core == "Pumpkin" {
-            hashes::verify_windows_exe(&temporary)
-        } else {
-            verify_java_archive(&temporary)
-        };
+        let check = if core == "Pumpkin" { hashes::verify_windows_exe(&temporary) } else { verify_java_archive(&temporary) };
         if let Err(error) = check {
             let _ = fs::remove_file(&temporary);
             return Err(error);
         }
     }
-    fs::rename(&temporary, destination)
-        .map_err(|error| format!("Could not finish the download file: {error}"))
+    fs::rename(&temporary, destination).map_err(|error| format!("Could not finish the download file: {error}"))
 }
 
 fn installed_args_file(folder: &Path) -> Option<String> {
@@ -6631,11 +6526,7 @@ fn installed_args_file(folder: &Path) -> Option<String> {
         }
     }
     let mut found: Vec<(Vec<u64>, String)> = Vec::new();
-    for base in [
-        "libraries/net/neoforged/neoforge",
-        "libraries/net/neoforged/forge",
-        "libraries/net/minecraftforge/forge",
-    ] {
+    for base in ["libraries/net/neoforged/neoforge", "libraries/net/neoforged/forge", "libraries/net/minecraftforge/forge"] {
         let Ok(entries) = fs::read_dir(folder.join(base)) else {
             continue;
         };
@@ -6652,11 +6543,7 @@ fn installed_args_file(folder: &Path) -> Option<String> {
 }
 
 fn version_key(version: &str) -> Vec<u64> {
-    version
-        .split(|c: char| !c.is_ascii_digit())
-        .filter(|part| !part.is_empty())
-        .map(|part| part.parse().unwrap_or(0))
-        .collect()
+    version.split(|c: char| !c.is_ascii_digit()).filter(|part| !part.is_empty()).map(|part| part.parse().unwrap_or(0)).collect()
 }
 
 fn script_args_file(folder: &Path) -> Result<String, String> {
@@ -6665,37 +6552,25 @@ fn script_args_file(folder: &Path) -> Result<String, String> {
     })
 }
 
-fn update_script_memory(
-    path: &Path,
-    memory_mib: u32,
-    min_memory_mib: u32,
-    jvm_args: &str,
-    previous_jvm_args: &str,
-) -> Result<(), String> {
+fn update_script_memory(path: &Path, memory_mib: u32, min_memory_mib: u32, jvm_args: &str, previous_jvm_args: &str) -> Result<(), String> {
     let previous_arguments = previous_jvm_args.split_whitespace().collect::<HashSet<_>>();
     let current = fs::read_to_string(path).unwrap_or_default();
     let mut lines = current
         .lines()
         .filter(|line| {
             let value = line.trim();
-            !value.starts_with("-Xms")
-                && !value.starts_with("-Xmx")
-                && !previous_arguments.contains(value)
+            !value.starts_with("-Xms") && !value.starts_with("-Xmx") && !previous_arguments.contains(value)
         })
         .map(str::to_owned)
         .collect::<Vec<_>>();
-    lines.push(format!(
-        "-Xms{}M",
-        sane_min_memory(min_memory_mib, memory_mib)
-    ));
+    lines.push(format!("-Xms{}M", sane_min_memory(min_memory_mib, memory_mib)));
     lines.push(format!("-Xmx{memory_mib}M"));
     for argument in launch::jvm_arguments(jvm_args)? {
         if !lines.contains(&argument) {
             lines.push(argument);
         }
     }
-    fs::write(path, format!("{}\n", lines.join("\n")))
-        .map_err(|error| format!("Could not save the memory settings: {error}"))
+    fs::write(path, format!("{}\n", lines.join("\n"))).map_err(|error| format!("Could not save the memory settings: {error}"))
 }
 
 fn ensure_port_available(port: u16) -> Result<(), String> {
@@ -6708,11 +6583,7 @@ fn level_name_of(instance: &ServerInstance) -> String {
     }
     fs::read_to_string(Path::new(&instance.path).join("server.properties"))
         .ok()
-        .and_then(|text| {
-            text.lines()
-                .find_map(|line| line.trim().strip_prefix("level-name="))
-                .map(|value| value.trim().to_string())
-        })
+        .and_then(|text| text.lines().find_map(|line| line.trim().strip_prefix("level-name=")).map(|value| value.trim().to_string()))
         .filter(|value| !value.is_empty() && !value.contains(['/', '\\', ':']))
         .unwrap_or_else(|| "world".into())
 }
@@ -6726,13 +6597,7 @@ fn port_from_properties(instance: &ServerInstance) -> u16 {
         if let Some(port) = fs::read_to_string(config).ok().and_then(|text| {
             text.lines()
                 .find_map(|line| line.trim().strip_prefix("bind ="))
-                .and_then(|value| {
-                    value
-                        .trim()
-                        .trim_matches('"')
-                        .rsplit_once(':')
-                        .and_then(|(_, port)| port.parse::<u16>().ok())
-                })
+                .and_then(|value| value.trim().trim_matches('"').rsplit_once(':').and_then(|(_, port)| port.parse::<u16>().ok()))
         }) {
             return port;
         }
@@ -6742,13 +6607,7 @@ fn port_from_properties(instance: &ServerInstance) -> u16 {
         if let Some(port) = fs::read_to_string(config).ok().and_then(|text| {
             text.lines()
                 .find_map(|line| line.trim().strip_prefix("host:"))
-                .and_then(|value| {
-                    value
-                        .trim()
-                        .trim_matches('"')
-                        .rsplit_once(':')
-                        .and_then(|(_, port)| port.parse::<u16>().ok())
-                })
+                .and_then(|value| value.trim().trim_matches('"').rsplit_once(':').and_then(|(_, port)| port.parse::<u16>().ok()))
         }) {
             return port;
         }
@@ -6759,9 +6618,7 @@ fn port_from_properties(instance: &ServerInstance) -> u16 {
         .and_then(|text| {
             text.lines().find_map(|line| {
                 let (key, value) = line.trim().split_once('=')?;
-                (key.trim() == "server-port")
-                    .then(|| value.trim().parse::<u16>().ok())
-                    .flatten()
+                (key.trim() == "server-port").then(|| value.trim().parse::<u16>().ok()).flatten()
             })
         })
         .unwrap_or(instance.port)
@@ -6775,25 +6632,21 @@ fn write_instance_port(folder: &Path, core: &str, port: u16) -> Result<(), Strin
         let config = folder.join("velocity.toml");
         if let Ok(text) = fs::read_to_string(&config) {
             let updated = replace_config_line(&text, "bind", &format!("bind = \"0.0.0.0:{port}\""));
-            return fs::write(config, updated)
-                .map_err(|error| format!("Could not write the port to velocity.toml: {error}"));
+            return fs::write(config, updated).map_err(|error| format!("Could not write the port to velocity.toml: {error}"));
         }
         return Ok(());
     }
     if core == "BungeeCord" {
         let config = folder.join("config.yml");
         if let Ok(text) = fs::read_to_string(&config) {
-            let updated =
-                replace_config_line(&text, "host", &format!("  host: 0.0.0.0:{port}"));
-            return fs::write(config, updated)
-                .map_err(|error| format!("Could not write the port to config.yml: {error}"));
+            let updated = replace_config_line(&text, "host", &format!("  host: 0.0.0.0:{port}"));
+            return fs::write(config, updated).map_err(|error| format!("Could not write the port to config.yml: {error}"));
         }
         return Ok(());
     }
     let properties = folder.join("server.properties");
     let current = fs::read_to_string(&properties).unwrap_or_default();
-    fs::write(properties, with_port(&current, port))
-        .map_err(|error| format!("Could not write the port to server.properties: {error}"))
+    fs::write(properties, with_port(&current, port)).map_err(|error| format!("Could not write the port to server.properties: {error}"))
 }
 
 fn with_port(current: &str, port: u16) -> String {
@@ -6809,10 +6662,7 @@ fn with_port(current: &str, port: u16) -> String {
             }
         })
         .collect::<Vec<_>>();
-    if !lines
-        .iter()
-        .any(|line| line.trim_start().starts_with("server-port="))
-    {
+    if !lines.iter().any(|line| line.trim_start().starts_with("server-port=")) {
         lines.push(format!("server-port={port}"));
     }
     format!("{}\n", lines.join("\n"))
@@ -6824,9 +6674,7 @@ fn replace_config_line(text: &str, key: &str, replacement: &str) -> String {
         .lines()
         .map(|line| {
             let trimmed = line.trim_start();
-            if !replaced
-                && (trimmed.starts_with(&format!("{key} =")) || trimmed.starts_with(&format!("{key}:")))
-            {
+            if !replaced && (trimmed.starts_with(&format!("{key} =")) || trimmed.starts_with(&format!("{key}:"))) {
                 replaced = true;
                 replacement.to_string()
             } else {
@@ -6842,14 +6690,8 @@ fn replace_config_line(text: &str, key: &str, replacement: &str) -> String {
 
 fn needs_args_file(instance: &ServerInstance) -> bool {
     let root = Path::new(&instance.path);
-    let has_jar = instance
-        .server_jar
-        .as_ref()
-        .map(|jar| root.join(jar).is_file())
-        .unwrap_or(false)
-        || find_jar(root).is_some();
-    (!has_jar || matches!(instance.core.as_str(), "Forge" | "NeoForge"))
-        && installed_args_file(root).is_some()
+    let has_jar = instance.server_jar.as_ref().map(|jar| root.join(jar).is_file()).unwrap_or(false) || find_jar(root).is_some();
+    (!has_jar || matches!(instance.core.as_str(), "Forge" | "NeoForge")) && installed_args_file(root).is_some()
 }
 
 fn detect_launch_mode(_core: &str, folder: &Path) -> String {
@@ -6861,21 +6703,14 @@ fn detect_launch_mode(_core: &str, folder: &Path) -> String {
 }
 
 fn remote_still_starting(state: &AppState, id: &str) -> bool {
-    state
-        .remote_starting
-        .lock()
-        .expect("remote state poisoned")
-        .get(id)
-        .is_some_and(|since| since.elapsed() < Duration::from_secs(600))
+    state.remote_starting.lock().expect("remote state poisoned").get(id).is_some_and(|since| since.elapsed() < Duration::from_secs(600))
 }
 
 fn instance_view(instance: ServerInstance, state: &AppState) -> InstanceView {
     if !instance.panel_host.is_empty() {
         let live = state.panel_live.lock().expect("panel state poisoned").get(&instance.id).cloned();
-        let checking = live.is_none()
-            && !state.panel_checked.lock().expect("panel state poisoned").contains(&instance.id);
-        let unreachable = live.is_none()
-            && state.panel_unreachable.lock().expect("panel state poisoned").contains(&instance.id);
+        let checking = live.is_none() && !state.panel_checked.lock().expect("panel state poisoned").contains(&instance.id);
+        let unreachable = live.is_none() && state.panel_unreachable.lock().expect("panel state poisoned").contains(&instance.id);
         let now = live.as_ref().map(|one| one.stats.state.as_str()).unwrap_or("offline");
         let status = match now {
             "running" | "starting" => "running",
@@ -6883,10 +6718,7 @@ fn instance_view(instance: ServerInstance, state: &AppState) -> InstanceView {
             _ => "stopped",
         };
         return InstanceView {
-            uptime_seconds: live
-                .as_ref()
-                .filter(|one| one.stats.uptime_ms > 0.0)
-                .map(|one| (one.stats.uptime_ms / 1000.0) as u64),
+            uptime_seconds: live.as_ref().filter(|one| one.stats.uptime_ms > 0.0).map(|one| (one.stats.uptime_ms / 1000.0) as u64),
             crash_reason: None,
             ready: now == "running",
             checking,
@@ -6897,25 +6729,10 @@ fn instance_view(instance: ServerInstance, state: &AppState) -> InstanceView {
         };
     }
     if !instance.remote_host.is_empty() {
-        let live = state
-            .remote_running
-            .lock()
-            .expect("remote state poisoned")
-            .get(&instance.id)
-            .cloned();
+        let live = state.remote_running.lock().expect("remote state poisoned").get(&instance.id).cloned();
         let starting = remote_still_starting(state, &instance.id);
-        let unreachable = live.is_none()
-            && state
-                .remote_unreachable
-                .lock()
-                .expect("remote state poisoned")
-                .contains(&instance.remote_host);
-        let checking = live.is_none()
-            && !state
-                .remote_checked
-                .lock()
-                .expect("remote state poisoned")
-                .contains(&instance.remote_host);
+        let unreachable = live.is_none() && state.remote_unreachable.lock().expect("remote state poisoned").contains(&instance.remote_host);
+        let checking = live.is_none() && !state.remote_checked.lock().expect("remote state poisoned").contains(&instance.remote_host);
         return InstanceView {
             instance,
             status: if live.is_some() { "running".into() } else { "stopped".into() },
@@ -6937,16 +6754,8 @@ fn instance_view(instance: ServerInstance, state: &AppState) -> InstanceView {
     }
     let process_map = state.processes.lock().expect("process state poisoned");
     if let Some(process) = process_map.get(&instance.id) {
-        let uptime = process
-            .started_at
-            .elapsed()
-            .ok()
-            .map(|duration| duration.as_secs());
-        let status = if process.stop_requested_at.is_some() {
-            "stopping"
-        } else {
-            "running"
-        };
+        let uptime = process.started_at.elapsed().ok().map(|duration| duration.as_secs());
+        let status = if process.stop_requested_at.is_some() { "stopping" } else { "running" };
         return InstanceView {
             instance,
             status: status.into(),
@@ -6960,12 +6769,7 @@ fn instance_view(instance: ServerInstance, state: &AppState) -> InstanceView {
     }
     drop(process_map);
     let missing = !Path::new(&instance.path).is_dir();
-    let crashed = state
-        .crashed
-        .lock()
-        .expect("crash state poisoned")
-        .get(&instance.id)
-        .cloned();
+    let crashed = state.crashed.lock().expect("crash state poisoned").get(&instance.id).cloned();
     if let Some(reason) = crashed {
         return InstanceView {
             instance,
@@ -7003,15 +6807,8 @@ fn list_instances(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Inst
         }
         instances
     };
-    instances.sort_by(|left, right| {
-        left.sort_order
-            .cmp(&right.sort_order)
-            .then_with(|| left.created_at.cmp(&right.created_at))
-    });
-    Ok(instances
-        .into_iter()
-        .map(|instance| instance_view(instance, &state))
-        .collect())
+    instances.sort_by(|left, right| left.sort_order.cmp(&right.sort_order).then_with(|| left.created_at.cmp(&right.created_at)));
+    Ok(instances.into_iter().map(|instance| instance_view(instance, &state)).collect())
 }
 
 static RESNIFFED: AtomicBool = AtomicBool::new(false);
@@ -7020,17 +6817,12 @@ fn resniff_unknown_cores(instances: &mut [ServerInstance]) -> bool {
     let mut changed = false;
     for instance in instances
         .iter_mut()
-        .filter(|instance| {
-            instance.core == sniff::UNKNOWN && instance.remote_host.is_empty() && instance.panel_host.is_empty()
-        })
+        .filter(|instance| instance.core == sniff::UNKNOWN && instance.remote_host.is_empty() && instance.panel_host.is_empty())
     {
         let folder = Path::new(&instance.path);
         let pumpkin = folder.join(cores::PUMPKIN_EXE);
-        let jar = instance
-            .server_jar
-            .clone()
-            .map(PathBuf::from)
-            .or_else(|| if pumpkin.is_file() { Some(pumpkin) } else { find_jar(folder) });
+        let jar =
+            instance.server_jar.clone().map(PathBuf::from).or_else(|| if pumpkin.is_file() { Some(pumpkin) } else { find_jar(folder) });
         let found = sniff::sniff(folder, jar.as_deref());
         if found.core == sniff::UNKNOWN {
             continue;
@@ -7055,10 +6847,7 @@ fn reorder_instances(app: AppHandle, ids: Vec<String>) -> Result<(), String> {
         return Err("The server order is malformed.".into());
     }
     for (order, id) in ids.iter().enumerate() {
-        let instance = instances
-            .iter_mut()
-            .find(|instance| instance.id == *id)
-            .ok_or("The server order contains an unknown server.")?;
+        let instance = instances.iter_mut().find(|instance| instance.id == *id).ok_or("The server order contains an unknown server.")?;
         instance.sort_order = order as u32;
     }
     save_instances(&app, &instances)
@@ -7066,37 +6855,17 @@ fn reorder_instances(app: AppHandle, ids: Vec<String>) -> Result<(), String> {
 
 #[tauri::command(async)]
 #[specta::specta]
-fn import_instance(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    folder: String,
-    copy: Option<bool>,
-) -> Result<InstanceView, String> {
+fn import_instance(app: AppHandle, state: State<'_, AppState>, folder: String, copy: Option<bool>) -> Result<InstanceView, String> {
     let folder = normalized_existing_path(&folder)?;
-    let folder = if copy.unwrap_or(false) {
-        copy_into_managed_root(&app, &folder)?
-    } else {
-        folder
-    };
+    let folder = if copy.unwrap_or(false) { copy_into_managed_root(&app, &folder)? } else { folder };
     let pumpkin = folder.join(cores::PUMPKIN_EXE);
-    let jar = if pumpkin.is_file() {
-        Some(pumpkin)
-    } else {
-        find_jar(&folder)
-    };
+    let jar = if pumpkin.is_file() { Some(pumpkin) } else { find_jar(&folder) };
     let _store = lock_instance_store();
     let mut instances = load_instances(&app)?;
-    if instances
-        .iter()
-        .any(|instance| Path::new(&instance.path) == folder)
-    {
+    if instances.iter().any(|instance| Path::new(&instance.path) == folder) {
         return Err("This folder is already registered.".into());
     }
-    let name = folder
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("Unnamed server")
-        .to_string();
+    let name = folder.file_name().and_then(|name| name.to_str()).unwrap_or("Unnamed server").to_string();
     let sniff::Sniffed { core, version } = sniff::sniff(&folder, jar.as_deref());
     let version = version.unwrap_or_else(|| "Needs review".into());
     let probe = ServerInstance {
@@ -7111,11 +6880,7 @@ fn import_instance(
         max_memory_mib: 4096,
         min_memory_mib: 4096,
         jvm_args: String::new(),
-        port: if kinds::is_proxy(&core) {
-            25577
-        } else {
-            25565
-        },
+        port: if kinds::is_proxy(&core) { 25577 } else { 25565 },
         sort_order: 0,
         group: String::new(),
         start_with_app: false,
@@ -7177,24 +6942,15 @@ fn copy_into_managed_root(app: &AppHandle, source: &Path) -> Result<PathBuf, Str
     if root_real.starts_with(source) || root.starts_with(source) || source.parent().is_none() {
         return Err("This folder holds the app's own server folder (or is a whole drive), so it can't be copied into it. Choose the server's own folder.".into());
     }
-    let name = source
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("Imported server");
+    let name = source.file_name().and_then(|name| name.to_str()).unwrap_or("Imported server");
     let destination = free_folder(&root, name);
     let total = count_files(source);
     let mut done = 0usize;
-    let _ = app.emit(
-        "archive-import",
-        serde_json::json!({ "stage": "copying", "done": 0, "total": total }),
-    );
+    let _ = app.emit("archive-import", serde_json::json!({ "stage": "copying", "done": 0, "total": total }));
     let copied = copy_instance_folder(source, &destination, &mut || {
         done += 1;
         if done.is_multiple_of(50) || done == total {
-            let _ = app.emit(
-                "archive-import",
-                serde_json::json!({ "stage": "copying", "done": done, "total": total }),
-            );
+            let _ = app.emit("archive-import", serde_json::json!({ "stage": "copying", "done": done, "total": total }));
         }
     });
     if let Err(error) = copied {
@@ -7202,21 +6958,11 @@ fn copy_into_managed_root(app: &AppHandle, source: &Path) -> Result<PathBuf, Str
         return Err(error);
     }
     let _ = app.emit("archive-import", serde_json::json!({ "stage": "complete" }));
-    destination
-        .canonicalize()
-        .map(plain_path)
-        .map_err(|error| format!("Could not verify the server folder: {error}"))
+    destination.canonicalize().map(plain_path).map_err(|error| format!("Could not verify the server folder: {error}"))
 }
 
 fn archive_root_prefix(names: &[String]) -> Option<String> {
-    let markers = [
-        "server.properties",
-        "server.jar",
-        "eula.txt",
-        "run.bat",
-        "velocity.toml",
-        "bungeecord.jar",
-    ];
+    let markers = ["server.properties", "server.jar", "eula.txt", "run.bat", "velocity.toml", "bungeecord.jar"];
     let is_marker = |name: &str| markers.iter().any(|marker| name.eq_ignore_ascii_case(marker));
     if names.iter().any(|name| is_marker(name)) {
         return None;
@@ -7235,10 +6981,7 @@ fn chosen_root(into: Option<&str>) -> Result<Option<PathBuf>, String> {
     if !path.is_dir() {
         return Err("The folder to extract into was not found.".into());
     }
-    path.canonicalize()
-        .map(plain_path)
-        .map(Some)
-        .map_err(|error| format!("Could not verify the folder to extract into: {error}"))
+    path.canonicalize().map(plain_path).map(Some).map_err(|error| format!("Could not verify the folder to extract into: {error}"))
 }
 
 #[tauri::command(async)]
@@ -7253,14 +6996,9 @@ fn import_instance_archive(
     if !archive_path.is_file() {
         return Err("The chosen archive was not found.".into());
     }
-    let file = fs::File::open(&archive_path)
-        .map_err(|error| format!("Could not open the archive: {error}"))?;
-    let mut archive = ZipArchive::new(file)
-        .map_err(|_| "Only zip archives can be imported.".to_string())?;
-    let names = archive
-        .file_names()
-        .filter_map(|name| name.ok().map(|name| name.into_owned()))
-        .collect::<Vec<String>>();
+    let file = fs::File::open(&archive_path).map_err(|error| format!("Could not open the archive: {error}"))?;
+    let mut archive = ZipArchive::new(file).map_err(|_| "Only zip archives can be imported.".to_string())?;
+    let names = archive.file_names().filter_map(|name| name.ok().map(|name| name.into_owned())).collect::<Vec<String>>();
     if names.is_empty() {
         return Err("The archive is empty.".into());
     }
@@ -7276,11 +7014,8 @@ fn import_instance_archive(
         None => managed_servers_root(&app)?,
     };
     let folder = free_folder(&root, &suggested);
-    fs::create_dir_all(&folder)
-        .map_err(|error| format!("Could not create the server folder: {error}"))?;
-    let folder = folder
-        .canonicalize().map(plain_path)
-        .map_err(|error| format!("Could not verify the server folder: {error}"))?;
+    fs::create_dir_all(&folder).map_err(|error| format!("Could not create the server folder: {error}"))?;
+    let folder = folder.canonicalize().map(plain_path).map_err(|error| format!("Could not verify the server folder: {error}"))?;
     let extract = (|| -> Result<(), String> {
         let total = archive.len();
         for index in 0..total {
@@ -7311,10 +7046,7 @@ fn import_instance_archive(
             }
             let mut target = fs::File::create(&output).map_err(|error| error.to_string())?;
             std::io::copy(&mut entry, &mut target).map_err(|error| error.to_string())?;
-            let _ = app.emit(
-                "archive-import",
-                serde_json::json!({ "stage": "extracting", "done": index + 1, "total": total }),
-            );
+            let _ = app.emit("archive-import", serde_json::json!({ "stage": "extracting", "done": index + 1, "total": total }));
         }
         Ok(())
     })();
@@ -7322,10 +7054,7 @@ fn import_instance_archive(
         let _ = fs::remove_dir_all(&folder);
         return Err(error);
     }
-    let _ = app.emit(
-        "archive-import",
-        serde_json::json!({ "stage": "complete" }),
-    );
+    let _ = app.emit("archive-import", serde_json::json!({ "stage": "complete" }));
     import_instance(app, state, folder.to_string_lossy().to_string(), None)
 }
 
@@ -7337,10 +7066,7 @@ fn count_files(folder: &Path) -> usize {
                 .map(|entry| {
                     let path = entry.path();
                     if path.is_dir() {
-                        if path
-                            .file_name()
-                            .is_some_and(|name| name == ".monolab-backups")
-                        {
+                        if path.file_name().is_some_and(|name| name == ".monolab-backups") {
                             0
                         } else {
                             count_files(&path)
@@ -7354,29 +7080,18 @@ fn count_files(folder: &Path) -> usize {
         .unwrap_or(0)
 }
 
-fn copy_instance_folder(
-    source: &Path,
-    destination: &Path,
-    tick: &mut dyn FnMut(),
-) -> Result<(), String> {
+fn copy_instance_folder(source: &Path, destination: &Path, tick: &mut dyn FnMut()) -> Result<(), String> {
     fs::create_dir_all(destination).map_err(|error| error.to_string())?;
-    for entry in fs::read_dir(source)
-        .map_err(|error| error.to_string())?
-        .flatten()
-    {
+    for entry in fs::read_dir(source).map_err(|error| error.to_string())?.flatten() {
         let path = entry.path();
         let target = destination.join(entry.file_name());
         if path.is_dir() {
-            if path
-                .file_name()
-                .is_some_and(|name| name == ".monolab-backups")
-            {
+            if path.file_name().is_some_and(|name| name == ".monolab-backups") {
                 continue;
             }
             copy_instance_folder(&path, &target, tick)?;
         } else if path.is_file() {
-            fs::copy(&path, &target)
-                .map_err(|error| format!("Could not duplicate the server files: {error}"))?;
+            fs::copy(&path, &target).map_err(|error| format!("Could not duplicate the server files: {error}"))?;
             tick();
         }
     }
@@ -7385,21 +7100,14 @@ fn copy_instance_folder(
 
 #[tauri::command(async)]
 #[specta::specta]
-fn rename_instance(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    input: RenameInstanceInput,
-) -> Result<InstanceView, String> {
+fn rename_instance(app: AppHandle, state: State<'_, AppState>, input: RenameInstanceInput) -> Result<InstanceView, String> {
     let name = input.name.trim();
     if name.is_empty() || name.len() > 80 || name.contains(['\\', '/', ':']) {
         return Err("Server names are 1–80 characters and cannot contain \\ / :".into());
     }
     let _store = lock_instance_store();
     let mut instances = load_instances(&app)?;
-    let instance = instances
-        .iter_mut()
-        .find(|instance| instance.id == input.id)
-        .ok_or("Server not found.")?;
+    let instance = instances.iter_mut().find(|instance| instance.id == input.id).ok_or("Server not found.")?;
     instance.name = name.into();
     instance.named = true;
     let saved = instance.clone();
@@ -7447,11 +7155,7 @@ fn rename_server_group(app: AppHandle, from: String, to: String) -> Result<u32, 
 
 #[tauri::command]
 #[specta::specta]
-async fn duplicate_instance(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<InstanceView, String> {
+async fn duplicate_instance(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<InstanceView, String> {
     let source = instance_by_id(&app, &id)?;
     if !source.remote_host.is_empty() {
         return duplicate_remote(&app, &state, source).await;
@@ -7459,9 +7163,8 @@ async fn duplicate_instance(
     only_local(&app, &id, "Duplicate server")?;
     ensure_stopped(&state, &id)?;
     let worker = app.clone();
-    let made = tauri::async_runtime::spawn_blocking(move || duplicate_local(&worker, source))
-        .await
-        .map_err(|error| error.to_string())??;
+    let made =
+        tauri::async_runtime::spawn_blocking(move || duplicate_local(&worker, source)).await.map_err(|error| error.to_string())??;
     Ok(instance_view(made, &state))
 }
 
@@ -7469,8 +7172,7 @@ async fn duplicate_instance(
 fn new_server_port(instances: &[ServerInstance], from: u16) -> u16 {
     let mut port = from;
     while port < u16::MAX
-        && (instances.iter().any(|instance| !is_far(instance) && instance.port == port)
-            || TcpListener::bind(("0.0.0.0", port)).is_err())
+        && (instances.iter().any(|instance| !is_far(instance) && instance.port == port) || TcpListener::bind(("0.0.0.0", port)).is_err())
     {
         port += 1;
     }
@@ -7541,13 +7243,8 @@ async fn duplicate_remote(app: &AppHandle, state: &AppState, source: ServerInsta
 
 fn duplicate_local(app: &AppHandle, source: ServerInstance) -> Result<ServerInstance, String> {
     let source_path = PathBuf::from(&source.path);
-    let parent = source_path
-        .parent()
-        .ok_or("Could not find the parent of the server folder.")?;
-    let stem = source_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or("Could not read the server folder name.")?;
+    let parent = source_path.parent().ok_or("Could not find the parent of the server folder.")?;
+    let stem = source_path.file_name().and_then(|name| name.to_str()).ok_or("Could not read the server folder name.")?;
     let mut destination = parent.join(format!("{stem} - copy"));
     for number in 2..1000 {
         if !destination.exists() {
@@ -7566,12 +7263,7 @@ fn duplicate_local(app: &AppHandle, source: ServerInstance) -> Result<ServerInst
     duplicate.name = format!("{} copy", source.name);
     duplicate.path = destination.to_string_lossy().to_string();
     duplicate.created_at = unix_now();
-    duplicate.sort_order = instances
-        .iter()
-        .map(|instance| instance.sort_order)
-        .max()
-        .unwrap_or(0)
-        .saturating_add(1);
+    duplicate.sort_order = instances.iter().map(|instance| instance.sort_order).max().unwrap_or(0).saturating_add(1);
     if let Some(jar) = &source.server_jar {
         if let Ok(relative) = Path::new(jar).strip_prefix(&source_path) {
             duplicate.server_jar = Some(destination.join(relative).to_string_lossy().to_string());
@@ -7590,20 +7282,11 @@ fn duplicate_local(app: &AppHandle, source: ServerInstance) -> Result<ServerInst
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn trash_instance(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+async fn trash_instance(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
     ensure_stopped(&state, &id)?;
     let instance = instance_by_id(&app, &id)?;
     if !instance.remote_host.is_empty() {
-        if state
-            .remote_running
-            .lock()
-            .expect("remote state poisoned")
-            .contains_key(&id)
-        {
+        if state.remote_running.lock().expect("remote state poisoned").contains_key(&id) {
             return Err("Stop the server first.".into());
         }
         let _store = lock_instance_store();
@@ -7642,9 +7325,7 @@ async fn trash_instance(
     if !source.is_dir() {
         return Err("Server folder not found.".into());
     }
-    let parent = source
-        .parent()
-        .ok_or("Could not find the parent of the server folder.")?;
+    let parent = source.parent().ok_or("Could not find the parent of the server folder.")?;
     let inside = app
         .path()
         .monolab_data_dir()
@@ -7659,8 +7340,7 @@ async fn trash_instance(
             let trash = parent.join(".monolab-trash");
             fs::create_dir_all(&trash).map_err(|error| error.to_string())?;
             let beside = trash.join(format!("{}-{}", instance.id, unix_now()));
-            fs::rename(&source, &beside)
-                .map_err(|error| format!("Could not move the server folder to the trash: {error}"))?;
+            fs::rename(&source, &beside).map_err(|error| format!("Could not move the server folder to the trash: {error}"))?;
             beside
         }
     };
@@ -7698,17 +7378,10 @@ fn purge_trash_instance(app: AppHandle, id: String) -> Result<Vec<TrashEntry>, S
     let entry = entries.remove(at);
     let path = PathBuf::from(&entry.trash_path);
     if path.is_dir() {
-        fs::remove_dir_all(&path)
-            .map_err(|error| format!("Could not delete {}: {error}", entry.name))?;
+        fs::remove_dir_all(&path).map_err(|error| format!("Could not delete {}: {error}", entry.name))?;
     }
     save_trash_entries(&app, &entries)?;
-    record_audit(
-        &app,
-        &entry.id,
-        "Server",
-        "Deleted from trash",
-        &format!("Permanently deleted the files of {}.", entry.name),
-    );
+    record_audit(&app, &entry.id, "Server", "Deleted from trash", &format!("Permanently deleted the files of {}.", entry.name));
     Ok(entries)
 }
 
@@ -7726,37 +7399,21 @@ fn empty_trash(app: AppHandle) -> Result<usize, String> {
         }
     }
     if !failed.is_empty() {
-        let left: Vec<TrashEntry> = entries
-            .into_iter()
-            .filter(|entry| PathBuf::from(&entry.trash_path).is_dir())
-            .collect();
+        let left: Vec<TrashEntry> = entries.into_iter().filter(|entry| PathBuf::from(&entry.trash_path).is_dir()).collect();
         save_trash_entries(&app, &left)?;
         return Err(format!("Some items could not be deleted: {}", failed.join(", ")));
     }
     let count = entries.len();
     save_trash_entries(&app, &[])?;
-    record_audit(
-        &app,
-        "",
-        "Server",
-        "Trash emptied",
-        &format!("Permanently deleted {count} server files."),
-    );
+    record_audit(&app, "", "Server", "Trash emptied", &format!("Permanently deleted {count} server files."));
     Ok(count)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-fn restore_trash_instance(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<InstanceView, String> {
+fn restore_trash_instance(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<InstanceView, String> {
     let mut entries = load_trash_entries(&app)?;
-    let index = entries
-        .iter()
-        .position(|entry| entry.id == id)
-        .ok_or("Trashed server not found.")?;
+    let index = entries.iter().position(|entry| entry.id == id).ok_or("Trashed server not found.")?;
     let entry = entries[index].clone();
     let source = PathBuf::from(&entry.trash_path);
     let target = PathBuf::from(&entry.original_path);
@@ -7766,12 +7423,10 @@ fn restore_trash_instance(
     if target.exists() {
         return Err("A folder with the same name already exists at the original location.".into());
     }
-    fs::rename(&source, &target)
-        .map_err(|error| format!("Could not restore the server folder: {error}"))?;
+    fs::rename(&source, &target).map_err(|error| format!("Could not restore the server folder: {error}"))?;
     let result = match entry.instance.clone() {
         Some(saved) => restore_saved_instance(&app, saved, &target),
-        None => import_instance(app.clone(), state, target.to_string_lossy().to_string(), None)
-            .map(|view| view.instance),
+        None => import_instance(app.clone(), state, target.to_string_lossy().to_string(), None).map(|view| view.instance),
     };
     let restored = match result {
         Ok(instance) => instance,
@@ -7786,21 +7441,14 @@ fn restore_trash_instance(
     Ok(instance_view(restored, &state))
 }
 
-fn restore_saved_instance(
-    app: &AppHandle,
-    mut saved: ServerInstance,
-    folder: &Path,
-) -> Result<ServerInstance, String> {
+fn restore_saved_instance(app: &AppHandle, mut saved: ServerInstance, folder: &Path) -> Result<ServerInstance, String> {
     saved.path = folder.to_string_lossy().to_string();
     let _store = lock_instance_store();
     let mut instances = load_instances(app)?;
     if instances.iter().any(|instance| instance.id == saved.id) {
         return Err("This server is already in the list.".into());
     }
-    if instances
-        .iter()
-        .any(|instance| Path::new(&instance.path) == folder)
-    {
+    if instances.iter().any(|instance| Path::new(&instance.path) == folder) {
         return Err("This folder is already registered.".into());
     }
     instances.push(saved.clone());
@@ -7810,61 +7458,30 @@ fn restore_saved_instance(
 
 #[tauri::command(async)]
 #[specta::specta]
-fn create_instance(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    input: CreateInstanceInput,
-) -> Result<InstanceView, String> {
-    let name = if input.name.trim().is_empty() {
-        peek_next_server_name(&app)
-    } else {
-        input.name.trim().to_string()
-    };
+fn create_instance(app: AppHandle, state: State<'_, AppState>, input: CreateInstanceInput) -> Result<InstanceView, String> {
+    let name = if input.name.trim().is_empty() { peek_next_server_name(&app) } else { input.name.trim().to_string() };
     if !input.eula_accepted {
         return Err("Creating a server requires accepting the Minecraft EULA.".into());
     }
     let folder = free_folder(&managed_servers_root(&app)?, &name);
-    fs::create_dir_all(&folder)
-        .map_err(|error| format!("Could not create the server folder: {error}"))?;
-    let folder = folder
-        .canonicalize().map(plain_path)
-        .map_err(|error| format!("Could not verify the server folder: {error}"))?;
-    if load_instances(&app)?
-        .iter()
-        .any(|instance| Path::new(&instance.path) == folder)
-    {
+    fs::create_dir_all(&folder).map_err(|error| format!("Could not create the server folder: {error}"))?;
+    let folder = folder.canonicalize().map(plain_path).map_err(|error| format!("Could not verify the server folder: {error}"))?;
+    if load_instances(&app)?.iter().any(|instance| Path::new(&instance.path) == folder) {
         return Err("This folder is already registered.".into());
     }
-    fs::write(folder.join("eula.txt"), "eula=true\n")
-        .map_err(|error| format!("Could not create the EULA file: {error}"))?;
+    fs::write(folder.join("eula.txt"), "eula=true\n").map_err(|error| format!("Could not create the EULA file: {error}"))?;
     if !input.operation_id.is_empty() {
-        state
-            .cancelled_downloads
-            .lock()
-            .expect("download state poisoned")
-            .remove(&input.operation_id);
+        state.cancelled_downloads.lock().expect("download state poisoned").remove(&input.operation_id);
     }
-    let jar = match download_server_jar(
-        &app,
-        &input.core,
-        &input.version,
-        picked_build(&input.core_build),
-        &folder,
-        &input.operation_id,
-    ) {
+    let jar = match download_server_jar(&app, &input.core, &input.version, picked_build(&input.core_build), &folder, &input.operation_id) {
         Ok(path) => path,
         Err(error) => {
             let _ = fs::remove_dir_all(&folder);
             return Err(error);
         }
     };
-    fs::write(folder.join("eula.txt"), "eula=true\n")
-        .map_err(|error| format!("Could not create the EULA file: {error}"))?;
-    let default_port = if kinds::is_proxy(&input.core) {
-        25577
-    } else {
-        25565
-    };
+    fs::write(folder.join("eula.txt"), "eula=true\n").map_err(|error| format!("Could not create the EULA file: {error}"))?;
+    let default_port = if kinds::is_proxy(&input.core) { 25577 } else { 25565 };
     let default_port = claim_new_server_port(&app, &folder, &input.core, default_port);
     let instance = ServerInstance {
         id: instance_id(),
@@ -7872,18 +7489,11 @@ fn create_instance(
         path: folder.to_string_lossy().to_string(),
         core: input.core,
         version: input.version,
-        launch_mode: if jar.is_some() {
-            "jar".into()
-        } else {
-            "script".into()
-        },
+        launch_mode: if jar.is_some() { "jar".into() } else { "script".into() },
         server_jar: jar.map(|path| path.to_string_lossy().to_string()),
         java_path: "java".into(),
         max_memory_mib: input.max_memory_mib.clamp(512, 65536),
-        min_memory_mib: sane_min_memory(
-            input.min_memory_mib,
-            input.max_memory_mib.clamp(512, 65536),
-        ),
+        min_memory_mib: sane_min_memory(input.min_memory_mib, input.max_memory_mib.clamp(512, 65536)),
         jvm_args: String::new(),
         port: default_port,
         sort_order: 0,
@@ -7919,38 +7529,29 @@ fn servers_root_free_bytes(app: AppHandle) -> Result<u64, String> {
 
 #[tauri::command(async)]
 #[specta::specta]
-fn create_instance_from_jar(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    jar_path: String,
-) -> Result<InstanceView, String> {
+fn create_instance_from_jar(app: AppHandle, state: State<'_, AppState>, jar_path: String) -> Result<InstanceView, String> {
     let source = PathBuf::from(jar_path.trim());
-    if !source.is_file()
-        || source
-            .extension()
-            .is_none_or(|extension| !extension.eq_ignore_ascii_case("jar"))
-    {
+    if !source.is_file() || source.extension().is_none_or(|extension| !extension.eq_ignore_ascii_case("jar")) {
         return Err("Choose a jar file.".into());
     }
     verify_java_archive(&source)?;
 
     let name = peek_next_server_name(&app);
     let folder = free_folder(&managed_servers_root(&app)?, &name);
-    fs::create_dir_all(&folder)
-        .map_err(|error| format!("Could not create the server folder: {error}"))?;
-    let folder = folder
-        .canonicalize()
-        .map(plain_path)
-        .map_err(|error| format!("Could not verify the server folder: {error}"))?;
+    fs::create_dir_all(&folder).map_err(|error| format!("Could not create the server folder: {error}"))?;
+    let folder = folder.canonicalize().map(plain_path).map_err(|error| format!("Could not verify the server folder: {error}"))?;
 
     let destination = folder.join("server.jar");
     if let Err(error) = fs::copy(&source, &destination) {
         let _ = fs::remove_dir_all(&folder);
         return Err(format!("Could not copy the core file: {error}"));
     }
-    fs::write(folder.join("eula.txt"), "eula=true
-")
-        .map_err(|error| format!("Could not create the EULA file: {error}"))?;
+    fs::write(
+        folder.join("eula.txt"),
+        "eula=true
+",
+    )
+    .map_err(|error| format!("Could not create the EULA file: {error}"))?;
 
     let sniff::Sniffed { core, version } = sniff::sniff(&folder, Some(&destination));
     let version = version.unwrap_or_else(|| "Needs review".into());
@@ -7989,13 +7590,7 @@ fn create_instance_from_jar(
     instances.push(instance.clone());
     save_instances(&app, &instances)?;
     drop(_store);
-    record_audit(
-        &app,
-        &instance.id,
-        "Server",
-        "Created from a core file",
-        &source.to_string_lossy(),
-    );
+    record_audit(&app, &instance.id, "Server", "Created from a core file", &source.to_string_lossy());
     Ok(instance_view(instance, &state))
 }
 
@@ -8005,11 +7600,7 @@ fn cancel_create_download(state: State<'_, AppState>, operation_id: String) -> R
     if operation_id.trim().is_empty() {
         return Err("No download to cancel.".into());
     }
-    state
-        .cancelled_downloads
-        .lock()
-        .expect("download state poisoned")
-        .insert(operation_id);
+    state.cancelled_downloads.lock().expect("download state poisoned").insert(operation_id);
     Ok(())
 }
 
@@ -8020,8 +7611,7 @@ fn open_server_folder(app: AppHandle, id: String, inside: Option<String>) -> Res
     let instance = instance_by_id(&app, &id)?;
     let root = Path::new(&instance.path);
     let path = match inside.as_deref().map(str::trim).filter(|one| !one.is_empty()) {
-        Some(relative) => paths::resolve_in_server(root, relative)
-            .map_err(|_| "That folder was not found.".to_string())?,
+        Some(relative) => paths::resolve_in_server(root, relative).map_err(|_| "That folder was not found.".to_string())?,
         None => root.to_path_buf(),
     };
     if !path.is_dir() {
@@ -8029,17 +7619,11 @@ fn open_server_folder(app: AppHandle, id: String, inside: Option<String>) -> Res
     }
     #[cfg(windows)]
     {
-        hidden_command("explorer")
-            .arg(&path)
-            .spawn()
-            .map_err(|error| format!("Could not open Explorer: {error}"))?;
+        hidden_command("explorer").arg(&path).spawn().map_err(|error| format!("Could not open Explorer: {error}"))?;
     }
     #[cfg(not(windows))]
     {
-        hidden_command("xdg-open")
-            .arg(&path)
-            .spawn()
-            .map_err(|error| format!("Could not open the folder: {error}"))?;
+        hidden_command("xdg-open").arg(&path).spawn().map_err(|error| format!("Could not open the folder: {error}"))?;
     }
     Ok(())
 }
@@ -8062,17 +7646,11 @@ fn open_notices(app: AppHandle) -> Result<(), String> {
     }
     #[cfg(windows)]
     {
-        hidden_command("explorer")
-            .arg(&path)
-            .spawn()
-            .map_err(|error| format!("Could not open the file: {error}"))?;
+        hidden_command("explorer").arg(&path).spawn().map_err(|error| format!("Could not open the file: {error}"))?;
     }
     #[cfg(not(windows))]
     {
-        hidden_command("xdg-open")
-            .arg(&path)
-            .spawn()
-            .map_err(|error| format!("Could not open the file: {error}"))?;
+        hidden_command("xdg-open").arg(&path).spawn().map_err(|error| format!("Could not open the file: {error}"))?;
     }
     Ok(())
 }
@@ -8190,13 +7768,7 @@ async fn set_start_script(app: AppHandle, id: String, script: String) -> Result<
         }
         save_instances(&app, &instances)?;
     }
-    record_audit(
-        &app,
-        &id,
-        "Server",
-        if name.is_empty() { "Not using a start file" } else { "Start with start file" },
-        &name,
-    );
+    record_audit(&app, &id, "Server", if name.is_empty() { "Not using a start file" } else { "Start with start file" }, &name);
     Ok(())
 }
 
@@ -8253,23 +7825,14 @@ fn set_custom_command(app: AppHandle, id: String, command: String) -> Result<(),
     }
     let _store = lock_instance_store();
     let mut instances = load_instances(&app)?;
-    let found = instances
-        .iter_mut()
-        .find(|instance| instance.id == id)
-        .ok_or("Server not found.")?;
+    let found = instances.iter_mut().find(|instance| instance.id == id).ok_or("Server not found.")?;
     found.custom_command = text.to_string();
     if !text.is_empty() {
         found.start_script = String::new();
         found.start_script_hash = String::new();
     }
     save_instances(&app, &instances)?;
-    record_audit(
-        &app,
-        &id,
-        "Server",
-        if text.is_empty() { "Start command set to automatic" } else { "Custom start command" },
-        text,
-    );
+    record_audit(&app, &id, "Server", if text.is_empty() { "Start command set to automatic" } else { "Custom start command" }, text);
     Ok(())
 }
 
@@ -8296,20 +7859,13 @@ fn remote_java_allowed(app: &AppHandle, input: &LaunchSettingsInput) -> Result<(
 
 #[tauri::command(async)]
 #[specta::specta]
-fn update_launch_settings(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    input: LaunchSettingsInput,
-) -> Result<InstanceView, String> {
+fn update_launch_settings(app: AppHandle, state: State<'_, AppState>, input: LaunchSettingsInput) -> Result<InstanceView, String> {
     if instance_by_id(&app, &input.id).is_ok_and(|one| !one.panel_host.is_empty()) {
         return Err("Memory and Java for panel servers are set by the panel. Change them in Overview's startup variables.".into());
     }
     let _store = lock_instance_store();
     let mut instances = load_instances(&app)?;
-    let instance = instances
-        .iter_mut()
-        .find(|instance| instance.id == input.id)
-        .ok_or("Server not found.")?;
+    let instance = instances.iter_mut().find(|instance| instance.id == input.id).ok_or("Server not found.")?;
     let previous_jvm_args = instance.jvm_args.clone();
     instance.max_memory_mib = input.max_memory_mib.clamp(512, 65536);
     instance.min_memory_mib = sane_min_memory(input.min_memory_mib, instance.max_memory_mib);
@@ -8340,12 +7896,7 @@ fn update_launch_settings(
         &view.id,
         "Settings",
         "Launch settings saved",
-        &format!(
-            "Memory {}–{} MB, {} JVM flags",
-            view.min_memory_mib,
-            view.max_memory_mib,
-            view.jvm_args.split_whitespace().count()
-        ),
+        &format!("Memory {}–{} MB, {} JVM flags", view.min_memory_mib, view.max_memory_mib, view.jvm_args.split_whitespace().count()),
     );
     Ok(instance_view(view, &state))
 }
@@ -8369,22 +7920,26 @@ fn watch_process(
                 let ran = ran_minutes(process);
                 processes.remove(&server_id);
                 if crashed_now {
-                    crashed
-                        .lock()
-                        .expect("crash state poisoned")
-                        .insert(server_id.clone(), format!("exit code {:?}", exit.code()));
+                    crashed.lock().expect("crash state poisoned").insert(server_id.clone(), format!("exit code {:?}", exit.code()));
                     let _ = announce(&app, &server_id, "Crash", "The server process crashed.");
-                    note_run(&app, &server_id, "crash", &format!("exit code {} · ran {} min", exit.code().map_or("?".into(), |code| code.to_string()), ran));
+                    note_run(
+                        &app,
+                        &server_id,
+                        "crash",
+                        &format!("exit code {} · ran {} min", exit.code().map_or("?".into(), |code| code.to_string()), ran),
+                    );
                 } else {
                     note_run(&app, &server_id, "stop", &format!("Ran {} min", ran));
-                    crashed
-                        .lock()
-                        .expect("crash state poisoned")
-                        .remove(&server_id);
+                    crashed.lock().expect("crash state poisoned").remove(&server_id);
                 }
                 drop(processes);
                 let done = serde_json::json!({ "serverId": server_id, "status": if crashed_now { "crashed" } else { "stopped" } });
-                monolink_team::report(&app, &server_id, if crashed_now { "server_crashed" } else { "server_stopped" }, serde_json::json!({}));
+                monolink_team::report(
+                    &app,
+                    &server_id,
+                    if crashed_now { "server_crashed" } else { "server_stopped" },
+                    serde_json::json!({}),
+                );
                 remember_for_web(&app, "server-status", &done);
                 let _ = app.emit("server-status", done);
                 if crashed_now {
@@ -8394,17 +7949,11 @@ fn watch_process(
             }
             Err(error) => {
                 processes.remove(&server_id);
-                crashed
-                    .lock()
-                    .expect("crash state poisoned")
-                    .insert(server_id.clone(), error.to_string());
+                crashed.lock().expect("crash state poisoned").insert(server_id.clone(), error.to_string());
                 drop(processes);
                 let _ = announce(&app, &server_id, "Crash", "Could not check the server process.");
                 note_run(&app, &server_id, "crash", &error.to_string());
-                let _ = app.emit(
-                    "server-status",
-                    serde_json::json!({ "serverId": server_id, "status": "crashed" }),
-                );
+                let _ = app.emit("server-status", serde_json::json!({ "serverId": server_id, "status": "crashed" }));
                 restart_after_crash(&app, &server_id);
                 return;
             }
@@ -8413,11 +7962,7 @@ fn watch_process(
     });
 }
 
-fn publish_log(
-    app: &AppHandle,
-    logs: &Arc<Mutex<HashMap<String, Vec<ServerLogEvent>>>>,
-    mut event: ServerLogEvent,
-) {
+fn publish_log(app: &AppHandle, logs: &Arc<Mutex<HashMap<String, Vec<ServerLogEvent>>>>, mut event: ServerLogEvent) {
     event.noise = doctor::harmless(&event.line.to_ascii_lowercase());
     if is_ready_line(&event.line) {
         mark_ready(app, &event.server_id);
@@ -8433,24 +7978,18 @@ fn publish_log(
     // Joins and leaves for the "players join and leave" notification (the screen decides whether to show one).
     if event.stream != "input" {
         if let Some(seen) = logs::classify(&event.line).filter(|one| one.kind == "Join" || one.kind == "Leave") {
-            let _ = app.emit("player-presence", serde_json::json!({ "serverId": event.server_id, "kind": seen.kind, "player": seen.player }));
+            let _ =
+                app.emit("player-presence", serde_json::json!({ "serverId": event.server_id, "kind": seen.kind, "player": seen.player }));
             let name = instance_by_id(app, &event.server_id).map(|one| one.name).unwrap_or_default();
             let (what, said) = if seen.kind == "Join" { ("join", "joined the server.") } else { ("leave", "left the server.") };
             webhook::send(app, &event.server_id, &name, what, &format!("{} {said}", seen.player));
         }
     }
     if let Some(progress) = chunky::read_line(&event.line, unix_now()) {
-        app.state::<AppState>()
-            .chunky
-            .lock()
-            .expect("chunky state poisoned")
-            .insert(event.server_id.clone(), progress);
+        app.state::<AppState>().chunky.lock().expect("chunky state poisoned").insert(event.server_id.clone(), progress);
     }
     if let Some(url) = spark::report_url(&event.line) {
-        let at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|since| since.as_millis() as u64)
-            .unwrap_or(0);
+        let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|since| since.as_millis() as u64).unwrap_or(0);
         app.state::<AppState>()
             .spark_reports
             .lock()
@@ -8464,9 +8003,7 @@ fn publish_log(
         snapshots.insert(
             event.server_id.clone(),
             TpsSnapshot {
-                tps: snapshot
-                    .tps
-                    .or(current.as_ref().and_then(|value| value.tps)),
+                tps: snapshot.tps.or(current.as_ref().and_then(|value| value.tps)),
                 mspt: snapshot.mspt.or(current.as_ref().and_then(|value| value.mspt)),
                 updated_at: snapshot.updated_at,
                 heap_mib: current.and_then(|value| value.heap_mib),
@@ -8486,10 +8023,7 @@ fn publish_log(
 }
 
 fn log_message_body(line: &str) -> &str {
-    line.rsplit_once("]: ")
-        .map(|(_, rest)| rest)
-        .unwrap_or(line)
-        .trim()
+    line.rsplit_once("]: ").map(|(_, rest)| rest).unwrap_or(line).trim()
 }
 
 fn strip_color_codes(text: &str) -> String {
@@ -8523,9 +8057,7 @@ fn is_stop_command(line: &str) -> bool {
 
 fn is_stop_line(line: &str) -> bool {
     let lower = line.to_ascii_lowercase();
-    lower.contains("stopping the server")
-        || lower.contains("issued server command: /stop")
-        || lower.contains("shutting down the proxy")
+    lower.contains("stopping the server") || lower.contains("issued server command: /stop") || lower.contains("shutting down the proxy")
 }
 
 fn mark_stop_intended(app: &AppHandle, server_id: &str) {
@@ -8607,7 +8139,9 @@ mod crash_restart_tests {
     #[test]
     fn sees_a_crash_even_when_a_stop_follows() {
         assert!(is_crash_line("[12:00:01] [Server thread/ERROR]: Encountered an unexpected exception"));
-        assert!(is_crash_line("[12:00:01] [Server thread/ERROR]: This crash report has been saved to: C:\\server\\crash-reports\\crash.txt"));
+        assert!(is_crash_line(
+            "[12:00:01] [Server thread/ERROR]: This crash report has been saved to: C:\\server\\crash-reports\\crash.txt"
+        ));
         assert!(is_crash_line("[12:00:01] [Server Watchdog/FATAL]: Considering it to be crashed, server will forcibly shutdown."));
         assert!(is_crash_line("java.lang.OutOfMemoryError: Java heap space"));
         assert!(!is_crash_line("[12:00:01] [Server thread/INFO]: Stopping the server"));
@@ -8628,17 +8162,8 @@ fn parse_tps_line(line: &str) -> Option<TpsSnapshot> {
             heap_mib: None,
         });
     }
-    if body.contains('/')
-        && body.chars().all(|character| {
-            character.is_ascii_digit() || " ./,*-◴".contains(character)
-        })
-    {
-        return Some(TpsSnapshot {
-            tps: None,
-            mspt: first_number(body),
-            updated_at: unix_now(),
-            heap_mib: None,
-        });
+    if body.contains('/') && body.chars().all(|character| character.is_ascii_digit() || " ./,*-◴".contains(character)) {
+        return Some(TpsSnapshot { tps: None, mspt: first_number(body), updated_at: unix_now(), heap_mib: None });
     }
     None
 }
@@ -8708,10 +8233,7 @@ fn restart_after_crash(app: &AppHandle, server_id: &str) {
 fn set_crash_restart(app: AppHandle, id: String, on: bool) -> Result<(), String> {
     let _store = lock_instance_store();
     let mut instances = load_instances(&app)?;
-    let found = instances
-        .iter_mut()
-        .find(|instance| instance.id == id)
-        .ok_or("Server not found.")?;
+    let found = instances.iter_mut().find(|instance| instance.id == id).ok_or("Server not found.")?;
     found.crash_restart = on;
     save_instances(&app, &instances)?;
     record_audit(
@@ -8729,10 +8251,7 @@ fn set_crash_restart(app: AppHandle, id: String, on: bool) -> Result<(), String>
 fn set_start_with_app(app: AppHandle, id: String, on: bool) -> Result<(), String> {
     let _store = lock_instance_store();
     let mut instances = load_instances(&app)?;
-    let found = instances
-        .iter_mut()
-        .find(|instance| instance.id == id)
-        .ok_or("Server not found.")?;
+    let found = instances.iter_mut().find(|instance| instance.id == id).ok_or("Server not found.")?;
     found.start_with_app = on;
     save_instances(&app, &instances)?;
     record_audit(
@@ -8764,13 +8283,7 @@ fn start_marked_servers(app: &AppHandle) {
             tauri::async_runtime::block_on(approve_script(app, &instance, false))
         };
         if let Err(reason) = approved.and_then(|_| start_instance_inner(app.clone(), &state, instance.id.clone())) {
-            record_audit(
-                app,
-                &instance.id,
-                "Server",
-                "Start with app failed",
-                &reason,
-            );
+            record_audit(app, &instance.id, "Server", "Start with app failed", &reason);
         }
         thread::sleep(Duration::from_secs(3));
     }
@@ -8788,33 +8301,19 @@ fn ensure_folder_present(instance: &ServerInstance) -> Result<(), String> {
 }
 
 fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<(), String> {
-    if state
-        .processes
-        .lock()
-        .expect("process state poisoned")
-        .contains_key(&id)
-    {
+    if state.processes.lock().expect("process state poisoned").contains_key(&id) {
         return Err("This server is already running.".into());
     }
-    state
-        .crashed
-        .lock()
-        .expect("crash state poisoned")
-        .remove(&id);
+    state.crashed.lock().expect("crash state poisoned").remove(&id);
     state.logs.lock().expect("log state poisoned").remove(&id);
-    let instance = load_instances(&app)?
-        .into_iter()
-        .find(|instance| instance.id == id)
-        .ok_or("Server not found.")?;
+    let instance = load_instances(&app)?.into_iter().find(|instance| instance.id == id).ok_or("Server not found.")?;
     ensure_folder_present(&instance)?;
     ensure_port_available(port_from_properties(&instance))?;
     apply_pending_addons(&app, &instance);
     if pumpkin::is_pumpkin(&instance.core) && instance.version == forks::PUMPKIN_FORK {
         updates::before_pumpkin_start(&app, Path::new(&instance.path), instance.server_jar.as_deref());
     }
-    if pumpkin::is_pumpkin(&instance.core)
-        && events::installed_addon(Path::new(&instance.path), events::AddonKind::Pumpkin).is_some()
-    {
+    if pumpkin::is_pumpkin(&instance.core) && events::installed_addon(Path::new(&instance.path), events::AddonKind::Pumpkin).is_some() {
         if let Err(error) = events::write_timezone(Path::new(&instance.path)) {
             eprintln!("[pumpkin] timezone.json: {error}");
         }
@@ -8866,8 +8365,7 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
             "",
         )?;
         let args_file = script_args_file(Path::new(&instance.path))?;
-        let java =
-            resolve_java_runtime(&app, &instance.core, &instance.version, &instance.java_path)?;
+        let java = resolve_java_runtime(&app, &instance.core, &instance.version, &instance.java_path)?;
         let mut command = hidden_command(java);
         command
             .current_dir(&instance.path)
@@ -8879,7 +8377,12 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
             .arg("nogui");
         command
     } else {
-        let jar = instance.server_jar.clone().map(PathBuf::from).or_else(|| find_jar(Path::new(&instance.path))).ok_or("No .jar to run. Put a jar in the server folder and try again.")?;
+        let jar = instance
+            .server_jar
+            .clone()
+            .map(PathBuf::from)
+            .or_else(|| find_jar(Path::new(&instance.path)))
+            .ok_or("No .jar to run. Put a jar in the server folder and try again.")?;
         if !jar.is_file() {
             return Err("The registered server jar was not found.".into());
         }
@@ -8887,10 +8390,7 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
         let mut command = hidden_command(java);
         command
             .current_dir(&instance.path)
-            .arg(format!(
-                "-Xms{}M",
-                sane_min_memory(instance.min_memory_mib, instance.max_memory_mib)
-            ))
+            .arg(format!("-Xms{}M", sane_min_memory(instance.min_memory_mib, instance.max_memory_mib)))
             .arg(format!("-Xmx{}M", instance.max_memory_mib))
             .arg("-Dstdout.encoding=UTF-8")
             .arg("-Dstderr.encoding=UTF-8")
@@ -8908,10 +8408,7 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
         command
     };
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = command
-        .stdin(Stdio::piped())
-        .spawn()
-        .map_err(|error| format!("Could not start the server: {error}"))?;
+    let mut child = command.stdin(Stdio::piped()).spawn().map_err(|error| format!("Could not start the server: {error}"))?;
     child_job::bind(&child);
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -8962,36 +8459,23 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
     if !instance.start_script.trim().is_empty() {
         watch_script_shell(pid);
     }
-    state
-        .processes
-        .lock()
-        .expect("process state poisoned")
-        .insert(
-            instance.id.clone(),
-            ManagedProcess {
-                child,
-                pid,
-                started_at: SystemTime::now(),
-                stop_requested_at: None,
-                ready: false,
-                stop_when_ready: false,
-                stop_from_log: false,
-                crash_seen: false,
-            },
-        );
-    let _ = app.emit(
-        "server-status",
-        serde_json::json!({ "serverId": instance.id, "status": "running" }),
+    state.processes.lock().expect("process state poisoned").insert(
+        instance.id.clone(),
+        ManagedProcess {
+            child,
+            pid,
+            started_at: SystemTime::now(),
+            stop_requested_at: None,
+            ready: false,
+            stop_when_ready: false,
+            stop_from_log: false,
+            crash_seen: false,
+        },
     );
+    let _ = app.emit("server-status", serde_json::json!({ "serverId": instance.id, "status": "running" }));
     remember_for_web(&app, "server-status", &serde_json::json!({ "serverId": instance.id, "status": "running" }));
     monolink_team::report(&app, &instance.id, "server_started", serde_json::json!({}));
-    record_audit(
-        &app,
-        &instance.id,
-        "Server",
-        "Server start",
-        "Server process started.",
-    );
+    record_audit(&app, &instance.id, "Server", "Server start", "Server process started.");
     mark_last_run(&app, &instance.id);
     note_run(&app, &server_id, "start", "");
     watch_process(app, state.processes.clone(), state.crashed.clone(), server_id);
@@ -9000,11 +8484,7 @@ fn start_instance_inner(app: AppHandle, state: &AppState, id: String) -> Result<
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn restart_instance(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+async fn restart_instance(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
     restart_instance_as(app, state.inner(), id, true).await
 }
 
@@ -9038,12 +8518,7 @@ async fn restart_instance_as(app: AppHandle, state: &AppState, id: String, trust
     Ok(())
 }
 
-async fn restart_remote(
-    app: &AppHandle,
-    state: &AppState,
-    instance: &ServerInstance,
-    trusted: bool,
-) -> Result<(), String> {
+async fn restart_remote(app: &AppHandle, state: &AppState, instance: &ServerInstance, trusted: bool) -> Result<(), String> {
     if !instance.start_script.trim().is_empty() {
         approve_script(app, instance, trusted).await?;
     }
@@ -9060,10 +8535,7 @@ async fn restart_remote(
         remote::send_line(app, &host, &id, "stop", Some(live.session.clone())).await?;
         runlog::asked_to_stop(&id);
         record_audit(app, &id, "Server", "Restart via SSH", "Stops, then starts again.");
-        let _ = app.emit(
-            "server-status",
-            serde_json::json!({ "serverId": id, "status": "stopping" }),
-        );
+        let _ = app.emit("server-status", serde_json::json!({ "serverId": id, "status": "stopping" }));
         let waited = std::time::Instant::now();
         let who = [(id.clone(), instance.path.clone())];
         loop {
@@ -9086,11 +8558,7 @@ async fn restart_remote(
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn start_instance(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+async fn start_instance(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
     start_instance_as(app, state.inner(), id, true).await
 }
 
@@ -9108,12 +8576,7 @@ async fn start_instance_as(app: AppHandle, state: &AppState, id: String, trusted
     start_instance_inner(app, state, id)
 }
 
-async fn start_remote(
-    app: &AppHandle,
-    state: &AppState,
-    instance: &ServerInstance,
-    trusted: bool,
-) -> Result<(), String> {
+async fn start_remote(app: &AppHandle, state: &AppState, instance: &ServerInstance, trusted: bool) -> Result<(), String> {
     let id = instance.id.clone();
     let script_line = if instance.start_script.trim().is_empty() {
         String::new()
@@ -9153,32 +8616,19 @@ async fn start_remote(
     if let Some(live) = seen {
         return Err(already(&live));
     }
-    if let Ok(found) = remote::live_state_checked(
-        app,
-        &instance.remote_host,
-        &[(id.clone(), instance.path.clone())],
-    )
-    .await
-    {
+    if let Ok(found) = remote::live_state_checked(app, &instance.remote_host, &[(id.clone(), instance.path.clone())]).await {
         if let Some(live) = found.get(&id) {
             return Err(already(live));
         }
     }
     apply_pending_remote(app, instance).await;
     remote::start(app, &instance.remote_host, &instance.path, &id, &line, instance.crash_restart).await?;
+    state.remote_starting.lock().expect("remote state poisoned").insert(id.clone(), std::time::Instant::now());
     state
-        .remote_starting
+        .remote_running
         .lock()
         .expect("remote state poisoned")
-        .insert(id.clone(), std::time::Instant::now());
-    state.remote_running.lock().expect("remote state poisoned").insert(
-        id.clone(),
-        remote::Live {
-            pid: 0,
-            session: remote::Holder::session(&id),
-            ours: true,
-        },
-    );
+        .insert(id.clone(), remote::Live { pid: 0, session: remote::Holder::session(&id), ours: true });
     state.remote_kick.notify_one();
     if let Err(error) = remote::confirm_started(app, &instance.remote_host, &id).await {
         state.remote_running.lock().expect("remote state poisoned").remove(&id);
@@ -9190,20 +8640,12 @@ async fn start_remote(
 }
 
 fn session_of(state: &AppState, id: &str) -> Option<String> {
-    state
-        .remote_running
-        .lock()
-        .expect("remote state poisoned")
-        .get(id)
-        .map(|live| live.session.clone())
-        .filter(|name| !name.is_empty())
+    state.remote_running.lock().expect("remote state poisoned").get(id).map(|live| live.session.clone()).filter(|name| !name.is_empty())
 }
 
 async fn remote_jar(app: &AppHandle, instance: &ServerInstance) -> Result<remote::Launch, String> {
     let wanted = instance.server_jar.clone().unwrap_or_default();
-    let launch =
-        remote::resolve_launch(app, &instance.remote_host, &instance.path, &wanted, &instance.core)
-            .await?;
+    let launch = remote::resolve_launch(app, &instance.remote_host, &instance.path, &wanted, &instance.core).await?;
     let jar = launch.jar.clone();
     if launch.args.is_empty() && jar != wanted {
         let _store = lock_instance_store();
@@ -9217,19 +8659,11 @@ async fn remote_jar(app: &AppHandle, instance: &ServerInstance) -> Result<remote
 }
 
 fn remote_instance(app: &AppHandle, id: &str) -> Result<Option<ServerInstance>, String> {
-    Ok(load_instances(app)?
-        .into_iter()
-        .find(|one| one.id == id && !one.remote_host.is_empty()))
+    Ok(load_instances(app)?.into_iter().find(|one| one.id == id && !one.remote_host.is_empty()))
 }
 
-fn panel_instance(
-    app: &AppHandle,
-    id: &str,
-) -> Result<Option<(ServerInstance, panel::Api, panel::Target)>, String> {
-    let Some(instance) = load_instances(app)?
-        .into_iter()
-        .find(|one| one.id == id && !one.panel_host.is_empty())
-    else {
+fn panel_instance(app: &AppHandle, id: &str) -> Result<Option<(ServerInstance, panel::Api, panel::Target)>, String> {
+    let Some(instance) = load_instances(app)?.into_iter().find(|one| one.id == id && !one.panel_host.is_empty()) else {
         return Ok(None);
     };
     let api = panel::api(app, &instance.panel_host)?;
@@ -9287,13 +8721,7 @@ async fn far_list(app: &AppHandle, instance: &ServerInstance, relative: &str) ->
     remote::list_dir(app, &instance.remote_host, &instance.path, relative).await
 }
 
-async fn far_upload(
-    app: &AppHandle,
-    instance: &ServerInstance,
-    relative: &str,
-    bytes: &[u8],
-    shown: &str,
-) -> Result<(), String> {
+async fn far_upload(app: &AppHandle, instance: &ServerInstance, relative: &str, bytes: &[u8], shown: &str) -> Result<(), String> {
     if !instance.panel_host.is_empty() {
         let (api, target) = panel_of(app, instance)?;
         let (dir, name) = panel::split_path(relative)?;
@@ -9324,9 +8752,7 @@ async fn far_read_log(app: &AppHandle, instance: &ServerInstance, name: &str, li
 }
 
 async fn ensure_panel_stopped(app: &AppHandle, instance: &ServerInstance) -> Result<(), String> {
-    let now = panel_live::state_now(app, instance)
-        .await
-        .map_err(|error| format!("Could not confirm the server is stopped: {error}"))?;
+    let now = panel_live::state_now(app, instance).await.map_err(|error| format!("Could not confirm the server is stopped: {error}"))?;
     if now != "offline" {
         return Err("The server is running. Please stop it first.".into());
     }
@@ -9360,11 +8786,7 @@ async fn panel_power(app: &AppHandle, state: &AppState, id: &str, signal: &str) 
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn stop_instance(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+async fn stop_instance(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
     stop_instance_as(app, state.inner(), id).await
 }
 
@@ -9384,50 +8806,29 @@ async fn stop_instance_as(app: AppHandle, state: &AppState, id: String) -> Resul
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn force_stop_instance(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), String> {
+async fn force_stop_instance(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<(), String> {
     if panel_power(&app, &state, &id, "kill").await? {
         return Ok(());
     }
     if let Some(instance) = remote_instance(&app, &id)? {
         let live = state.remote_running.lock().expect("remote state poisoned").get(&id).cloned();
-        let session = live
-            .as_ref()
-            .map(|one| one.session.clone())
-            .filter(|name| !name.is_empty());
+        let session = live.as_ref().map(|one| one.session.clone()).filter(|name| !name.is_empty());
         let pid = live.as_ref().map(|one| one.pid).unwrap_or(0);
         remote::force_stop(&app, &instance.remote_host, &id, session, pid).await?;
         runlog::asked_to_stop(&id);
         state.remote_running.lock().expect("remote state poisoned").remove(&id);
         state.remote_starting.lock().expect("remote state poisoned").remove(&id);
-        record_audit(
-            &app,
-            &id,
-            "Server",
-            "End task (SSH)",
-            "Closed the session and killed the process without a stop command.",
-        );
+        record_audit(&app, &id, "Server", "End task (SSH)", "Closed the session and killed the process without a stop command.");
         return Ok(());
     }
     {
         let mut processes = state.processes.lock().expect("process state poisoned");
-        let process = processes
-            .get_mut(&id)
-            .ok_or("The server is not running.")?;
+        let process = processes.get_mut(&id).ok_or("The server is not running.")?;
         kill_process_tree(process.pid);
         let _ = process.child.kill();
         process.stop_requested_at = Some(SystemTime::now());
     }
-    record_audit(
-        &app,
-        &id,
-        "Server",
-        "End task",
-        "Killed the process without a stop command.",
-    );
+    record_audit(&app, &id, "Server", "End task", "Killed the process without a stop command.");
     Ok(())
 }
 
@@ -9441,20 +8842,13 @@ fn request_stop(app: &AppHandle, state: &AppState, id: &str) -> Result<bool, Str
         process.send_stop()?;
     }
     process.stop_requested_at = Some(SystemTime::now());
-    let _ = app.emit(
-        "server-status",
-        serde_json::json!({ "serverId": id, "status": "stopping" }),
-    );
+    let _ = app.emit("server-status", serde_json::json!({ "serverId": id, "status": "stopping" }));
     record_audit(
         app,
         id,
         "Server",
         "Stop requested",
-        if deferred {
-            "Stop is queued until startup finishes."
-        } else {
-            "Sent stop to the console."
-        },
+        if deferred { "Stop is queued until startup finishes." } else { "Sent stop to the console." },
     );
     Ok(deferred)
 }
@@ -9466,25 +8860,14 @@ fn write_console(state: &AppState, id: &str, line: &str) -> Result<(), String> {
         process.stop_requested_at = Some(SystemTime::now());
     }
     let line = launch::console_line(line)?;
-    let stdin = process
-        .child
-        .stdin
-        .as_mut()
-        .ok_or("Could not connect to the server console.")?;
-    stdin
-        .write_all(format!("{line}\n").as_bytes())
-        .map_err(|error| format!("Could not send the command: {error}"))?;
+    let stdin = process.child.stdin.as_mut().ok_or("Could not connect to the server console.")?;
+    stdin.write_all(format!("{line}\n").as_bytes()).map_err(|error| format!("Could not send the command: {error}"))?;
     stdin.flush().map_err(|error| error.to_string())
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn send_console_command(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    command: String,
-) -> Result<(), String> {
+async fn send_console_command(app: AppHandle, state: State<'_, AppState>, id: String, command: String) -> Result<(), String> {
     send_console_command_inner(&app, &state, &id, &command).await?;
     remember_sent_command(&app, &state, &id, &command);
     Ok(())
@@ -9511,12 +8894,7 @@ fn remember_sent_command(app: &AppHandle, state: &AppState, id: &str, command: &
     app.state::<logbatch::Batcher<ServerLogEvent>>().push(event);
 }
 
-async fn send_console_command_inner(
-    app: &AppHandle,
-    state: &State<'_, AppState>,
-    id: &str,
-    command: &str,
-) -> Result<(), String> {
+async fn send_console_command_inner(app: &AppHandle, state: &State<'_, AppState>, id: &str, command: &str) -> Result<(), String> {
     let (app, state, id, command) = (app.clone(), state, id.to_string(), command.to_string());
     if let Some((_, api, target)) = panel_instance(&app, &id)? {
         api.command(&target, &launch::console_line(&command)?).await?;
@@ -9524,50 +8902,24 @@ async fn send_console_command_inner(
         return Ok(());
     }
     if let Some(instance) = remote_instance(&app, &id)? {
-        remote::send_line(
-            &app,
-            &instance.remote_host,
-            &id,
-            &launch::console_line(&command)?,
-            session_of(state, &id),
-        )
-        .await?;
-        record_audit(
-            &app,
-            &id,
-            "Console",
-            "Send console command (SSH)",
-            "Command contents are not stored in the audit log for security.",
-        );
+        remote::send_line(&app, &instance.remote_host, &id, &launch::console_line(&command)?, session_of(state, &id)).await?;
+        record_audit(&app, &id, "Console", "Send console command (SSH)", "Command contents are not stored in the audit log for security.");
         return Ok(());
     }
     write_console(state, &id, &command)?;
-    record_audit(
-        &app,
-        &id,
-        "Console",
-        "Console command",
-        "Command contents are not stored in the audit log for security.",
-    );
+    record_audit(&app, &id, "Console", "Console command", "Command contents are not stored in the audit log for security.");
     Ok(())
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn get_console_logs(state: State<'_, AppState>, id: String) -> Vec<ServerLogEvent> {
-    state
-        .logs
-        .lock()
-        .expect("log state poisoned")
-        .get(&id)
-        .cloned()
-        .unwrap_or_default()
+    state.logs.lock().expect("log state poisoned").get(&id).cloned().unwrap_or_default()
 }
 
 fn parse_log_entry(line: String, source: &str) -> ParsedLogEntry {
     let upper = line.to_ascii_uppercase();
-    let level = if upper.contains("ERROR") || upper.contains("EXCEPTION") || upper.contains("FATAL")
-    {
+    let level = if upper.contains("ERROR") || upper.contains("EXCEPTION") || upper.contains("FATAL") {
         "Error"
     } else if upper.contains("WARN") {
         "Warning"
@@ -9581,10 +8933,7 @@ fn parse_log_entry(line: String, source: &str) -> ParsedLogEntry {
         "Join"
     } else if lower.contains(" left the game") || lower.contains(" lost connection") {
         "Leave"
-    } else if lower.contains(" was slain")
-        || lower.contains(" fell from")
-        || lower.contains(" died")
-    {
+    } else if lower.contains(" was slain") || lower.contains(" fell from") || lower.contains(" died") {
         "Death"
     } else if lower.contains(" issued server command") || lower.contains(" ran command") {
         "Command"
@@ -9593,12 +8942,7 @@ fn parse_log_entry(line: String, source: &str) -> ParsedLogEntry {
     } else {
         "Log"
     };
-    ParsedLogEntry {
-        line,
-        level: level.into(),
-        event: event.into(),
-        source: source.into(),
-    }
+    ParsedLogEntry { line, level: level.into(), event: event.into(), source: source.into() }
 }
 
 #[tauri::command(async)]
@@ -9613,11 +8957,7 @@ async fn list_log_entries(
     file_name: String,
 ) -> Result<Vec<ParsedLogEntry>, String> {
     let instance = instance_by_id(&app, &id)?;
-    let wanted = if file_name.trim().is_empty() {
-        "latest.log".to_string()
-    } else {
-        file_name.trim().to_string()
-    };
+    let wanted = if file_name.trim().is_empty() { "latest.log".to_string() } else { file_name.trim().to_string() };
     let mut lines = VecDeque::new();
     if !is_far(&instance) {
         if let Ok(path) = logs::safe_log_path(Path::new(&instance.path), &wanted) {
@@ -9626,23 +8966,12 @@ async fn list_log_entries(
             }
         }
     } else {
-        for line in far_read_log(&app, &instance, &wanted, 1_500)
-            .await
-            .unwrap_or_default()
-            .lines()
-        {
+        for line in far_read_log(&app, &instance, &wanted, 1_500).await.unwrap_or_default().lines() {
             lines.push_back((line.to_string(), "File".to_string()));
         }
     }
     if wanted == "latest.log" {
-        for event in state
-            .logs
-            .lock()
-            .expect("log state poisoned")
-            .get(&id)
-            .cloned()
-            .unwrap_or_default()
-        {
+        for event in state.logs.lock().expect("log state poisoned").get(&id).cloned().unwrap_or_default() {
             lines.push_back((event.line, "Live".to_string()));
             if lines.len() > 2_000 {
                 lines.pop_front();
@@ -9656,9 +8985,7 @@ async fn list_log_entries(
         .map(|(line, source)| parse_log_entry(line, &source))
         .filter(|entry| {
             (selected_level.is_empty() || selected_level == "All" || entry.level == selected_level)
-                && (needle.is_empty()
-                    || entry.line.to_lowercase().contains(&needle)
-                    || entry.event.contains(&needle))
+                && (needle.is_empty() || entry.line.to_lowercase().contains(&needle) || entry.event.contains(&needle))
         })
         .collect())
 }
@@ -9681,19 +9008,11 @@ fn list_audit_entries(app: AppHandle, id: String) -> Result<Vec<AuditEntry>, Str
 }
 
 fn instance_by_id(app: &AppHandle, id: &str) -> Result<ServerInstance, String> {
-    load_instances(app)?
-        .into_iter()
-        .find(|instance| instance.id == id)
-        .ok_or("Server not found.".into())
+    load_instances(app)?.into_iter().find(|instance| instance.id == id).ok_or("Server not found.".into())
 }
 
 fn ensure_stopped(state: &AppState, id: &str) -> Result<(), String> {
-    if state
-        .processes
-        .lock()
-        .expect("process state poisoned")
-        .contains_key(id)
-    {
+    if state.processes.lock().expect("process state poisoned").contains_key(id) {
         Err("Stop the server completely before changing data.".into())
     } else {
         Ok(())
@@ -9721,21 +9040,8 @@ fn directory_size(path: &Path) -> u64 {
         .sum()
 }
 
-fn world_entry(
-    path: &Path,
-    name: String,
-    world: String,
-    realm: &str,
-    has_level_data: bool,
-    inside_parent: bool,
-) -> Option<WorldEntry> {
-    let modified_at = fs::metadata(path)
-        .ok()?
-        .modified()
-        .ok()?
-        .duration_since(UNIX_EPOCH)
-        .ok()?
-        .as_secs();
+fn world_entry(path: &Path, name: String, world: String, realm: &str, has_level_data: bool, inside_parent: bool) -> Option<WorldEntry> {
+    let modified_at = fs::metadata(path).ok()?.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_secs();
     Some(WorldEntry {
         name,
         size_mib: directory_size(path) as f64 / 1024.0 / 1024.0,
@@ -9814,23 +9120,14 @@ async fn list_worlds(app: AppHandle, id: String) -> Result<Vec<WorldEntry>, Stri
         } else {
             "overworld"
         };
-        let owner = if sibling {
-            name.trim_end_matches("_nether")
-                .trim_end_matches("_the_end")
-                .to_string()
-        } else {
-            name.clone()
-        };
+        let owner = if sibling { name.trim_end_matches("_nether").trim_end_matches("_the_end").to_string() } else { name.clone() };
         if let Some(one) = world_entry(&path, name.clone(), owner, realm, has_level_data, false) {
             worlds.push(one);
         }
         if !has_level_data {
             continue;
         }
-        for (realm, kind, label) in [
-            (worldmap::Realm::Nether, "nether", "Nether"),
-            (worldmap::Realm::End, "end", "End"),
-        ] {
+        for (realm, kind, label) in [(worldmap::Realm::Nether, "nether", "Nether"), (worldmap::Realm::End, "end", "End")] {
             let Some(region) = worldmap::region_dir(root, &name, realm) else {
                 continue;
             };
@@ -9839,14 +9136,7 @@ async fn list_worlds(app: AppHandle, id: String) -> Result<Vec<WorldEntry>, Stri
                 continue;
             }
             let Some(dim) = region.parent() else { continue };
-            if let Some(one) = world_entry(
-                dim,
-                format!("{name} ({label})"),
-                name.clone(),
-                kind,
-                false,
-                true,
-            ) {
+            if let Some(one) = world_entry(dim, format!("{name} ({label})"), name.clone(), kind, false, true) {
                 worlds.push(one);
             }
         }
@@ -9920,20 +9210,14 @@ pub(crate) fn looks_binary(text: &str) -> bool {
 }
 
 fn safe_editable_path(instance: &ServerInstance, relative: &str) -> Result<PathBuf, String> {
-    let path = paths::resolve_in_server(Path::new(&instance.path), relative).map_err(|error| {
-        match error {
-            paths::PathError::Missing => "File not found.".to_string(),
-            other => other.to_string(),
-        }
+    let path = paths::resolve_in_server(Path::new(&instance.path), relative).map_err(|error| match error {
+        paths::PathError::Missing => "File not found.".to_string(),
+        other => other.to_string(),
     })?;
     if !path.is_file() || !editable_file(&path) {
         return Err("Only text files can be opened.".into());
     }
-    if fs::metadata(&path)
-        .map_err(|error| error.to_string())?
-        .len()
-        > 8 * 1024 * 1024
-    {
+    if fs::metadata(&path).map_err(|error| error.to_string())?.len() > 8 * 1024 * 1024 {
         return Err("Files larger than 8 MB cannot be opened in the editor.".into());
     }
     Ok(path)
@@ -9944,15 +9228,9 @@ fn send_process_command(state: &AppState, id: &str, command: &str) -> Result<boo
     let Some(process) = processes.get_mut(id) else {
         return Ok(false);
     };
-    let stdin = process
-        .child
-        .stdin
-        .as_mut()
-        .ok_or("Could not connect to the running server's console.")?;
+    let stdin = process.child.stdin.as_mut().ok_or("Could not connect to the running server's console.")?;
     let command = launch::console_line(command)?;
-    stdin
-        .write_all(format!("{command}\n").as_bytes())
-        .map_err(|error| format!("Could not send the server command: {error}"))?;
+    stdin.write_all(format!("{command}\n").as_bytes()).map_err(|error| format!("Could not send the server command: {error}"))?;
     stdin.flush().map_err(|error| error.to_string())?;
     Ok(true)
 }
@@ -9983,17 +9261,17 @@ struct AddonStatus {
 
 async fn install_addon_panel(app: &AppHandle, instance: &ServerInstance) -> Result<AddonStatus, String> {
     let Some(kind) = events::addon_kind(&instance.core) else {
-        return Err(format!(
-            "Cannot install on {}. Only Paper, Purpur, Folia, NeoForge, Fabric and Pumpkin are supported.",
-            instance.core
-        ));
+        return Err(format!("Cannot install on {}. Only Paper, Purpur, Folia, NeoForge, Fabric and Pumpkin are supported.", instance.core));
     };
     if kind == events::AddonKind::Fabric {
         return Err("Fabric servers also need fabric-api, so this can't be installed through the panel yet. Install fabric-api from the panel's marketplace, then upload the file in Files.".into());
     }
     let addons = updates::current_addon(app);
     let Some((version, jar)) = addons.pick(kind, &instance.version) else {
-        return Err(format!("Not available yet for Minecraft {}. If the version says Needs check, let the list detect it first and try again.", instance.version));
+        return Err(format!(
+            "Not available yet for Minecraft {}. If the version says Needs check, let the list detect it first and try again.",
+            instance.version
+        ));
     };
     ensure_panel_stopped(app, instance).await?;
     let source = addons.resolve(&jar).ok_or("Add‑on file not found. Try reinstalling the app.")?;
@@ -10019,86 +9297,44 @@ async fn install_addon_panel(app: &AppHandle, instance: &ServerInstance) -> Resu
     Ok(remote_addon_status(instance, Some((jar, version)), false))
 }
 
-async fn install_addon_remote(
-    app: &AppHandle,
-    state: &AppState,
-    instance: &ServerInstance,
-) -> Result<AddonStatus, String> {
+async fn install_addon_remote(app: &AppHandle, state: &AppState, instance: &ServerInstance) -> Result<AddonStatus, String> {
     let Some(kind) = events::addon_kind(&instance.core) else {
-        return Err(format!(
-            "Cannot install on {}. Only Paper, Purpur, Folia, NeoForge, Fabric and Pumpkin are supported.",
-            instance.core
-        ));
+        return Err(format!("Cannot install on {}. Only Paper, Purpur, Folia, NeoForge, Fabric and Pumpkin are supported.", instance.core));
     };
     if kind == events::AddonKind::Fabric {
-        return Err("Fabric servers also need fabric-api, so this can't be installed over SSH yet. Install it on that machine directly."
-            .into());
+        return Err(
+            "Fabric servers also need fabric-api, so this can't be installed over SSH yet. Install it on that machine directly.".into()
+        );
     }
     let addons = updates::current_addon(app);
     let Some((version, jar)) = addons.pick(kind, &instance.version) else {
-        return Err(format!(
-            "Not available yet for Minecraft {}.",
-            instance.version
-        ));
+        return Err(format!("Not available yet for Minecraft {}.", instance.version));
     };
-    if state
-        .remote_running
-        .lock()
-        .expect("remote state poisoned")
-        .contains_key(&instance.id)
-    {
+    if state.remote_running.lock().expect("remote state poisoned").contains_key(&instance.id) {
         return Err("Stop the server first. Nothing can be installed while it is running.".into());
     }
     let source = addons.resolve(&jar).ok_or("Add‑on file not found. Try reinstalling the app.")?;
-    let bytes = fs::read(&source)
-        .map_err(|error| format!("Could not read the add-on file bundled with the app: {error}"))?;
+    let bytes = fs::read(&source).map_err(|error| format!("Could not read the add-on file bundled with the app: {error}"))?;
     let folder = match kind {
         events::AddonKind::Paper | events::AddonKind::Pumpkin => "plugins",
         events::AddonKind::NeoForge | events::AddonKind::Fabric => "mods",
     };
     let conn = remote::connect(app, &instance.remote_host).await?;
     let at = format!("{}/{folder}", instance.path.trim_end_matches('/'));
-    conn.run(&format!(
-        "mkdir -p {0} && rm -f {0}/Monolab-*.jar {0}/Monolab-*.wasm",
-        remote::quote(&at)
-    ))
-    .await?
-    .ok()?;
-    remote::upload(
-        app,
-        &instance.remote_host,
-        &instance.path,
-        &format!("{folder}/{jar}"),
-        &bytes,
-    )
-    .await?;
+    conn.run(&format!("mkdir -p {0} && rm -f {0}/Monolab-*.jar {0}/Monolab-*.wasm", remote::quote(&at))).await?.ok()?;
+    remote::upload(app, &instance.remote_host, &instance.path, &format!("{folder}/{jar}"), &bytes).await?;
     record_audit(app, &instance.id, "Add-on", "Install add-on (SSH)", &jar);
-    Ok(remote_addon_status(
-        instance,
-        Some((jar, version)),
-        false,
-    ))
+    Ok(remote_addon_status(instance, Some((jar, version)), false))
 }
 
-fn remote_addon_status(
-    instance: &ServerInstance,
-    installed: Option<(String, u32)>,
-    running: bool,
-) -> AddonStatus {
+fn remote_addon_status(instance: &ServerInstance, installed: Option<(String, u32)>, running: bool) -> AddonStatus {
     let kind = events::addon_kind(&instance.core);
     let picked = kind.and_then(|kind| updates::current().pick(kind, &instance.version));
     let latest = picked.as_ref().map(|(version, _)| *version).unwrap_or(events::ADDON_VERSION);
     let wanted = picked.map(|(_, name)| name);
     AddonStatus {
         supported: wanted.is_some(),
-        reason: if wanted.is_some() {
-            String::new()
-        } else {
-            format!(
-                "Not available yet for {} {}.",
-                instance.core, instance.version
-            )
-        },
+        reason: if wanted.is_some() { String::new() } else { format!("Not available yet for {} {}.", instance.core, instance.version) },
         kind: match kind {
             Some(events::AddonKind::NeoForge) | Some(events::AddonKind::Fabric) => "Mod".into(),
             _ => "Plugin".into(),
@@ -10155,22 +9391,14 @@ fn addon_status_of(state: &AppState, instance: &ServerInstance) -> AddonStatus {
             (Some((name, version)), Some(jar)) => name != jar || *version < latest,
             _ => false,
         },
-        running: state
-            .processes
-            .lock()
-            .expect("process state poisoned")
-            .contains_key(&instance.id),
+        running: state.processes.lock().expect("process state poisoned").contains_key(&instance.id),
         folder: events::event_folder(server).to_string_lossy().to_string(),
     }
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn addon_status(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<AddonStatus, String> {
+async fn addon_status(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<AddonStatus, String> {
     let instance = instance_by_id(&app, &id)?;
     if !instance.panel_host.is_empty() {
         let folder = match events::addon_kind(&instance.core) {
@@ -10178,23 +9406,13 @@ async fn addon_status(
             _ => "plugins",
         };
         let (api, target) = panel_of(&app, &instance)?;
-        let found = api
-            .list(&target, folder)
-            .await
-            .unwrap_or_default()
-            .into_iter()
-            .find(|one| events::is_our_addon(&one.name))
-            .and_then(|one| {
+        let found =
+            api.list(&target, folder).await.unwrap_or_default().into_iter().find(|one| events::is_our_addon(&one.name)).and_then(|one| {
                 events::addon_kind(&instance.core)
                     .and_then(|kind| events::addon_version_in_name(kind, &one.name))
                     .map(|version| (one.name, version))
             });
-        let running = state
-            .panel_live
-            .lock()
-            .expect("panel state poisoned")
-            .get(&id)
-            .is_some_and(|one| one.stats.state != "offline");
+        let running = state.panel_live.lock().expect("panel state poisoned").get(&id).is_some_and(|one| one.stats.state != "offline");
         return Ok(remote_addon_status(&instance, found, running));
     }
     if !instance.remote_host.is_empty() {
@@ -10212,11 +9430,7 @@ async fn addon_status(
                     .and_then(|kind| events::addon_version_in_name(kind, &one.name))
                     .map(|version| (one.name, version))
             });
-        let running = state
-            .remote_running
-            .lock()
-            .expect("remote state poisoned")
-            .contains_key(&id);
+        let running = state.remote_running.lock().expect("remote state poisoned").contains_key(&id);
         return Ok(remote_addon_status(&instance, found, running));
     }
     Ok(addon_status_of(&state, &instance))
@@ -10224,12 +9438,7 @@ async fn addon_status(
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn add_addon_files(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    paths: Vec<String>,
-) -> Result<AddonAddResult, String> {
+async fn add_addon_files(app: AppHandle, state: State<'_, AppState>, id: String, paths: Vec<String>) -> Result<AddonAddResult, String> {
     let instance = instance_by_id(&app, &id)?;
     let running = is_running(&state, &id);
     let native = pumpkin::is_pumpkin(&instance.core);
@@ -10241,17 +9450,17 @@ async fn add_addon_files(
             Some(events::AddonKind::NeoForge) | Some(events::AddonKind::Fabric) => "mods",
             Some(_) => "plugins",
             None => {
-                if matches!(instance.core.as_str(), "Fabric" | "Forge") { "mods" } else { "plugins" }
+                if matches!(instance.core.as_str(), "Fabric" | "Forge") {
+                    "mods"
+                } else {
+                    "plugins"
+                }
             }
         };
         let mut result = AddonAddResult::default();
         for one in &paths {
             let source = Path::new(one);
-            let name = source
-                .file_name()
-                .and_then(|name| name.to_str())
-                .ok_or("Could not read the file name.")?
-                .to_string();
+            let name = source.file_name().and_then(|name| name.to_str()).ok_or("Could not read the file name.")?.to_string();
             if native {
                 if pumpkin::plugin_state(&name) != Some(true) {
                     return Err(format!("{name} is not a Pumpkin plugin (.wasm) file."));
@@ -10266,27 +9475,14 @@ async fn add_addon_files(
         if result.added.is_empty() {
             return Err("No .jar files to add.".into());
         }
-        record_audit(
-            &app,
-            &id,
-            "Mods & plugins",
-            "Add manually (SSH)",
-            &format!("Added {}.", result.added.join(", ")),
-        );
+        record_audit(&app, &id, "Mods & plugins", "Add manually (SSH)", &format!("Added {}.", result.added.join(", ")));
         return Ok(result);
     }
     let folder = match events::addon_kind(&instance.core) {
         Some(kind) => events::addon_folder(Path::new(&instance.path), kind),
-        None => Path::new(&instance.path).join(
-            if matches!(instance.core.as_str(), "Fabric" | "Forge") {
-                "mods"
-            } else {
-                "plugins"
-            },
-        ),
+        None => Path::new(&instance.path).join(if matches!(instance.core.as_str(), "Fabric" | "Forge") { "mods" } else { "plugins" }),
     };
-    fs::create_dir_all(&folder)
-        .map_err(|error| format!("Could not create the target folder: {error}"))?;
+    fs::create_dir_all(&folder).map_err(|error| format!("Could not create the target folder: {error}"))?;
 
     let installed = addons::scan(Path::new(&instance.path));
     let keep = addon_restore_dir(&app, &id)?;
@@ -10295,11 +9491,7 @@ async fn add_addon_files(
     let mut result = AddonAddResult::default();
     for one in paths {
         let source = Path::new(&one);
-        let name = source
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or("Could not read the file name.")?
-            .to_string();
+        let name = source.file_name().and_then(|name| name.to_str()).ok_or("Could not read the file name.")?.to_string();
         if native {
             if pumpkin::plugin_state(&name) != Some(true) {
                 return Err(format!("{name} is not a Pumpkin plugin (.wasm) file."));
@@ -10312,9 +9504,7 @@ async fn add_addon_files(
         }
 
         let (mod_id, display_name, version) = addons::jar_identity(source);
-        let older = installed.iter().find(|one| {
-            !mod_id.is_empty() && one.mod_id == mod_id && one.file_name != name
-        });
+        let older = installed.iter().find(|one| !mod_id.is_empty() && one.mod_id == mod_id && one.file_name != name);
 
         if running && (older.is_some() || folder.join(&name).exists()) {
             pending::queue(
@@ -10349,14 +9539,9 @@ async fn add_addon_files(
             }
             result.replaced.push(older.file_name.clone());
         }
-        let folder_name = folder
-            .file_name()
-            .and_then(|one| one.to_str())
-            .unwrap_or("plugins");
-        let destination =
-            paths::resolve_new_in_server(Path::new(&instance.path), &format!("{folder_name}/{name}"))?;
-        fs::copy(source, destination)
-            .map_err(|error| format!("Could not install {name}: {error}"))?;
+        let folder_name = folder.file_name().and_then(|one| one.to_str()).unwrap_or("plugins");
+        let destination = paths::resolve_new_in_server(Path::new(&instance.path), &format!("{folder_name}/{name}"))?;
+        fs::copy(source, destination).map_err(|error| format!("Could not install {name}: {error}"))?;
         result.added.push(name);
     }
     if result.added.is_empty() && result.queued.is_empty() {
@@ -10367,16 +9552,7 @@ async fn add_addon_files(
         &id,
         "Mods & plugins",
         if result.queued.is_empty() { "Added manually" } else { "Added manually (queued for restart)" },
-        &format!(
-            "Added {}.",
-            result
-                .added
-                .iter()
-                .chain(result.queued.iter())
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
+        &format!("Added {}.", result.added.iter().chain(result.queued.iter()).cloned().collect::<Vec<_>>().join(", ")),
     );
     Ok(result)
 }
@@ -10397,28 +9573,22 @@ pub(crate) fn pumpkin_exe_in_use(app: &AppHandle, exe: &Path) -> bool {
         return false;
     }
     let wanted = fs::canonicalize(exe).unwrap_or_else(|_| exe.to_path_buf());
-    load_instances(app).unwrap_or_default().into_iter().filter(|one| running.contains(&one.id) && pumpkin::is_pumpkin(&one.core)).any(|one| {
-        let root = Path::new(&one.path);
-        let path = one.server_jar.as_ref().map(|jar| root.join(jar)).unwrap_or_else(|| root.join(cores::PUMPKIN_EXE));
-        fs::canonicalize(&path).unwrap_or(path) == wanted
-    })
+    load_instances(app).unwrap_or_default().into_iter().filter(|one| running.contains(&one.id) && pumpkin::is_pumpkin(&one.core)).any(
+        |one| {
+            let root = Path::new(&one.path);
+            let path = one.server_jar.as_ref().map(|jar| root.join(jar)).unwrap_or_else(|| root.join(cores::PUMPKIN_EXE));
+            fs::canonicalize(&path).unwrap_or(path) == wanted
+        },
+    )
 }
 
 fn is_running(state: &AppState, id: &str) -> bool {
-    state
-        .processes
-        .lock()
-        .expect("process state poisoned")
-        .contains_key(id)
+    state.processes.lock().expect("process state poisoned").contains_key(id)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn install_addon(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<AddonStatus, String> {
+async fn install_addon(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<AddonStatus, String> {
     let instance = instance_by_id(&app, &id)?;
     if !instance.panel_host.is_empty() {
         return install_addon_panel(&app, &instance).await;
@@ -10427,10 +9597,7 @@ async fn install_addon(
         return install_addon_remote(&app, &state, &instance).await;
     }
     let Some(kind) = events::addon_kind(&instance.core) else {
-        return Err(format!(
-            "Cannot install on {}. Only Paper, Purpur, Folia, NeoForge, Fabric and Pumpkin are supported.",
-            instance.core
-        ));
+        return Err(format!("Cannot install on {}. Only Paper, Purpur, Folia, NeoForge, Fabric and Pumpkin are supported.", instance.core));
     };
     let addons = updates::current_addon(&app);
     let Some((version, jar)) = addons.pick(kind, &instance.version) else {
@@ -10440,12 +9607,7 @@ async fn install_addon(
             format!("No mod is available for Minecraft {} yet.", instance.version)
         });
     };
-    if state
-        .processes
-        .lock()
-        .expect("process state poisoned")
-        .contains_key(&id)
-    {
+    if state.processes.lock().expect("process state poisoned").contains_key(&id) {
         return Err("Stop the server first. Nothing can be installed while it is running.".into());
     }
     let Some(source) = addons.resolve(&jar) else {
@@ -10453,20 +9615,11 @@ async fn install_addon(
     };
     let server = Path::new(&instance.path);
     let folder = events::addon_folder(server, kind);
-    let folder_name = folder
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_default();
-    fs::create_dir_all(&folder)
-        .map_err(|error| format!("Could not create the folder {folder_name}: {error}"))?;
-    let brought = if kind == events::AddonKind::Fabric {
-        ensure_fabric_api(&instance, &folder)?
-    } else {
-        None
-    };
+    let folder_name = folder.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_default();
+    fs::create_dir_all(&folder).map_err(|error| format!("Could not create the folder {folder_name}: {error}"))?;
+    let brought = if kind == events::AddonKind::Fabric { ensure_fabric_api(&instance, &folder)? } else { None };
     remove_old_addon_jars(&folder);
-    fs::copy(&source, folder.join(&jar))
-        .map_err(|error| format!("Could not install the add‑on: {error}"))?;
+    fs::copy(&source, folder.join(&jar)).map_err(|error| format!("Could not install the add‑on: {error}"))?;
     let spark_note = match kind {
         events::AddonKind::NeoForge | events::AddonKind::Fabric => match ensure_spark(&instance, &folder) {
             Ok(Some(name)) => format!(" The spark profiler ({name}) was added too."),
@@ -10485,14 +9638,10 @@ async fn install_addon(
         "Events",
         "Add‑on install",
         &match &brought {
-            Some(name) => format!(
-                "Installed version {} into the {folder_name} folder. The required {name} was downloaded too.{spark_note}",
-                version
-            ),
-            None => format!(
-                "Installed version {} into the {folder_name} folder.{spark_note}",
-                version
-            ),
+            Some(name) => {
+                format!("Installed version {} into the {folder_name} folder. The required {name} was downloaded too.{spark_note}", version)
+            }
+            None => format!("Installed version {} into the {folder_name} folder.{spark_note}", version),
         },
     );
     Ok(addon_status_of(&state, &instance))
@@ -10507,9 +9656,7 @@ fn ensure_spark(instance: &ServerInstance, folder: &Path) -> Result<Option<Strin
     let plan = addons::plan_install(&client, spark::MODRINTH_ID, loader, &instance.version, &Default::default())
         .map_err(|error| format!("No spark build for Minecraft {} was found ({error})", instance.version))?;
     let staging = folder.join(format!(".{}.download", plan.file_name));
-    if let Err(error) =
-        download_file(&client, &plan.download_url, &staging).and_then(|()| verify_sha512(&staging, &plan.sha512))
-    {
+    if let Err(error) = download_file(&client, &plan.download_url, &staging).and_then(|()| verify_sha512(&staging, &plan.sha512)) {
         let _ = fs::remove_file(&staging);
         return Err(format!("Download failed: {error}"));
     }
@@ -10519,11 +9666,7 @@ fn ensure_spark(instance: &ServerInstance, folder: &Path) -> Result<Option<Strin
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn remove_addon(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<AddonStatus, String> {
+async fn remove_addon(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<AddonStatus, String> {
     let instance = instance_by_id(&app, &id)?;
     if !instance.panel_host.is_empty() {
         ensure_panel_stopped(&app, &instance).await?;
@@ -10547,12 +9690,7 @@ async fn remove_addon(
         return Ok(remote_addon_status(&instance, None, false));
     }
     if !instance.remote_host.is_empty() {
-        if state
-            .remote_running
-            .lock()
-            .expect("remote state poisoned")
-            .contains_key(&id)
-        {
+        if state.remote_running.lock().expect("remote state poisoned").contains_key(&id) {
             return Err("Stop the server first.".into());
         }
         let folder = match events::addon_kind(&instance.core) {
@@ -10561,33 +9699,17 @@ async fn remove_addon(
         };
         let conn = remote::connect(&app, &instance.remote_host).await?;
         let at = format!("{}/{folder}", instance.path.trim_end_matches('/'));
-        conn.run(&format!(
-            "rm -f {0}/Monolab-*.jar {0}/Monolab-*.wasm",
-            remote::quote(&at)
-        ))
-        .await?
-        .ok()?;
+        conn.run(&format!("rm -f {0}/Monolab-*.jar {0}/Monolab-*.wasm", remote::quote(&at))).await?.ok()?;
         record_audit(&app, &id, "Add-on", "Remove add-on (SSH)", folder);
         return Ok(remote_addon_status(&instance, None, false));
     }
-    if state
-        .processes
-        .lock()
-        .expect("process state poisoned")
-        .contains_key(&id)
-    {
+    if state.processes.lock().expect("process state poisoned").contains_key(&id) {
         return Err("Stop the server first.".into());
     }
     let server = Path::new(&instance.path);
     remove_old_addon_jars(&events::addon_folder(server, events::AddonKind::Paper));
     remove_old_addon_jars(&events::addon_folder(server, events::AddonKind::NeoForge));
-    record_audit(
-        &app,
-        &id,
-        "Events",
-        "Add‑on removal",
-        "Files recorded so far are kept.",
-    );
+    record_audit(&app, &id, "Events", "Add‑on removal", "Files recorded so far are kept.");
     Ok(addon_status_of(&state, &instance))
 }
 
@@ -10595,29 +9717,22 @@ const FABRIC_API_ID: &str = "fabric-api";
 
 fn ensure_fabric_api(instance: &ServerInstance, folder: &Path) -> Result<Option<String>, String> {
     let installed = addons::scan(Path::new(&instance.path));
-    if installed
-        .iter()
-        .any(|one| one.mod_id.eq_ignore_ascii_case(FABRIC_API_ID) && one.enabled)
-    {
+    if installed.iter().any(|one| one.mod_id.eq_ignore_ascii_case(FABRIC_API_ID) && one.enabled) {
         return Ok(None);
     }
     let client = addons::client()?;
-    let plan = addons::plan_install(&client, FABRIC_API_ID, "fabric", &instance.version, &Default::default())
-        .map_err(|error| {
-            format!(
-                "The required Fabric API was not found, so nothing was installed ({error}). Fabric API for Minecraft {} may not exist yet.",
-                instance.version
-            )
-        })?;
+    let plan = addons::plan_install(&client, FABRIC_API_ID, "fabric", &instance.version, &Default::default()).map_err(|error| {
+        format!(
+            "The required Fabric API was not found, so nothing was installed ({error}). Fabric API for Minecraft {} may not exist yet.",
+            instance.version
+        )
+    })?;
     let staging = folder.join(format!(".{}.download", plan.file_name));
-    if let Err(error) =
-        download_file(&client, &plan.download_url, &staging).and_then(|()| verify_sha512(&staging, &plan.sha512))
-    {
+    if let Err(error) = download_file(&client, &plan.download_url, &staging).and_then(|()| verify_sha512(&staging, &plan.sha512)) {
         let _ = fs::remove_file(&staging);
         return Err(format!("Could not download the required Fabric API: {error}"));
     }
-    fs::rename(&staging, folder.join(&plan.file_name))
-        .map_err(|error| format!("Could not install Fabric API: {error}"))?;
+    fs::rename(&staging, folder.join(&plan.file_name)).map_err(|error| format!("Could not install Fabric API: {error}"))?;
     Ok(Some(plan.file_name))
 }
 
@@ -10628,9 +9743,7 @@ fn remove_old_addon_jars(folder: &Path) {
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
         let ours = events::is_our_addon(&name)
-            && (name.ends_with(".jar")
-                || name.ends_with(".wasm")
-                || name.ends_with(&format!(".wasm{}", pumpkin::DISABLED)));
+            && (name.ends_with(".jar") || name.ends_with(".wasm") || name.ends_with(&format!(".wasm{}", pumpkin::DISABLED)));
         if ours {
             let _ = fs::remove_file(entry.path());
         }
@@ -10664,15 +9777,7 @@ fn perf_history(app: AppHandle, id: String, day: String) -> Result<Vec<events::G
     } else {
         day
     };
-    let mut found = events::read_day(
-        server,
-        &day,
-        &events::Filter {
-            kinds: vec!["perf".into()],
-            player: String::new(),
-            limit: 2000,
-        },
-    );
+    let mut found = events::read_day(server, &day, &events::Filter { kinds: vec!["perf".into()], player: String::new(), limit: 2000 });
     found.reverse();
     Ok(found)
 }
@@ -10681,7 +9786,15 @@ const TILE: u32 = 128;
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn render_map_tile(app: AppHandle, id: String, realm: Option<String>, z: i32, tx: i32, ty: i32, night: Option<bool>) -> Result<String, String> {
+async fn render_map_tile(
+    app: AppHandle,
+    id: String,
+    realm: Option<String>,
+    z: i32,
+    tx: i32,
+    ty: i32,
+    night: Option<bool>,
+) -> Result<String, String> {
     let (png, partial) = map_tile_png(app, id, realm, z, tx, ty, night.unwrap_or(false)).await?;
     use base64::Engine;
     let url = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png.as_slice()));
@@ -10718,7 +9831,15 @@ fn map_tile_protocol(app: AppHandle, request: tauri::http::Request<Vec<u8>>, res
 }
 
 /// One map tile as PNG bytes, from memory, the saved copy or a fresh drawing; `true` when part of it couldn't be read yet.
-async fn map_tile_png(app: AppHandle, id: String, realm: Option<String>, z: i32, tx: i32, ty: i32, night: bool) -> Result<(Arc<Vec<u8>>, bool), String> {
+async fn map_tile_png(
+    app: AppHandle,
+    id: String,
+    realm: Option<String>,
+    z: i32,
+    tx: i32,
+    ty: i32,
+    night: bool,
+) -> Result<(Arc<Vec<u8>>, bool), String> {
     let z = z.clamp(-4, 5);
     let realm_name = worldmap::realm_key(realm.as_deref().unwrap_or("overworld"));
     let key = (id.clone(), if night { format!("{realm_name}#night") } else { realm_name.clone() }, z, tx, ty);
@@ -10727,146 +9848,142 @@ async fn map_tile_png(app: AppHandle, id: String, realm: Option<String>, z: i32,
         if let Some(found) = state.map_tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&key) {
             return Ok((found.clone(), false));
         }
-        let index = state
-            .map_index
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .get(&(id.clone(), realm_name.clone()))
-            .cloned();
+        let index = state.map_index.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&(id.clone(), realm_name.clone())).cloned();
         (state.map_cells.clone(), state.map_coarse.clone(), state.map_tiles.clone(), state.map_palettes.clone(), index)
     };
     let instance = instance_by_id(&app, &id)?;
 
-    tauri::async_runtime::spawn_blocking(move || off_runtime(move || {
-        let bpp = 2f32.powi(z);
-        let span = (TILE as f32 * bpp) as i32;
-        let saved = index.as_ref().and_then(|known| {
-            use std::hash::{Hash, Hasher};
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            ("tile-v2", night, z).hash(&mut hasher);
-            for rz in (ty * span).div_euclid(512) - 1..=((ty + 1) * span - 1).div_euclid(512) + 1 {
-                for rx in (tx * span).div_euclid(512) - 1..=((tx + 1) * span - 1).div_euclid(512) + 1 {
-                    if let Some(stamp) = known.get(&(rx, rz)) {
-                        (rx, rz, format!("{stamp:?}")).hash(&mut hasher);
+    tauri::async_runtime::spawn_blocking(move || {
+        off_runtime(move || {
+            let bpp = 2f32.powi(z);
+            let span = (TILE as f32 * bpp) as i32;
+            let saved = index.as_ref().and_then(|known| {
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                ("tile-v2", night, z).hash(&mut hasher);
+                for rz in (ty * span).div_euclid(512) - 1..=((ty + 1) * span - 1).div_euclid(512) + 1 {
+                    for rx in (tx * span).div_euclid(512) - 1..=((tx + 1) * span - 1).div_euclid(512) + 1 {
+                        if let Some(stamp) = known.get(&(rx, rz)) {
+                            (rx, rz, format!("{stamp:?}")).hash(&mut hasher);
+                        }
+                    }
+                }
+                let dir = instance_data_dir(&app, &id).ok()?.join("map-tiles").join(&realm_name);
+                let name = format!("{}{z}_{tx}_{ty}", if night { "n" } else { "d" });
+                Some((dir.join(format!("{name}.png")), dir.join(format!("{name}.sig")), format!("{:016x}", hasher.finish())))
+            });
+            if let Some((png, sig, hash)) = &saved {
+                if fs::read_to_string(sig).ok().as_deref() == Some(hash.as_str()) {
+                    if let Ok(bytes) = fs::read(png) {
+                        let bytes = Arc::new(bytes);
+                        tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, bytes.clone());
+                        return Ok((bytes, false));
                     }
                 }
             }
-            let dir = instance_data_dir(&app, &id).ok()?.join("map-tiles").join(&realm_name);
-            let name = format!("{}{z}_{tx}_{ty}", if night { "n" } else { "d" });
-            Some((dir.join(format!("{name}.png")), dir.join(format!("{name}.sig")), format!("{:016x}", hasher.finish())))
-        });
-        if let Some((png, sig, hash)) = &saved {
-            if fs::read_to_string(sig).ok().as_deref() == Some(hash.as_str()) {
-                if let Ok(bytes) = fs::read(png) {
-                    let bytes = Arc::new(bytes);
-                    tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, bytes.clone());
-                    return Ok((bytes, false));
+            static PALETTE_LOAD: Mutex<()> = Mutex::new(());
+            let _loading = PALETTE_LOAD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let held = palettes.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&id).cloned();
+            let mut palette_failed = false;
+            let palette = match held {
+                Some(found) => found,
+                None => {
+                    let mut failed = false;
+                    let mut read = |name: &str| {
+                        map_file_bytes(&app, &instance, name).unwrap_or_else(|_| {
+                            failed = true;
+                            None
+                        })
+                    };
+                    let grass = read("grass.png");
+                    let foliage = read("foliage.png");
+                    let palette_json = read("palette.json").unwrap_or_default();
+                    const DRAFT: &[u8] = b"\"vanilla\":false";
+                    if palette_json.windows(DRAFT.len()).any(|one| one == DRAFT) {
+                        supply_client_jar(&app, &instance);
+                    }
+                    let one = Arc::new(worldmap::Palette::parse(&palette_json, grass.as_deref(), foliage.as_deref()));
+                    if !failed {
+                        palettes.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(id.clone(), one.clone());
+                    }
+                    palette_failed = failed;
+                    one
                 }
-            }
-        }
-        static PALETTE_LOAD: Mutex<()> = Mutex::new(());
-        let _loading = PALETTE_LOAD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        let held = palettes
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .get(&id)
-            .cloned();
-        let mut palette_failed = false;
-        let palette = match held {
-            Some(found) => found,
-            None => {
-                let mut failed = false;
-                let mut read = |name: &str| {
-                    map_file_bytes(&app, &instance, name).unwrap_or_else(|_| {
-                        failed = true;
-                        None
-                    })
-                };
-                let grass = read("grass.png");
-                let foliage = read("foliage.png");
-                let palette_json = read("palette.json").unwrap_or_default();
-                const DRAFT: &[u8] = b"\"vanilla\":false";
-                if palette_json.windows(DRAFT.len()).any(|one| one == DRAFT) {
-                    supply_client_jar(&app, &instance);
-                }
-                let one = Arc::new(worldmap::Palette::parse(&palette_json, grass.as_deref(), foliage.as_deref()));
-                if !failed {
-                    palettes
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner())
-                        .insert(id.clone(), one.clone());
-                }
-                palette_failed = failed;
-                one
-            }
-        };
-        drop(_loading);
-        let missed = std::cell::Cell::new(false);
-        let scale = worldmap::shrink_for(z);
-        let full = |rx: i32, rz: i32| -> Arc<worldmap::Tile> {
-            let key = (id.clone(), realm_name.clone(), rx, rz);
-            if let Some(found) = cells
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .get(&key)
-            {
-                return found.clone();
-            }
-            let stamp = match index.as_ref() {
-                Some(known) => match known.get(&(rx, rz)) {
-                    Some(stamp) => Some(*stamp),
-                    None => return worldmap::Tile::blank(),
-                },
-                None => None,
             };
-            let read = map_region_bytes(&app, &instance, &realm_name, rx, rz, stamp);
-            let Ok(found) = read else {
-                missed.set(true);
-                return worldmap::Tile::blank();
-            };
-            let one = found.and_then(|bytes| worldmap::parse_tile(&bytes)).map(Arc::new).unwrap_or_else(worldmap::Tile::blank);
-            // Far-out views keep only the shrunken copy, leaving room for the regions close-up views need.
-            if scale == 1 && one.present {
-                cells.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, one.clone());
-            }
-            one
-        };
-        let mut fetch = |rx: i32, rz: i32| -> Arc<worldmap::Tile> {
-            if scale == 1 {
-                return full(rx, rz);
-            }
-            let stamp = index.as_ref().and_then(|known| known.get(&(rx, rz)).copied());
-            let key = (id.clone(), realm_name.clone(), rx, rz, scale, stamp);
-            if stamp.is_some() {
-                if let Some(found) = coarse.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&key) {
+            drop(_loading);
+            let missed = std::cell::Cell::new(false);
+            let scale = worldmap::shrink_for(z);
+            let full = |rx: i32, rz: i32| -> Arc<worldmap::Tile> {
+                let key = (id.clone(), realm_name.clone(), rx, rz);
+                if let Some(found) = cells.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&key) {
                     return found.clone();
                 }
+                let stamp = match index.as_ref() {
+                    Some(known) => match known.get(&(rx, rz)) {
+                        Some(stamp) => Some(*stamp),
+                        None => return worldmap::Tile::blank(),
+                    },
+                    None => None,
+                };
+                let read = map_region_bytes(&app, &instance, &realm_name, rx, rz, stamp);
+                let Ok(found) = read else {
+                    missed.set(true);
+                    return worldmap::Tile::blank();
+                };
+                let one = found.and_then(|bytes| worldmap::parse_tile(&bytes)).map(Arc::new).unwrap_or_else(worldmap::Tile::blank);
+                // Far-out views keep only the shrunken copy, leaving room for the regions close-up views need.
+                if scale == 1 && one.present {
+                    cells.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, one.clone());
+                }
+                one
+            };
+            let mut fetch = |rx: i32, rz: i32| -> Arc<worldmap::Tile> {
+                if scale == 1 {
+                    return full(rx, rz);
+                }
+                let stamp = index.as_ref().and_then(|known| known.get(&(rx, rz)).copied());
+                let key = (id.clone(), realm_name.clone(), rx, rz, scale, stamp);
+                if stamp.is_some() {
+                    if let Some(found) = coarse.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get(&key) {
+                        return found.clone();
+                    }
+                }
+                let whole = full(rx, rz);
+                if !whole.present {
+                    return whole;
+                }
+                let small = Arc::new(whole.shrink(scale));
+                if stamp.is_some() {
+                    coarse.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, small.clone());
+                }
+                small
+            };
+            let map = Arc::new(worldmap::render_view(
+                &mut fetch,
+                &palette,
+                tx * span,
+                ty * span,
+                TILE,
+                TILE,
+                bpp,
+                night,
+                worldmap::void_color(&realm_name),
+            )?);
+            if missed.get() || palette_failed {
+                return Ok((map, true));
             }
-            let whole = full(rx, rz);
-            if !whole.present {
-                return whole;
+            tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, map.clone());
+            if let Some((png, sig, hash)) = saved {
+                if let Some(dir) = png.parent() {
+                    let _ = fs::create_dir_all(dir);
+                }
+                if fs::write(&png, map.as_slice()).is_ok() {
+                    let _ = fs::write(&sig, hash);
+                }
             }
-            let small = Arc::new(whole.shrink(scale));
-            if stamp.is_some() {
-                coarse.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, small.clone());
-            }
-            small
-        };
-        let map = Arc::new(worldmap::render_view(&mut fetch, &palette, tx * span, ty * span, TILE, TILE, bpp, night, worldmap::void_color(&realm_name))?);
-        if missed.get() || palette_failed {
-            return Ok((map, true));
-        }
-        tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).insert(key, map.clone());
-        if let Some((png, sig, hash)) = saved {
-            if let Some(dir) = png.parent() {
-                let _ = fs::create_dir_all(dir);
-            }
-            if fs::write(&png, map.as_slice()).is_ok() {
-                let _ = fs::write(&sig, hash);
-            }
-        }
-        Ok((map, false))
-    }))
+            Ok((map, false))
+        })
+    })
     .await
     .map_err(|error| format!("Could not draw the map tile: {error}"))?
 }
@@ -10877,16 +9994,17 @@ fn map_tile_folder(instance: &ServerInstance, realm: &str) -> String {
     } else {
         events::event_folder(Path::new(&instance.path)).join("map").to_string_lossy().into_owned()
     };
-    if realm.is_empty() { base } else { format!("{base}/{realm}") }
+    if realm.is_empty() {
+        base
+    } else {
+        format!("{base}/{realm}")
+    }
 }
 
 fn supply_client_jar(app: &AppHandle, instance: &ServerInstance) {
     static TRIED: std::sync::OnceLock<Mutex<HashSet<String>>> = std::sync::OnceLock::new();
-    let version = if pumpkin::is_pumpkin(&instance.core) {
-        pumpkin_game_version(&instance.version)
-    } else {
-        instance.version.trim().to_string()
-    };
+    let version =
+        if pumpkin::is_pumpkin(&instance.core) { pumpkin_game_version(&instance.version) } else { instance.version.trim().to_string() };
     if !looks_like_version(&version) {
         return;
     }
@@ -11039,9 +10157,7 @@ async fn map_stamps(app: &AppHandle, instance: &ServerInstance, realm: &str) -> 
                 .collect()
         })
     };
-    rows.map(|rows| {
-        rows.iter().filter_map(|(name, at, size)| worldmap::tile_coords(name).map(|spot| (spot, (*at, *size)))).collect()
-    })
+    rows.map(|rows| rows.iter().filter_map(|(name, at, size)| worldmap::tile_coords(name).map(|spot| (spot, (*at, *size)))).collect())
 }
 
 /// Regions whose tile was added, removed or redrawn between two listings.
@@ -11068,12 +10184,7 @@ fn tile_touches_region(z: i32, tx: i32, ty: i32, rx: i32, rz: i32) -> bool {
 /// refetch the tiles that show them while the add-on keeps drawing.
 #[tauri::command(async)]
 #[specta::specta]
-async fn map_changes(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    realm: Option<String>,
-) -> Result<Vec<(i32, i32)>, String> {
+async fn map_changes(app: AppHandle, state: State<'_, AppState>, id: String, realm: Option<String>) -> Result<Vec<(i32, i32)>, String> {
     let instance = instance_by_id(&app, &id)?;
     let realm = worldmap::realm_key(realm.as_deref().unwrap_or("overworld"));
     let Some(fresh) = map_stamps(&app, &instance, &realm).await else {
@@ -11093,9 +10204,11 @@ async fn map_changes(
         return Ok(changed);
     }
     let night = format!("{realm}#night");
-    state.map_cells.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).retain(|key, _| {
-        key.0 != id || key.1 != realm || !changed.contains(&(key.2, key.3))
-    });
+    state
+        .map_cells
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .retain(|key, _| key.0 != id || key.1 != realm || !changed.contains(&(key.2, key.3)));
     state.map_tiles.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).retain(|key, _| {
         key.0 != id
             || (key.1 != realm && key.1 != night)
@@ -11159,7 +10272,8 @@ async fn world_map_bounds(
     let found: Vec<(i32, i32)> = fresh.map(|fresh| fresh.into_keys().collect()).unwrap_or_default();
     if found.is_empty() {
         return Err(
-            "No map drawn yet. Keep the server running with the Monolab mod/plugin installed and it starts drawing within 1–2 minutes.".into(),
+            "No map drawn yet. Keep the server running with the Monolab mod/plugin installed and it starts drawing within 1–2 minutes."
+                .into(),
         );
     }
     let min_x = found.iter().map(|(x, _)| *x).min().unwrap_or(0) * 512;
@@ -11190,7 +10304,12 @@ async fn read_live(app: AppHandle, id: String) -> Result<Option<events::LiveStat
     if let Some(now) = live.as_ref().filter(|one| one.tps.is_some()) {
         app.state::<AppState>().tps.lock().expect("tps state poisoned").insert(
             id.clone(),
-            TpsSnapshot { tps: now.tps.map(|v| v as f32), mspt: now.mspt.map(|v| v as f32), updated_at: unix_now(), heap_mib: now.memory_mib },
+            TpsSnapshot {
+                tps: now.tps.map(|v| v as f32),
+                mspt: now.mspt.map(|v| v as f32),
+                updated_at: unix_now(),
+                heap_mib: now.memory_mib,
+            },
         );
     }
     Ok(live)
@@ -11378,10 +10497,17 @@ async fn map_web_write(app: &AppHandle, instance: &ServerInstance, name: &str, t
 async fn map_web_view(app: &AppHandle, state: &AppState, instance: &ServerInstance) -> MapWebView {
     let kind = events::addon_kind(&instance.core);
     let supported = matches!(kind, Some(events::AddonKind::Paper | events::AddonKind::NeoForge | events::AddonKind::Fabric));
-    let settings = map_web_read(app, instance, "web.json").await.map(|text| mapshare::read_settings(&text)).unwrap_or_else(|| mapshare::read_settings(""));
+    let settings = map_web_read(app, instance, "web.json")
+        .await
+        .map(|text| mapshare::read_settings(&text))
+        .unwrap_or_else(|| mapshare::read_settings(""));
     let status = map_web_read(app, instance, "web-status.json").await.and_then(|text| mapshare::read_status(&text)).unwrap_or_default();
     let (addon_ready, reason) = if !supported {
-        (false, "The web map runs inside the Monolab add-on, which is available for Paper, Purpur, Folia, NeoForge and Fabric servers.".to_string())
+        (
+            false,
+            "The web map runs inside the Monolab add-on, which is available for Paper, Purpur, Folia, NeoForge and Fabric servers."
+                .to_string(),
+        )
     } else if is_far(instance) {
         (true, String::new())
     } else {
@@ -11401,10 +10527,13 @@ async fn map_web_view(app: &AppHandle, state: &AppState, instance: &ServerInstan
         running: settings.enabled && status.running && alive,
         error: if settings.enabled { status.error.unwrap_or_default() } else { String::new() },
         path: mapshare::path_of(&settings),
-        lan_url: if is_far(instance) { String::new() } else { format!("http://{}:{}{}", lan_address(), settings.port, mapshare::path_of(&settings)) },
+        lan_url: if is_far(instance) {
+            String::new()
+        } else {
+            format!("http://{}:{}{}", lan_address(), settings.port, mapshare::path_of(&settings))
+        },
     }
 }
-
 
 #[tauri::command(async)]
 #[specta::specta]
@@ -11440,7 +10569,11 @@ async fn map_web_set(
         (true, true) => mapshare::make_token(),
         (true, false) => old.token.clone(),
     };
-    let labels = if labels.is_empty() { old.labels } else { labels.into_iter().filter(|(key, value)| key.len() <= 64 && value.len() <= 200).take(64).collect() };
+    let labels = if labels.is_empty() {
+        old.labels
+    } else {
+        labels.into_iter().filter(|(key, value)| key.len() <= 64 && value.len() <= 200).take(64).collect()
+    };
     let settings = mapshare::Settings { enabled, port, token, players, name: instance.name.clone(), labels };
     let text = serde_json::to_string_pretty(&settings).map_err(|error| error.to_string())?;
     map_web_write(&app, &instance, "web.json", &text).await?;
@@ -11584,7 +10717,9 @@ async fn chunk_stats(
             Some(grid) => Arc::new(grid),
             None => {
                 let Some(bytes) = trim_read(&app, &instance, &format!("{}/entities/{name}", found.folder)).await else { return Ok(None) };
-                let grid = tauri::async_runtime::spawn_blocking(move || chunkstats::read_entities(&bytes)).await.map_err(|error| error.to_string())?;
+                let grid = tauri::async_runtime::spawn_blocking(move || chunkstats::read_entities(&bytes))
+                    .await
+                    .map_err(|error| error.to_string())?;
                 write_cached(&cache, stamp, &grid);
                 Arc::new(grid)
             }
@@ -11604,7 +10739,9 @@ async fn chunk_stats(
                 Some(stats) => Arc::new(stats),
                 None => {
                     let Some(bytes) = trim_read(&app, &instance, &format!("{}/region/{name}", found.folder)).await else { return Ok(None) };
-                    let stats = tauri::async_runtime::spawn_blocking(move || chunkstats::read_region(&bytes)).await.map_err(|error| error.to_string())?;
+                    let stats = tauri::async_runtime::spawn_blocking(move || chunkstats::read_region(&bytes))
+                        .await
+                        .map_err(|error| error.to_string())?;
                     write_cached(&cache, stamp, &stats);
                     Arc::new(stats)
                 }
@@ -11724,12 +10861,10 @@ async fn read_live_inner(app: &AppHandle, id: &str) -> Result<Option<events::Liv
     let instance = instance_by_id(&app, id)?;
     if is_far(&instance) {
         let at = format!("{}/live.json", remote_addon_data_dir(&instance));
-        return Ok(
-            match far_read(&app, &instance, &at).await {
-                Ok(text) => events::live_from_text(&text),
-                Err(_) => None,
-            },
-        );
+        return Ok(match far_read(&app, &instance, &at).await {
+            Ok(text) => events::live_from_text(&text),
+            Err(_) => None,
+        });
     }
     Ok(events::read_live(Path::new(&instance.path)))
 }
@@ -11739,9 +10874,7 @@ fn remote_addon_data_dir(instance: &ServerInstance) -> &'static str {
         "plugins/data/monolab"
     } else {
         match events::addon_kind(&instance.core) {
-            Some(events::AddonKind::NeoForge) | Some(events::AddonKind::Fabric) => {
-                "config/monolab"
-            }
+            Some(events::AddonKind::NeoForge) | Some(events::AddonKind::Fabric) => "config/monolab",
             _ => "plugins/Monolab",
         }
     }
@@ -11759,18 +10892,11 @@ async fn lag_report(app: &AppHandle, state: &AppState, id: &str) -> Result<lag::
     let instance = instance_by_id(&app, &id)?;
     let server = Path::new(&instance.path);
     let far = is_far(&instance);
-    let live = if far {
-        read_live(app.clone(), id.clone()).await.ok().flatten()
+    let live = if far { read_live(app.clone(), id.clone()).await.ok().flatten() } else { events::read_live(server) };
+    let (machine_memory_mib, cpu_percent) = if far {
+        (0, None)
     } else {
-        events::read_live(server)
-    };
-    let (machine_memory_mib, cpu_percent) = if far { (0, None) } else {
-        let pid = state
-            .processes
-            .lock()
-            .expect("process state poisoned")
-            .get(&id)
-            .map(|process| process.pid);
+        let pid = state.processes.lock().expect("process state poisoned").get(&id).map(|process| process.pid);
         let mut system = state.system.lock().expect("system state poisoned");
         system.refresh_memory();
         let machine = system.total_memory() / 1024 / 1024;
@@ -11798,10 +10924,7 @@ async fn lag_report(app: &AppHandle, state: &AppState, id: &str) -> Result<lag::
         })
     };
     let perf = perf_history(app.clone(), id.clone(), String::new()).unwrap_or_default();
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|since| since.as_millis() as u64)
-        .unwrap_or(0);
+    let now_ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|since| since.as_millis() as u64).unwrap_or(0);
     let mut found = lag::diagnose(&lag::Input {
         live: live.as_ref(),
         max_memory_mib: u64::from(instance.max_memory_mib),
@@ -11824,12 +10947,7 @@ async fn lag_report(app: &AppHandle, state: &AppState, id: &str) -> Result<lag::
     } else {
         spark::info(&instance.core, &instance.version, server)
     };
-    info.report = state
-        .spark_reports
-        .lock()
-        .expect("spark state poisoned")
-        .get(&id)
-        .cloned();
+    info.report = state.spark_reports.lock().expect("spark state poisoned").get(&id).cloned();
     found.spark = Some(info);
     Ok(found)
 }
@@ -11841,11 +10959,7 @@ const LAG_ALERT_COOLDOWN_SECS: u64 = 600;
 
 const RELOOK_EVERY: u64 = 60;
 
-async fn relook_remote(
-    app: &AppHandle,
-    instances: &[ServerInstance],
-    looked: &mut HashMap<String, u64>,
-) {
+async fn relook_remote(app: &AppHandle, instances: &[ServerInstance], looked: &mut HashMap<String, u64>) {
     let now = unix_now();
     for one in instances.iter().filter(|one| !one.remote_host.is_empty()) {
         if ssh_paused(app, &one.remote_host) {
@@ -11928,10 +11042,7 @@ fn start_remote_watcher(app: AppHandle) {
             let mut blind: Vec<String> = Vec::new();
             let mut by_host: HashMap<String, Vec<(String, String)>> = HashMap::new();
             for one in instances.iter().filter(|one| !one.remote_host.is_empty()) {
-                by_host
-                    .entry(one.remote_host.clone())
-                    .or_default()
-                    .push((one.id.clone(), one.path.clone()));
+                by_host.entry(one.remote_host.clone()).or_default().push((one.id.clone(), one.path.clone()));
             }
             for (host, servers) in by_host {
                 const KEEP_BLIND: Duration = Duration::from_secs(30);
@@ -11940,44 +11051,22 @@ fn start_remote_watcher(app: AppHandle) {
                 }
                 match remote::live_state_checked(&app, &host, &servers).await {
                     Ok(found) => {
-                        app.state::<AppState>()
-                            .remote_failures
-                            .lock()
-                            .expect("remote state poisoned")
-                            .remove(&host);
+                        app.state::<AppState>().remote_failures.lock().expect("remote state poisoned").remove(&host);
                         alive.extend(found);
                         answered.insert(host.clone(), std::time::Instant::now());
-                        app.state::<AppState>()
-                            .remote_unreachable
-                            .lock()
-                            .expect("remote state poisoned")
-                            .remove(&host);
+                        app.state::<AppState>().remote_unreachable.lock().expect("remote state poisoned").remove(&host);
                     }
                     Err(_) => {
-                        *app.state::<AppState>()
-                            .remote_failures
-                            .lock()
-                            .expect("remote state poisoned")
-                            .entry(host.clone())
-                            .or_insert(0) += 1;
-                        app.state::<AppState>()
-                            .remote_unreachable
-                            .lock()
-                            .expect("remote state poisoned")
-                            .insert(host.clone());
-                        let fresh = answered
-                            .get(&host)
-                            .is_some_and(|when| when.elapsed() < KEEP_BLIND);
+                        *app.state::<AppState>().remote_failures.lock().expect("remote state poisoned").entry(host.clone()).or_insert(0) +=
+                            1;
+                        app.state::<AppState>().remote_unreachable.lock().expect("remote state poisoned").insert(host.clone());
+                        let fresh = answered.get(&host).is_some_and(|when| when.elapsed() < KEEP_BLIND);
                         if fresh {
                             blind.push(host.clone());
                         }
                     }
                 }
-                app.state::<AppState>()
-                    .remote_checked
-                    .lock()
-                    .expect("remote state poisoned")
-                    .insert(host);
+                app.state::<AppState>().remote_checked.lock().expect("remote state poisoned").insert(host);
             }
             relook_remote(&app, &instances, &mut looked).await;
             let state = app.state::<AppState>();
@@ -12018,13 +11107,7 @@ fn start_remote_watcher(app: AppHandle) {
                 *have = alive.clone();
             }
             for one in instances.iter().filter(|one| alive.contains_key(&one.id)) {
-                if !app
-                    .state::<AppState>()
-                    .remote_tailing
-                    .lock()
-                    .expect("remote state poisoned")
-                    .insert(one.id.clone())
-                {
+                if !app.state::<AppState>().remote_tailing.lock().expect("remote state poisoned").insert(one.id.clone()) {
                     continue;
                 }
                 let app = app.clone();
@@ -12049,9 +11132,7 @@ fn start_remote_watcher(app: AppHandle) {
                         &host,
                         &folder,
                         |line| {
-                            if is_ready_line(&line)
-                                && (backlog_is_fresh || tail_began.elapsed() > Duration::from_millis(1500))
-                            {
+                            if is_ready_line(&line) && (backlog_is_fresh || tail_began.elapsed() > Duration::from_millis(1500)) {
                                 if let Ok(mut have) = starting.lock() {
                                     have.remove(&mine);
                                 }
@@ -12069,22 +11150,13 @@ fn start_remote_watcher(app: AppHandle) {
                                 },
                             );
                         },
-                        || {
-                            running
-                                .lock()
-                                .map(|have| have.contains_key(&id))
-                                .unwrap_or(false)
-                        },
+                        || running.lock().map(|have| have.contains_key(&id)).unwrap_or(false),
                     )
                     .await;
                     if let Err(error) = result {
                         eprintln!("[remote] tail: {error}");
                     }
-                    app.state::<AppState>()
-                        .remote_tailing
-                        .lock()
-                        .expect("remote state poisoned")
-                        .remove(&id);
+                    app.state::<AppState>().remote_tailing.lock().expect("remote state poisoned").remove(&id);
                 });
             }
         }
@@ -12102,13 +11174,7 @@ fn start_lag_watcher(app: AppHandle) {
         loop {
             thread::sleep(Duration::from_secs(10));
             let state = app.state::<AppState>();
-            let running: Vec<String> = state
-                .processes
-                .lock()
-                .expect("process state poisoned")
-                .keys()
-                .cloned()
-                .collect();
+            let running: Vec<String> = state.processes.lock().expect("process state poisoned").keys().cloned().collect();
             watches.retain(|id, _| running.contains(id));
             let now = unix_now();
             for id in running {
@@ -12150,23 +11216,14 @@ fn start_lag_watcher(app: AppHandle) {
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn read_server_properties(
-    app: AppHandle,
-    id: String,
-) -> Result<Vec<properties::PropertyInfo>, String> {
+async fn read_server_properties(app: AppHandle, id: String) -> Result<Vec<properties::PropertyInfo>, String> {
     let instance = instance_by_id(&app, &id)?;
     if is_far(&instance) {
-        let text = far_read(&app, &instance, "server.properties",
-        )
-        .await
-        .unwrap_or_default();
+        let text = far_read(&app, &instance, "server.properties").await.unwrap_or_default();
         if text.trim().is_empty() {
             return Ok(Vec::new());
         }
-        return Ok(properties::parse(&text)
-            .iter()
-            .map(|(key, value)| properties::describe(key, value))
-            .collect());
+        return Ok(properties::parse(&text).iter().map(|(key, value)| properties::describe(key, value)).collect());
     }
     if pumpkin::is_pumpkin(&instance.core) {
         return pumpkin::describe(Path::new(&instance.path));
@@ -12176,10 +11233,7 @@ async fn read_server_properties(
         return Ok(Vec::new());
     }
     let text = fs::read_to_string(path).map_err(|error| error.to_string())?;
-    Ok(properties::parse(&text)
-        .iter()
-        .map(|(key, value)| properties::describe(key, value))
-        .collect())
+    Ok(properties::parse(&text).iter().map(|(key, value)| properties::describe(key, value)).collect())
 }
 
 #[tauri::command(async)]
@@ -12193,10 +11247,7 @@ async fn save_server_properties(
     let _ = &state;
     let instance = instance_by_id(&app, &id)?;
     if pumpkin::is_pumpkin(&instance.core) {
-        let entries: Vec<(String, String)> = properties
-            .into_iter()
-            .map(|entry| (entry.key, entry.value))
-            .collect();
+        let entries: Vec<(String, String)> = properties.into_iter().map(|entry| (entry.key, entry.value)).collect();
         pumpkin::save(Path::new(&instance.path), &entries)?;
         let _store = lock_instance_store();
         let mut instances = load_instances(&app)?;
@@ -12208,11 +11259,7 @@ async fn save_server_properties(
         return Ok(());
     }
     if is_far(&instance) {
-        let before = properties::parse(
-            &far_read(&app, &instance, "server.properties")
-                .await
-                .unwrap_or_default(),
-        );
+        let before = properties::parse(&far_read(&app, &instance, "server.properties").await.unwrap_or_default());
         let mut lines = Vec::new();
         for entry in &properties {
             let (key, value) = (entry.key.trim(), entry.value.trim());
@@ -12225,18 +11272,11 @@ async fn save_server_properties(
             lines.push(format!("{key}={}", properties::escape(value)));
         }
         lines.sort();
-        far_write(&app, &instance, "server.properties",
-            &format!("{}\n", lines.join("\n")),
-        )
-        .await?;
+        far_write(&app, &instance, "server.properties", &format!("{}\n", lines.join("\n"))).await?;
         let _store = lock_instance_store();
         let mut instances = load_instances(&app)?;
         if let Some(saved) = instances.iter_mut().find(|saved| saved.id == id) {
-            if let Some(port) = properties
-                .iter()
-                .find(|one| one.key == "server-port")
-                .and_then(|one| one.value.trim().parse().ok())
-            {
+            if let Some(port) = properties.iter().find(|one| one.key == "server-port").and_then(|one| one.value.trim().parse().ok()) {
                 saved.port = port;
             }
         }
@@ -12245,10 +11285,7 @@ async fn save_server_properties(
         return Ok(());
     }
     let _target = Path::new(&instance.path).join("server.properties");
-    let before = properties::parse(
-        &fs::read_to_string(Path::new(&instance.path).join("server.properties"))
-            .unwrap_or_default(),
-    );
+    let before = properties::parse(&fs::read_to_string(Path::new(&instance.path).join("server.properties")).unwrap_or_default());
     for entry in &properties {
         let (key, value) = (entry.key.trim(), entry.value.trim());
         if key.is_empty() || !properties::needs_check(&before, key, value) {
@@ -12259,13 +11296,7 @@ async fn save_server_properties(
     let text = properties
         .into_iter()
         .filter(|entry| !entry.key.trim().is_empty())
-        .map(|entry| {
-            format!(
-                "{}={}",
-                entry.key.trim(),
-                properties::escape(entry.value.trim())
-            )
-        })
+        .map(|entry| format!("{}={}", entry.key.trim(), properties::escape(entry.value.trim())))
         .collect::<Vec<_>>()
         .join("\n")
         + "\n";
@@ -12277,13 +11308,7 @@ async fn save_server_properties(
         saved.port = port_from_properties(saved);
     }
     save_instances(&app, &instances)?;
-    record_audit(
-        &app,
-        &id,
-        "Settings",
-        "server.properties save",
-        "Settings saved!",
-    );
+    record_audit(&app, &id, "Settings", "server.properties save", "Settings saved!");
     Ok(())
 }
 
@@ -12350,11 +11375,7 @@ async fn browse_server_files(
             entries: rows
                 .into_iter()
                 .map(|one| BrowseEntry {
-                    path: if here.is_empty() {
-                        one.name.clone()
-                    } else {
-                        format!("{here}/{}", one.name)
-                    },
+                    path: if here.is_empty() { one.name.clone() } else { format!("{here}/{}", one.name) },
                     editable: !one.directory && editable_file(Path::new(&one.name)),
                     is_dir: one.directory,
                     size_bytes: one.size_bytes,
@@ -12367,10 +11388,7 @@ async fn browse_server_files(
             offset: 0,
         });
     }
-    let root = Path::new(&instance.path)
-        .canonicalize()
-        .map(plain_path)
-        .map_err(|error| format!("Server folder not found: {error}"))?;
+    let root = Path::new(&instance.path).canonicalize().map(plain_path).map_err(|error| format!("Server folder not found: {error}"))?;
     let requested = path.trim().trim_matches(['/', '\\']);
     let target = if requested.is_empty() {
         root.clone()
@@ -12383,12 +11401,7 @@ async fn browse_server_files(
     browse_dir(&root, &target, offset, limit)
 }
 
-fn browse_dir(
-    root: &Path,
-    target: &Path,
-    offset: Option<u32>,
-    limit: Option<u32>,
-) -> Result<BrowsePage, String> {
+fn browse_dir(root: &Path, target: &Path, offset: Option<u32>, limit: Option<u32>) -> Result<BrowsePage, String> {
     if !target.is_dir() {
         return Err("Not a folder.".into());
     }
@@ -12403,39 +11416,24 @@ fn browse_dir(
             continue;
         }
         let Ok(meta) = entry.metadata() else { continue };
-        let relative = path
-            .strip_prefix(root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        let relative = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
         entries.push(BrowseEntry {
             name: name.to_string(),
             path: relative,
             is_dir: meta.is_dir(),
             size_bytes: if meta.is_dir() { 0 } else { meta.len() },
             editable: !meta.is_dir() && editable_file(&path),
-            modified_at: meta
-                .modified()
-                .ok()
-                .and_then(|when| when.duration_since(UNIX_EPOCH).ok())
-                .map(|gap| gap.as_secs())
-                .unwrap_or(0),
+            modified_at: meta.modified().ok().and_then(|when| when.duration_since(UNIX_EPOCH).ok()).map(|gap| gap.as_secs()).unwrap_or(0),
             item_count: 0,
         });
     }
-    entries.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
+    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     let total = entries.len() as u64;
     let offset = (offset.unwrap_or(0) as usize).min(entries.len());
     let limit = (limit.unwrap_or(BROWSE_PAGE as u32) as usize).clamp(1, BROWSE_PAGE);
     let mut page: Vec<BrowseEntry> = entries.into_iter().skip(offset).take(limit).collect();
     for entry in page.iter_mut().filter(|entry| entry.is_dir) {
-        entry.item_count = fs::read_dir(root.join(&entry.path))
-            .map(|list| list.count() as u64)
-            .unwrap_or(0);
+        entry.item_count = fs::read_dir(root.join(&entry.path)).map(|list| list.count() as u64).unwrap_or(0);
     }
     Ok(BrowsePage { entries: page, total, offset: offset as u64 })
 }
@@ -12518,11 +11516,9 @@ async fn read_server_image(app: AppHandle, id: String, path: String) -> Result<S
         let (api, target) = panel_of(&app, &instance)?;
         api.read_bytes(&target, &path, LIMIT).await?
     } else if instance.remote_host.is_empty() {
-        let at = paths::resolve_in_server(Path::new(&instance.path), &path).map_err(|error| {
-            match error {
-                paths::PathError::Missing => "File not found.".to_string(),
-                other => other.to_string(),
-            }
+        let at = paths::resolve_in_server(Path::new(&instance.path), &path).map_err(|error| match error {
+            paths::PathError::Missing => "File not found.".to_string(),
+            other => other.to_string(),
         })?;
         if fs::metadata(&at).map_err(|error| error.to_string())?.len() > LIMIT {
             return Err("This image is too large to open in the app (over 4 MB).".into());
@@ -12531,10 +11527,7 @@ async fn read_server_image(app: AppHandle, id: String, path: String) -> Result<S
     } else {
         remote::read_bytes(&app, &instance.remote_host, &instance.path, &path, LIMIT).await?
     };
-    Ok(format!(
-        "data:{mime};base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(&bytes)
-    ))
+    Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(&bytes)))
 }
 
 /// Names in a server folder (name, is folder, modified), for local, SSH and panel servers alike.
@@ -12651,7 +11644,15 @@ async fn msmp_target(app: &AppHandle, id: &str) -> Result<(msmp::Link, String), 
 async fn msmp_state(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<MsmpState, String> {
     let instance = instance_by_id(&app, &id)?;
     let running = is_running(&state, &id);
-    let mut out = MsmpState { supported: false, reason: String::new(), ready: false, running, connected: false, api_version: String::new(), error: String::new() };
+    let mut out = MsmpState {
+        supported: false,
+        reason: String::new(),
+        ready: false,
+        running,
+        connected: false,
+        api_version: String::new(),
+        error: String::new(),
+    };
     if kinds::is_proxy(&instance.core) || pumpkin::is_pumpkin(&instance.core) {
         out.reason = "This server type has no live settings.".into();
         return Ok(out);
@@ -12833,7 +11834,12 @@ async fn studio_asset_rows(app: &AppHandle, instance: &ServerInstance, root: &st
 }
 
 /// Every good file of one studio kind, for the pack (items' looks, fonts' glyphs).
-async fn studio_kind_files(app: &AppHandle, instance: &ServerInstance, root: &str, kind: &str) -> Vec<(String, serde_json::Map<String, serde_json::Value>)> {
+async fn studio_kind_files(
+    app: &AppHandle,
+    instance: &ServerInstance,
+    root: &str,
+    kind: &str,
+) -> Vec<(String, serde_json::Map<String, serde_json::Value>)> {
     let mut out = Vec::new();
     for (file, dir, _) in server_names(app, instance, &format!("{root}/{kind}")).await {
         let Some(id) = file.strip_suffix(".json").filter(|id| !dir && studio::valid_id(id)) else { continue };
@@ -12857,7 +11863,8 @@ async fn studio_pack_info(app: &AppHandle, instance: &ServerInstance, root: &str
 async fn studio_pack_write(app: &AppHandle, instance: &ServerInstance, root: &str) -> Result<studio_pack::PackInfo, String> {
     let mut sources = Vec::new();
     for asset in studio_asset_rows(app, instance, root).await {
-        let bytes = server_bytes(app, instance, &format!("{root}/assets/{}/{}", asset.folder, asset.file), studio_pack::MOST_SOUND as u64).await?;
+        let bytes =
+            server_bytes(app, instance, &format!("{root}/assets/{}/{}", asset.folder, asset.file), studio_pack::MOST_SOUND as u64).await?;
         sources.push((asset.folder, asset.file, bytes));
     }
     let items = studio_kind_files(app, instance, root, "item").await;
@@ -12866,7 +11873,12 @@ async fn studio_pack_write(app: &AppHandle, instance: &ServerInstance, root: &st
     let blocks = studio_kind_files(app, instance, root, "block").await;
     let furniture = studio_kind_files(app, instance, root, "furniture").await;
     let paintings = studio_kind_files(app, instance, root, "painting").await;
-    let mut ids: studio_pack::Ids = server_text(app, instance, &format!("{root}/pack/ids.json")).await.ok().flatten().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default();
+    let mut ids: studio_pack::Ids = server_text(app, instance, &format!("{root}/pack/ids.json"))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default();
     ids.schema = 1;
     let ids_before = serde_json::to_string(&ids).unwrap_or_default();
     // A Pumpkin server's version is Pumpkin's own (0.2.1+26.3-26.51); the pack needs the game's. Pumpkin follows
@@ -12880,21 +11892,25 @@ async fn studio_pack_write(app: &AppHandle, instance: &ServerInstance, root: &st
         // M1: item models (and armor pictures copied where the game looks for them); M2: glyph fonts.
         let mut extra = studio_pack_items::item_files(&version, &items, &mut ids);
         for (texture, path) in studio_pack_items::item_copies(&version, &items) {
-            if let Some((_, _, bytes)) = sources.iter().find(|(folder, file, _)| folder == "textures" && *file == format!("{texture}.png")) {
+            if let Some((_, _, bytes)) = sources.iter().find(|(folder, file, _)| folder == "textures" && *file == format!("{texture}.png"))
+            {
                 extra.push((path, bytes.clone()));
             }
         }
         // Paintings: their picture where the game's painting atlas looks.
         for (id, data) in paintings.iter().filter(|(_, data)| studio_format::enabled(data)) {
             let texture = studio_format::painting::texture(data);
-            if let Some((_, _, bytes)) = sources.iter().find(|(folder, file, _)| folder == "textures" && *file == format!("{texture}.png")) {
+            if let Some((_, _, bytes)) = sources.iter().find(|(folder, file, _)| folder == "textures" && *file == format!("{texture}.png"))
+            {
                 extra.push((studio_format::painting::pack_path(id), bytes.clone()));
             }
         }
         // M3: borrowed block states and furniture looks (old-version overrides join M1's on the same base item).
         let more = studio_pack_blocks::block_files(&version, &blocks, &furniture, &mut ids);
         studio_pack_blocks::merge(&mut extra, more);
-        let (table, fonts): (Vec<_>, Vec<_>) = studio_pack_fonts::font_files(&fonts, &sources, &mut ids).into_iter().partition(|(path, _)| path == studio_pack_fonts::TABLE_FILE);
+        let (table, fonts): (Vec<_>, Vec<_>) = studio_pack_fonts::font_files(&fonts, &sources, &mut ids)
+            .into_iter()
+            .partition(|(path, _)| path == studio_pack_fonts::TABLE_FILE);
         extra.extend(fonts);
         // M4: one item model per bone, and a rig file per model that the add-ons step through.
         let modeled = studio_pack_models::model_files(&version, &models, &sources);
@@ -12922,7 +11938,8 @@ async fn studio_pack_write(app: &AppHandle, instance: &ServerInstance, root: &st
     }
     let before = studio_pack_info(app, instance, root).await;
     info.sending = before.as_ref().map(|one| one.sending.clone()).unwrap_or_default();
-    info.built = if before.as_ref().is_some_and(|one| one.sha1 == info.sha1) { before.map(|one| one.built).unwrap_or_default() } else { unix_now() };
+    info.built =
+        if before.as_ref().is_some_and(|one| one.sha1 == info.sha1) { before.map(|one| one.built).unwrap_or_default() } else { unix_now() };
     server_write_bytes(app, instance, &format!("{root}/pack/monolab.zip"), &zip).await?;
     let text = serde_json::to_string_pretty(&info).map_err(|error| error.to_string())?;
     server_write_text(app, instance, &format!("{root}/pack/pack.json"), &text).await?;
@@ -12946,7 +11963,9 @@ async fn studio_asset_add(app: AppHandle, id: String, folder: String, file: Stri
     use base64::Engine;
     let instance = instance_by_id(&app, &id)?;
     let root = studio_root(&instance).ok_or("The studio needs a Paper, Purpur, Folia, Leaf or Pumpkin server.")?;
-    let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|_| "The file didn't arrive whole. Try again.".to_string())?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data.as_bytes())
+        .map_err(|_| "The file didn't arrive whole. Try again.".to_string())?;
     studio_pack::check_upload(&folder, &file, &bytes)?;
     server_write_bytes(&app, &instance, &format!("{root}/assets/{folder}/{file}"), &bytes).await?;
     studio_pack_write(&app, &instance, root).await
@@ -12955,7 +11974,13 @@ async fn studio_asset_add(app: AppHandle, id: String, folder: String, file: Stri
 /// `studio_asset_add` for the web panel and teammates: the file came in pieces (`__upload_*`) and is named by its upload.
 #[tauri::command(async)]
 #[specta::specta]
-async fn studio_asset_add_upload(app: AppHandle, id: String, folder: String, file: String, upload: String) -> Result<studio_pack::PackInfo, String> {
+async fn studio_asset_add_upload(
+    app: AppHandle,
+    id: String,
+    folder: String,
+    file: String,
+    upload: String,
+) -> Result<studio_pack::PackInfo, String> {
     note_writes(&app, &id, "studio_asset_add_upload", &serde_json::json!({ "folder": folder, "file": file }), "host");
     let path = remote_upload_path(&app, &upload)?;
     let bytes = fs::read(&path).map_err(|error| format!("Could not read the upload: {error}"));
@@ -13063,9 +12088,14 @@ async fn studio_overview(app: AppHandle, id: String) -> Result<studio::StudioOve
     let mut overview = studio::overview(Some(root), studio_kinds(&instance), status.as_deref(), files);
     if let Some(path) = addon_config_path(&instance) {
         let config = integrations::parse(&server_text(&app, &instance, path).await.ok().flatten().unwrap_or_default());
-        overview.off = studio::KINDS.iter().filter(|kind| config.text(&format!("studio-{kind}")).as_deref() == Some("false")).map(|kind| kind.to_string()).collect();
+        overview.off = studio::KINDS
+            .iter()
+            .filter(|kind| config.text(&format!("studio-{kind}")).as_deref() == Some("false"))
+            .map(|kind| kind.to_string())
+            .collect();
     }
-    let names: Vec<String> = server_names(&app, &instance, "plugins").await.into_iter().filter(|(_, dir, _)| !dir).map(|(name, _, _)| name).collect();
+    let names: Vec<String> =
+        server_names(&app, &instance, "plugins").await.into_iter().filter(|(_, dir, _)| !dir).map(|(name, _, _)| name).collect();
     // On this PC, each jar's plugin.yml name too (a jar renamed on download is still found); over SSH only file names.
     let jars: Vec<(String, Option<String>)> = if is_far(&instance) {
         names.into_iter().map(|name| (name, None)).collect()
@@ -13093,7 +12123,11 @@ async fn studio_overview(app: AppHandle, id: String) -> Result<studio::StudioOve
 
 /// Where the studio advancement data pack goes on a Pumpkin server.
 fn pumpkin_pack_dir(instance: &ServerInstance) -> String {
-    let level = if instance.remote_host.is_empty() && instance.panel_host.is_empty() { pumpkin::level_name(Path::new(&instance.path)) } else { "world".to_string() };
+    let level = if instance.remote_host.is_empty() && instance.panel_host.is_empty() {
+        pumpkin::level_name(Path::new(&instance.path))
+    } else {
+        "world".to_string()
+    };
     format!("{level}/datapacks/monolab-studio")
 }
 
@@ -13146,7 +12180,14 @@ async fn studio_read(app: AppHandle, id: String, kind: String, name: String) -> 
 /// elsewhere in the meantime aren't overwritten. Returns the new hash.
 #[tauri::command(async)]
 #[specta::specta]
-async fn studio_save(app: AppHandle, id: String, kind: String, name: String, text: String, hash: String) -> Result<studio::StudioSaved, String> {
+async fn studio_save(
+    app: AppHandle,
+    id: String,
+    kind: String,
+    name: String,
+    text: String,
+    hash: String,
+) -> Result<studio::StudioSaved, String> {
     note_writes(&app, &id, "studio_save", &serde_json::json!({ "kind": kind, "name": name }), "host");
     let instance = instance_by_id(&app, &id)?;
     {
@@ -13206,7 +12247,10 @@ async fn studio_main_world(app: &AppHandle, instance: &ServerInstance) -> Result
     let (file, before, after) = if pumpkin::is_pumpkin(&instance.core) {
         let Some(before) = server_text(app, instance, pumpkin::CONFIG).await? else {
             if main.is_some() {
-                return Err("The file was saved, but pumpkin.toml is missing. Start the server once, then save again to use it for the main world.".into());
+                return Err(
+                    "The file was saved, but pumpkin.toml is missing. Start the server once, then save again to use it for the main world."
+                        .into(),
+                );
             }
             return Ok(());
         };
@@ -13237,7 +12281,11 @@ async fn studio_main_world(app: &AppHandle, instance: &ServerInstance) -> Result
 /// for status.json to be rewritten. True when the running server took it.
 async fn pumpkin_reload(app: &AppHandle, instance: &ServerInstance) -> bool {
     let root = studio::PUMPKIN_ROOT;
-    let at = |text: Option<String>| text.and_then(|one| serde_json::from_str::<serde_json::Value>(&one).ok()).and_then(|one| one.get("at").and_then(serde_json::Value::as_f64)).unwrap_or(0.0);
+    let at = |text: Option<String>| {
+        text.and_then(|one| serde_json::from_str::<serde_json::Value>(&one).ok())
+            .and_then(|one| one.get("at").and_then(serde_json::Value::as_f64))
+            .unwrap_or(0.0)
+    };
     let before = at(server_text(app, instance, &format!("{root}/status.json")).await.ok().flatten());
     if server_write_text(app, instance, &format!("{root}/live/reload"), "").await.is_err() {
         return false;
@@ -13254,7 +12302,10 @@ async fn pumpkin_reload(app: &AppHandle, instance: &ServerInstance) -> bool {
 /// The studio live line of a server, with its token. On this PC it's a plain socket; on an SSH server it's a
 /// tunnel to that machine's 127.0.0.1, so the add-on never opens a port to the outside. Panel servers have none.
 /// The SSH connection comes along so the tunnel outlives a reconnect elsewhere.
-async fn studio_line(app: &AppHandle, instance: &ServerInstance) -> Result<(Box<dyn studio::Line>, String, Option<Arc<remote::Conn>>), String> {
+async fn studio_line(
+    app: &AppHandle,
+    instance: &ServerInstance,
+) -> Result<(Box<dyn studio::Line>, String, Option<Arc<remote::Conn>>), String> {
     if !instance.panel_host.is_empty() {
         return Err("Panel servers have no live line.".into());
     }
@@ -13371,7 +12422,12 @@ fn studio_watch_pumpkin(app: AppHandle, instance: ServerInstance, id: String, gu
     }
     tauri::async_runtime::spawn(async move {
         let path = format!("{}/live/out.jsonl", studio::PUMPKIN_ROOT);
-        let stamp = |line: &str| serde_json::from_str::<serde_json::Value>(line).ok().and_then(|one| one.get("at").and_then(serde_json::Value::as_f64)).unwrap_or(0.0);
+        let stamp = |line: &str| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .ok()
+                .and_then(|one| one.get("at").and_then(serde_json::Value::as_f64))
+                .unwrap_or(0.0)
+        };
         // Only what happens from now on.
         let mut seen = server_text(&app, &instance, &path).await.ok().flatten().unwrap_or_default().lines().map(stamp).fold(0.0, f64::max);
         while !stop.load(std::sync::atomic::Ordering::Relaxed) {
@@ -13408,7 +12464,13 @@ fn studio_unwatch(id: String) {
 /// and the `structure/<name>.json` file is made (or its size updated). Returns its size and how many blocks it has.
 #[tauri::command(async)]
 #[specta::specta]
-async fn studio_structure_import(app: AppHandle, id: String, name: String, file: String, data: String) -> Result<StudioStructureInfo, String> {
+async fn studio_structure_import(
+    app: AppHandle,
+    id: String,
+    name: String,
+    file: String,
+    data: String,
+) -> Result<StudioStructureInfo, String> {
     use base64::Engine;
     note_writes(&app, &id, "studio_structure_import", &serde_json::json!({ "name": name, "file": file }), "host");
     let instance = instance_by_id(&app, &id)?;
@@ -13416,11 +12478,15 @@ async fn studio_structure_import(app: AppHandle, id: String, name: String, file:
     if !studio::valid_id(&name) {
         return Err("Names may only use a-z, 0-9, - and _ (up to 48).".into());
     }
-    let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|_| "The file didn't arrive whole. Try again.".to_string())?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data.as_bytes())
+        .map_err(|_| "The file didn't arrive whole. Try again.".to_string())?;
     if bytes.len() > 64 * 1024 * 1024 {
         return Err("The file is over 64 MB.".into());
     }
-    let structure = tauri::async_runtime::spawn_blocking(move || studio_structure::read(bytes, &file).map(|one| (one, file))).await.map_err(|error| error.to_string())??;
+    let structure = tauri::async_runtime::spawn_blocking(move || studio_structure::read(bytes, &file).map(|one| (one, file)))
+        .await
+        .map_err(|error| error.to_string())??;
     let (structure, file) = structure;
     server_write_text(&app, &instance, &format!("{root}/{}", studio_format::structure::data_path(&name)), &structure.to_json()).await?;
     let path = studio::path_of(root, "structure", &name)?;
@@ -13515,7 +12581,12 @@ async fn studio_copy_to(app: &AppHandle, from: &ServerInstance, root: &str, to: 
     let to_root = studio_root(to).ok_or("It has no studio (Paper, Purpur, Folia, Leaf or Pumpkin only).")?;
     let (mut copied, mut removed) = (0usize, 0usize);
     for kind in studio::KINDS {
-        let names: Vec<String> = server_names(app, from, &format!("{root}/{kind}")).await.into_iter().filter(|(name, dir, _)| !dir && name.strip_suffix(".json").is_some_and(studio::valid_id)).map(|(name, _, _)| name).collect();
+        let names: Vec<String> = server_names(app, from, &format!("{root}/{kind}"))
+            .await
+            .into_iter()
+            .filter(|(name, dir, _)| !dir && name.strip_suffix(".json").is_some_and(studio::valid_id))
+            .map(|(name, _, _)| name)
+            .collect();
         for name in &names {
             if let Some(text) = server_text(app, from, &format!("{root}/{kind}/{name}")).await? {
                 server_write_text(app, to, &format!("{to_root}/{kind}/{name}"), &text).await?;
@@ -13533,7 +12604,8 @@ async fn studio_copy_to(app: &AppHandle, from: &ServerInstance, root: &str, to: 
     }
     let assets = studio_asset_rows(app, from, root).await;
     for asset in &assets {
-        let bytes = server_bytes(app, from, &format!("{root}/assets/{}/{}", asset.folder, asset.file), studio_pack::MOST_SOUND as u64).await?;
+        let bytes =
+            server_bytes(app, from, &format!("{root}/assets/{}/{}", asset.folder, asset.file), studio_pack::MOST_SOUND as u64).await?;
         server_write_bytes(app, to, &format!("{to_root}/assets/{}/{}", asset.folder, asset.file), &bytes).await?;
         copied += 1;
     }
@@ -13585,13 +12657,24 @@ async fn studio_set_held_item(app: AppHandle, id: String, player: String, item: 
     studio_held_ask(&app, &instance, studio_held::SET_FILE, |nonce| studio_held::set_request(&player, nonce, &item, pumpkin)).await
 }
 
-async fn studio_held_ask(app: &AppHandle, instance: &ServerInstance, file: &str, request: impl FnOnce(u64) -> Result<serde_json::Value, String>) -> Result<String, String> {
+async fn studio_held_ask(
+    app: &AppHandle,
+    instance: &ServerInstance,
+    file: &str,
+    request: impl FnOnce(u64) -> Result<serde_json::Value, String>,
+) -> Result<String, String> {
     let value = studio_live_ask(app, instance, file, studio_held::ANSWER_FILE, request).await?;
     studio_held::read_answer(&value)
 }
 
 /// Leaves a request in the studio's `live/` folder and waits (up to 6 seconds) for the add-on's answer with the same nonce.
-async fn studio_live_ask(app: &AppHandle, instance: &ServerInstance, file: &str, answer_file: &str, request: impl FnOnce(u64) -> Result<serde_json::Value, String>) -> Result<serde_json::Value, String> {
+async fn studio_live_ask(
+    app: &AppHandle,
+    instance: &ServerInstance,
+    file: &str,
+    answer_file: &str,
+    request: impl FnOnce(u64) -> Result<serde_json::Value, String>,
+) -> Result<serde_json::Value, String> {
     let root = studio_root(instance).ok_or("The studio needs a Paper, Purpur, Folia, Leaf or Pumpkin server.")?;
     let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|one| one.as_millis() as u64).unwrap_or(1);
     let request = request(nonce)?;
@@ -13612,12 +12695,21 @@ async fn studio_live_ask(app: &AppHandle, instance: &ServerInstance, file: &str,
 /// events) with `vars` as its placeholders, and returns what each rule for it did. `rule` narrows it to one rule.
 #[tauri::command(async)]
 #[specta::specta]
-async fn studio_test_event(app: AppHandle, id: String, event: String, rule: String, player: String, vars: std::collections::BTreeMap<String, String>) -> Result<Vec<studio_held::TestRun>, String> {
+async fn studio_test_event(
+    app: AppHandle,
+    id: String,
+    event: String,
+    rule: String,
+    player: String,
+    vars: std::collections::BTreeMap<String, String>,
+) -> Result<Vec<studio_held::TestRun>, String> {
     let instance = instance_by_id(&app, &id)?;
-    let value = studio_live_ask(&app, &instance, studio_held::FIRE_FILE, studio_held::FIRED_FILE, |nonce| Ok(serde_json::json!({ "nonce": nonce, "event": event, "rule": rule, "player": player, "vars": vars }))).await?;
+    let value = studio_live_ask(&app, &instance, studio_held::FIRE_FILE, studio_held::FIRED_FILE, |nonce| {
+        Ok(serde_json::json!({ "nonce": nonce, "event": event, "rule": rule, "player": player, "vars": vars }))
+    })
+    .await?;
     studio_held::read_runs(&value)
 }
-
 
 #[tauri::command(async)]
 #[specta::specta]
@@ -13630,7 +12722,15 @@ fn studio_template(kind: String, name: String) -> Result<String, String> {
 #[tauri::command(async)]
 #[specta::specta]
 #[allow(clippy::too_many_arguments)]
-fn studio_worldgen_preview(generator: String, seed: String, world: String, x: i32, z: i32, size: u32, step: u32) -> Result<studio::WorldgenPreview, String> {
+fn studio_worldgen_preview(
+    generator: String,
+    seed: String,
+    world: String,
+    x: i32,
+    z: i32,
+    size: u32,
+    step: u32,
+) -> Result<studio::WorldgenPreview, String> {
     studio::worldgen_preview(&generator, &seed, &world, x, z, size, step)
 }
 
@@ -13694,7 +12794,13 @@ async fn pumpkin_refused_permissions(app: AppHandle, id: String, plugin: String)
     if !pumpkin::is_pumpkin(&instance.core) {
         return Err("This is only for Pumpkin servers.".into());
     }
-    let listed = pumpkin_asked().lock().unwrap_or_else(|poison| poison.into_inner()).asked.get(&(id.clone(), plugin.clone())).cloned().unwrap_or_default();
+    let listed = pumpkin_asked()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .asked
+        .get(&(id.clone(), plugin.clone()))
+        .cloned()
+        .unwrap_or_default();
     if !listed.is_empty() {
         return Ok(listed);
     }
@@ -13716,7 +12822,9 @@ async fn allow_pumpkin_plugin(app: AppHandle, id: String, plugin: String, permis
         return Err("Only the permissions this plugin asked for can be allowed.".into());
     }
     let instance = instance_by_id(&app, &id)?;
-    let mut text = server_text(&app, &instance, pumpkin::CONFIG).await?.ok_or("pumpkin.toml is missing. Start the server once so Pumpkin makes it.")?;
+    let mut text = server_text(&app, &instance, pumpkin::CONFIG)
+        .await?
+        .ok_or("pumpkin.toml is missing. Start the server once so Pumpkin makes it.")?;
     let before = text.clone();
     for one in &permissions {
         text = pumpkin::set_plugin_permission(&text, &plugin, one, true)?;
@@ -13750,11 +12858,17 @@ async fn set_pumpkin_addon_allowed(app: AppHandle, id: String, allow: bool) -> R
     if !pumpkin::is_pumpkin(&instance.core) {
         return Err("This is only for Pumpkin servers.".into());
     }
-    let text = server_text(&app, &instance, pumpkin::CONFIG).await?.ok_or("pumpkin.toml is missing. Start the server once so Pumpkin makes it.")?;
+    let text = server_text(&app, &instance, pumpkin::CONFIG)
+        .await?
+        .ok_or("pumpkin.toml is missing. Start the server once so Pumpkin makes it.")?;
     let changed = pumpkin::set_plugin_permission(&text, events::PUMPKIN_PLUGIN_NAME, PUMPKIN_ADDON_PERMISSION, allow)?;
     if changed != text {
         server_write_text(&app, &instance, pumpkin::CONFIG, &changed).await?;
-        let what = if allow { "Allowed the Monolab plugin to use its data folder" } else { "Took back the Monolab plugin's data folder permission" };
+        let what = if allow {
+            "Allowed the Monolab plugin to use its data folder"
+        } else {
+            "Took back the Monolab plugin's data folder permission"
+        };
         record_audit(&app, &id, "Events", "Add‑on permission", what);
     }
     Ok(())
@@ -13805,10 +12919,8 @@ async fn set_addon_config(app: AppHandle, id: String, key: String, on: bool) -> 
 #[specta::specta]
 async fn plugin_integrations(app: AppHandle, id: String) -> Result<integrations::Integrations, String> {
     let instance = instance_by_id(&app, &id)?;
-    let mut found = integrations::Integrations {
-        essentials: server_has_dir(&app, &instance, "plugins/Essentials").await,
-        ..Default::default()
-    };
+    let mut found =
+        integrations::Integrations { essentials: server_has_dir(&app, &instance, "plugins/Essentials").await, ..Default::default() };
     for folder in ["plugins/LuckPerms", "plugins/luckperms", "config/luckperms"] {
         if server_has_dir(&app, &instance, folder).await {
             found.luckperms = folder.to_string();
@@ -13860,7 +12972,8 @@ async fn run_extension_action(app: AppHandle, id: String, folder: String, label:
     let owner = folder.strip_prefix("api:").ok_or("This button isn't from a plugin.")?.to_string();
     let args: HashMap<String, String> = serde_json::from_str(&args_json).map_err(|_| "The button values are malformed.".to_string())?;
     let instance = instance_by_id(&app, &id)?;
-    let config = addon_config_path(&instance).filter(|_| !pumpkin::is_pumpkin(&instance.core)).ok_or("This server has no Monolab add-on.")?;
+    let config =
+        addon_config_path(&instance).filter(|_| !pumpkin::is_pumpkin(&instance.core)).ok_or("This server has no Monolab add-on.")?;
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|time| time.as_millis()).unwrap_or(0);
     let request = config.replace("config.yml", &format!("actions/req-{stamp}.json"));
     let result = config.replace("config.yml", &format!("actions/req-{stamp}.result.json"));
@@ -13966,9 +13079,7 @@ async fn essentials_set_setting(app: AppHandle, id: String, key: String, value: 
         return Err("Enter a value on one line.".into());
     }
     let instance = instance_by_id(&app, &id)?;
-    let config = server_text(&app, &instance, "plugins/Essentials/config.yml")
-        .await?
-        .ok_or("EssentialsX config.yml was not found.")?;
+    let config = server_text(&app, &instance, "plugins/Essentials/config.yml").await?.ok_or("EssentialsX config.yml was not found.")?;
     let changed = integrations::set_top_level(&config, &key, value).ok_or("EssentialsX config.yml was not found.")?;
     server_write_text(&app, &instance, "plugins/Essentials/config.yml", &changed).await
 }
@@ -14044,14 +13155,10 @@ async fn view_server_file(app: AppHandle, id: String, path: String) -> Result<vi
         .map_err(|error| error.to_string())?
 }
 
-
 /// The folder of a trashed server, for looking only; nothing reached through it writes there.
 fn trash_root(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
     let entry = load_trash_entries(app)?.into_iter().find(|entry| entry.id == id).ok_or("Trashed server not found.")?;
-    Path::new(&entry.trash_path)
-        .canonicalize()
-        .map(plain_path)
-        .map_err(|_| "The trashed server folder was not found.".to_string())
+    Path::new(&entry.trash_path).canonicalize().map(plain_path).map_err(|_| "The trashed server folder was not found.".to_string())
 }
 
 fn in_trash(root: &Path, relative: &str) -> Result<PathBuf, String> {
@@ -14311,11 +13418,8 @@ async fn scan_sqlite_far(app: &AppHandle, instance: &ServerInstance) -> SqliteSc
     let Ok(top) = far_list(app, instance, "").await else {
         return SqliteScan { files: Vec::new(), incomplete: true };
     };
-    let mut stack: Vec<(String, usize)> = top
-        .into_iter()
-        .filter(|one| one.directory && SQLITE_DIRS.contains(&one.name.as_str()))
-        .map(|one| (one.name, 0))
-        .collect();
+    let mut stack: Vec<(String, usize)> =
+        top.into_iter().filter(|one| one.directory && SQLITE_DIRS.contains(&one.name.as_str())).map(|one| (one.name, 0)).collect();
     let mut visits = 0;
     while let Some((dir, depth)) = stack.pop() {
         let Ok(rows) = far_list(app, instance, &dir).await else {
@@ -14368,7 +13472,11 @@ async fn sqlite_at(app: &AppHandle, id: &str, path: &str, fresh: bool) -> Result
     }
     let dir = app.path().app_cache_dir().map_err(|error| error.to_string())?.join("sqlite");
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    let key: String = <sha2::Sha256 as sha2::Digest>::digest(format!("{id}\n{path}").as_bytes()).iter().take(12).map(|byte| format!("{byte:02x}")).collect();
+    let key: String = <sha2::Sha256 as sha2::Digest>::digest(format!("{id}\n{path}").as_bytes())
+        .iter()
+        .take(12)
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
     let copy = dir.join(format!("{key}.db"));
     if fresh || !copy.is_file() {
         let bytes = far_read_bytes(app, &instance, path, SQLITE_COPY_LIMIT).await?;
@@ -14580,32 +13688,21 @@ struct TextureFrame {
 fn read_animation(text: &str) -> Option<TextureAnimation> {
     let whole: serde_json::Value = serde_json::from_str(text).ok()?;
     let one = whole.get("animation")?;
-    let number = |name: &str| {
-        one.get(name)
-            .and_then(|value| value.as_u64())
-            .unwrap_or(0)
-            .min(u32::MAX as u64) as u32
-    };
+    let number = |name: &str| one.get(name).and_then(|value| value.as_u64()).unwrap_or(0).min(u32::MAX as u64) as u32;
     let mut frames = Vec::new();
     if let Some(list) = one.get("frames").and_then(|value| value.as_array()) {
         for item in list {
             if let Some(index) = item.as_u64() {
                 frames.push(TextureFrame { index: index as u32, time: 0 });
             } else if let Some(index) = item.get("index").and_then(|value| value.as_u64()) {
-                let time = item
-                    .get("time")
-                    .and_then(|value| value.as_u64())
-                    .unwrap_or(0) as u32;
+                let time = item.get("time").and_then(|value| value.as_u64()).unwrap_or(0) as u32;
                 frames.push(TextureFrame { index: index as u32, time });
             }
         }
     }
     Some(TextureAnimation {
         frametime: number("frametime").max(1),
-        interpolate: one
-            .get("interpolate")
-            .and_then(|value| value.as_bool())
-            .unwrap_or(false),
+        interpolate: one.get("interpolate").and_then(|value| value.as_bool()).unwrap_or(false),
         width: number("width"),
         height: number("height"),
         frames,
@@ -14614,11 +13711,7 @@ fn read_animation(text: &str) -> Option<TextureAnimation> {
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn read_texture_animation(
-    app: AppHandle,
-    id: String,
-    path: String,
-) -> Result<Option<TextureAnimation>, String> {
+async fn read_texture_animation(app: AppHandle, id: String, path: String) -> Result<Option<TextureAnimation>, String> {
     let beside = format!("{path}.mcmeta");
     let instance = instance_by_id(&app, &id)?;
     let text = if !instance.panel_host.is_empty() {
@@ -14660,7 +13753,9 @@ async fn save_editable_file(
         let now = read_editable_file(app.clone(), id.clone(), path.clone()).await.ok();
         if saved_since(now.as_deref(), Some(want)) {
             let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|time| time.as_secs()).unwrap_or(0);
-            let who = authorship::who_changed(&id, &path, at).map(|one| if one == "host" { "The host".to_string() } else { one }).unwrap_or_else(|| "Someone".into());
+            let who = authorship::who_changed(&id, &path, at)
+                .map(|one| if one == "host" { "The host".to_string() } else { one })
+                .unwrap_or_else(|| "Someone".into());
             return Err(format!("{who} saved this file after you opened it."));
         }
     }
@@ -14698,24 +13793,12 @@ async fn save_editable_file_inner(
         return Ok(());
     }
     let path = safe_editable_path(&instance, &path)?;
-    fs::write(path, content)
-        .map_err(|error| format!("Could not save the text file: {error}"))?;
-    record_audit(
-        &app,
-        &id,
-        "File",
-        "Text file saved",
-        "File saved!",
-    );
+    fs::write(path, content).map_err(|error| format!("Could not save the text file: {error}"))?;
+    record_audit(&app, &id, "File", "Text file saved", "File saved!");
     Ok(())
 }
 
-fn file_in_server(
-    app: &AppHandle,
-    state: &AppState,
-    id: &str,
-    relative: &str,
-) -> Result<(PathBuf, PathBuf), String> {
+fn file_in_server(app: &AppHandle, state: &AppState, id: &str, relative: &str) -> Result<(PathBuf, PathBuf), String> {
     let _ = state;
     let instance = instance_by_id(app, id)?;
     let root = PathBuf::from(&instance.path);
@@ -14770,11 +13853,7 @@ async fn rename_server_path(
         if !instance.remote_host.is_empty() {
             let name = plain_name(&new_name)?;
             let parent = parent_of(&path);
-            let to = if parent.is_empty() {
-                name.to_string()
-            } else {
-                format!("{parent}/{name}")
-            };
+            let to = if parent.is_empty() { name.to_string() } else { format!("{parent}/{name}") };
             remote::move_path(&app, &instance.remote_host, &instance.path, &path, &to).await?;
             record_audit(&app, &id, "File", "Rename (SSH)", &to);
             return Ok(to);
@@ -14783,11 +13862,7 @@ async fn rename_server_path(
     let (root, from) = file_in_server(&app, &state, &id, &path)?;
     let name = plain_name(&new_name)?;
     let parent = parent_of(&path);
-    let relative = if parent.is_empty() {
-        name.to_string()
-    } else {
-        format!("{parent}/{name}")
-    };
+    let relative = if parent.is_empty() { name.to_string() } else { format!("{parent}/{name}") };
     let to = paths::resolve_new_in_server(&root, &relative).map_err(|error| error.to_string())?;
     if to.exists() {
         return Err(format!("{name} already exists."));
@@ -14799,12 +13874,7 @@ async fn rename_server_path(
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn trash_server_path(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    path: String,
-) -> Result<(), String> {
+async fn trash_server_path(app: AppHandle, state: State<'_, AppState>, id: String, path: String) -> Result<(), String> {
     note_writes(&app, &id, "trash_server_path", &serde_json::json!({ "path": path }), "host");
     {
         let instance = instance_by_id(&app, &id)?;
@@ -14821,18 +13891,11 @@ async fn trash_server_path(
         }
     }
     let (_, from) = file_in_server(&app, &state, &id, &path)?;
-    let name = from
-        .file_name()
-        .map(|one| one.to_string_lossy().to_string())
-        .ok_or("The name could not be read.")?;
+    let name = from.file_name().map(|one| one.to_string_lossy().to_string()).ok_or("The name could not be read.")?;
     let stored = format!("{}-{name}", unix_now());
     let bin = addon_trash_dir(&app, &id)?;
     let to = bin.join(&stored);
-    let moved = if from.is_dir() {
-        move_tree(&from, &to)
-    } else {
-        move_file(&from, &to)
-    };
+    let moved = if from.is_dir() { move_tree(&from, &to) } else { move_file(&from, &to) };
     moved.map_err(|error| format!("Could not move to trash: {error}"))?;
     let mut note = trash_notes(&bin);
     note.insert(stored, path.trim_matches('/').replace('\\', "/"));
@@ -14842,10 +13905,7 @@ async fn trash_server_path(
 }
 
 fn trash_notes(bin: &Path) -> HashMap<String, String> {
-    fs::read_to_string(bin.join(remote::TRASH_NOTE))
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
+    fs::read_to_string(bin.join(remote::TRASH_NOTE)).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
 }
 
 fn write_trash_notes(bin: &Path, note: &HashMap<String, String>) {
@@ -14919,12 +13979,7 @@ fn trash_stamp(stored: &str) -> Option<u64> {
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn restore_server_trash(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    stored: String,
-) -> Result<String, String> {
+async fn restore_server_trash(app: AppHandle, state: State<'_, AppState>, id: String, stored: String) -> Result<String, String> {
     let instance = instance_by_id(&app, &id)?;
     let back = if !instance.panel_host.is_empty() {
         ensure_panel_stopped(&app, &instance).await?;
@@ -14938,10 +13993,7 @@ async fn restore_server_trash(
         paths::check_relative(&stored)?;
         let bin = addon_trash_dir(&app, &id)?;
         let note = trash_notes(&bin);
-        let back = note
-            .get(&stored)
-            .cloned()
-            .unwrap_or_else(|| remote::plain_trash_name(&stored));
+        let back = note.get(&stored).cloned().unwrap_or_else(|| remote::plain_trash_name(&stored));
         let to = paths::resolve_new_in_server(Path::new(&instance.path), &back)?;
         if to.exists() {
             return Err(format!("Something is already at {back}. Move it out of the way first."));
@@ -15031,23 +14083,14 @@ async fn add_server_folders(
         &id,
         "File",
         if instance.remote_host.is_empty() { "Add folder" } else { "Add folder (SSH)" },
-        &format!(
-            "{} · {count} files{}",
-            sources.len(),
-            if merge { " · merged into the existing folder" } else { "" }
-        ),
+        &format!("{} · {count} files{}", sources.len(), if merge { " · merged into the existing folder" } else { "" }),
     );
     Ok(count)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn folders_in_the_way(
-    app: AppHandle,
-    id: String,
-    path: String,
-    sources: Vec<String>,
-) -> Result<Vec<String>, String> {
+async fn folders_in_the_way(app: AppHandle, id: String, path: String, sources: Vec<String>) -> Result<Vec<String>, String> {
     let instance = instance_by_id(&app, &id)?;
     let here = path.replace('\\', "/").trim().trim_matches('/').to_string();
     let mut out = Vec::new();
@@ -15064,9 +14107,7 @@ async fn folders_in_the_way(
             let (api, target) = panel_of(&app, &instance)?;
             api.exists(&target, &at).await? == Some(true)
         } else if instance.remote_host.is_empty() {
-            paths::resolve_new_in_server(Path::new(&instance.path), &at)
-                .map(|one| one.exists())
-                .unwrap_or(false)
+            paths::resolve_new_in_server(Path::new(&instance.path), &at).map(|one| one.exists()).unwrap_or(false)
         } else {
             remote::is_dir_checked(&app, &instance.remote_host, &instance.path, &at).await?
         };
@@ -15093,10 +14134,7 @@ async fn put_folders(
         if !from.is_dir() {
             continue;
         }
-        let name = from
-            .file_name()
-            .map(|one| one.to_string_lossy().to_string())
-            .ok_or("Could not read the folder name.")?;
+        let name = from.file_name().map(|one| one.to_string_lossy().to_string()).ok_or("Could not read the folder name.")?;
         let at = if here.is_empty() { name.clone() } else { format!("{here}/{name}") };
         jobs.push((at, name, from));
     }
@@ -15107,9 +14145,7 @@ async fn put_folders(
         if !merge {
             for (at, name, _) in &jobs {
                 if api.exists(&target, at).await?.is_some() {
-                    return Err(format!(
-                        "The folder {name} already exists. To merge, drop it again and choose Merge."
-                    ));
+                    return Err(format!("The folder {name} already exists. To merge, drop it again and choose Merge."));
                 }
             }
         }
@@ -15148,23 +14184,14 @@ async fn put_folders(
         if !merge {
             for (at, name, _) in &jobs {
                 if remote::is_dir_checked(app, &instance.remote_host, &instance.path, at).await? {
-                    return Err(format!(
-                        "The folder {name} already exists. To merge, drop it again and choose Merge."
-                    ));
+                    return Err(format!("The folder {name} already exists. To merge, drop it again and choose Merge."));
                 }
             }
         }
         for (at, name, from) in &jobs {
-            let sent = remote::upload_folder(
-                app,
-                &instance.remote_host,
-                &instance.path,
-                at,
-                from,
-                &|done, whole, _| {
-                    tell_job(app, "upload", name, "files", done as u64, whole as u64);
-                },
-            )
+            let sent = remote::upload_folder(app, &instance.remote_host, &instance.path, at, from, &|done, whole, _| {
+                tell_job(app, "upload", name, "files", done as u64, whole as u64);
+            })
             .await;
             tell_upload(app, name, "done", 0, 0);
             count += sent? as u32;
@@ -15173,9 +14200,7 @@ async fn put_folders(
         if !merge {
             for (at, name, _) in &jobs {
                 if paths::resolve_new_in_server(Path::new(&instance.path), at)?.exists() {
-                    return Err(format!(
-                        "The folder {name} already exists. To merge, drop it again and choose Merge."
-                    ));
+                    return Err(format!("The folder {name} already exists. To merge, drop it again and choose Merge."));
                 }
             }
         }
@@ -15214,13 +14239,7 @@ pub(crate) fn copy_tree_counting(from: &Path, to: &Path, tick: &dyn Fn()) -> Res
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn create_server_file(
-    app: AppHandle,
-    _state: State<'_, AppState>,
-    id: String,
-    path: String,
-    name: String,
-) -> Result<String, String> {
+async fn create_server_file(app: AppHandle, _state: State<'_, AppState>, id: String, path: String, name: String) -> Result<String, String> {
     note_writes(&app, &id, "create_server_file", &serde_json::json!({ "path": path, "name": name }), "host");
     let instance = instance_by_id(&app, &id)?;
     if !instance.panel_host.is_empty() {
@@ -15244,11 +14263,7 @@ async fn create_server_file(
             return Err("This file type can't be created in the app. Only text files can.".into());
         }
         let here = path.replace('\\', "/").trim().trim_matches('/').to_string();
-        let at = if here.is_empty() {
-            name.to_string()
-        } else {
-            format!("{here}/{name}")
-        };
+        let at = if here.is_empty() { name.to_string() } else { format!("{here}/{name}") };
         far_write(&app, &instance, &at, "").await?;
         return Ok(at);
     }
@@ -15258,11 +14273,7 @@ async fn create_server_file(
         return Err(format!("{name} is not a text file, so it cannot be created here. Use a name like .yml, .json, .txt or .properties."));
     }
     let here = path.replace('\\', "/").trim().trim_matches('/').to_string();
-    let relative = if here.is_empty() {
-        name.to_string()
-    } else {
-        format!("{here}/{name}")
-    };
+    let relative = if here.is_empty() { name.to_string() } else { format!("{here}/{name}") };
     let target = paths::resolve_new_in_server(&root, &relative).map_err(|error| error.to_string())?;
     if target.exists() {
         return Err(format!("{name} already exists."));
@@ -15293,22 +14304,14 @@ async fn create_server_folder(
     if !instance.remote_host.is_empty() {
         let name = plain_name(&name)?;
         let here = path.replace('\\', "/").trim().trim_matches('/').to_string();
-        let at = if here.is_empty() {
-            name.to_string()
-        } else {
-            format!("{here}/{name}")
-        };
+        let at = if here.is_empty() { name.to_string() } else { format!("{here}/{name}") };
         remote::make_dir(&app, &instance.remote_host, &instance.path, &at).await?;
         return Ok(at);
     }
     let root = PathBuf::from(&instance.path);
     let name = plain_name(&name)?;
     let here = path.replace('\\', "/").trim().trim_matches('/').to_string();
-    let relative = if here.is_empty() {
-        name.to_string()
-    } else {
-        format!("{here}/{name}")
-    };
+    let relative = if here.is_empty() { name.to_string() } else { format!("{here}/{name}") };
     let target = paths::resolve_new_in_server(&root, &relative).map_err(|error| error.to_string())?;
     if target.exists() {
         return Err(format!("{name} already exists."));
@@ -15329,11 +14332,7 @@ async fn add_server_files(
     merge: bool,
 ) -> Result<u32, String> {
     let instance = instance_by_id(&app, &id)?;
-    let folders: Vec<String> = sources
-        .iter()
-        .filter(|one| PathBuf::from(one.trim()).is_dir())
-        .cloned()
-        .collect();
+    let folders: Vec<String> = sources.iter().filter(|one| PathBuf::from(one.trim()).is_dir()).cloned().collect();
     let mut count = 0_u32;
     if !folders.is_empty() {
         count += put_folders(&app, &state, &instance, &path, &folders, merge).await?;
@@ -15345,10 +14344,7 @@ async fn add_server_files(
             &format!("{} · {count} files", folders.len()),
         );
     }
-    let sources: Vec<String> = sources
-        .into_iter()
-        .filter(|one| !PathBuf::from(one.trim()).is_dir())
-        .collect();
+    let sources: Vec<String> = sources.into_iter().filter(|one| !PathBuf::from(one.trim()).is_dir()).collect();
     if sources.is_empty() {
         return Ok(count);
     }
@@ -15362,10 +14358,7 @@ async fn add_server_files(
             if !source.is_file() {
                 continue;
             }
-            let name = source
-                .file_name()
-                .map(|one| one.to_string_lossy().to_string())
-                .ok_or("Could not read the file name.")?;
+            let name = source.file_name().map(|one| one.to_string_lossy().to_string()).ok_or("Could not read the file name.")?;
             if have.iter().any(|one| one.name == name) {
                 return Err(format!("{name} already exists. Rename or delete it first."));
             }
@@ -15391,13 +14384,9 @@ async fn add_server_files(
             if !source.is_file() {
                 continue;
             }
-            let name = source
-                .file_name()
-                .map(|one| one.to_string_lossy().to_string())
-                .ok_or("Could not read the file name.")?;
+            let name = source.file_name().map(|one| one.to_string_lossy().to_string()).ok_or("Could not read the file name.")?;
             let at = if here.is_empty() { name.clone() } else { format!("{here}/{name}") };
-            let bytes = fs::read(&source)
-                .map_err(|error| format!("Could not read {name}: {error}"))?;
+            let bytes = fs::read(&source).map_err(|error| format!("Could not read {name}: {error}"))?;
             watched_upload(&app, &instance.remote_host, &instance.path, &at, &bytes, &name).await?;
             added += 1;
         }
@@ -15413,17 +14402,9 @@ async fn add_server_files(
         if !source.is_file() {
             return Err(format!("{one} could not be found."));
         }
-        let name = source
-            .file_name()
-            .map(|value| value.to_string_lossy().to_string())
-            .ok_or("Could not read the file name.")?;
-        let relative = if here.is_empty() {
-            name.clone()
-        } else {
-            format!("{here}/{name}")
-        };
-        let target =
-            paths::resolve_new_in_server(&root, &relative).map_err(|error| error.to_string())?;
+        let name = source.file_name().map(|value| value.to_string_lossy().to_string()).ok_or("Could not read the file name.")?;
+        let relative = if here.is_empty() { name.clone() } else { format!("{here}/{name}") };
+        let target = paths::resolve_new_in_server(&root, &relative).map_err(|error| error.to_string())?;
         if target.exists() {
             return Err(format!("{name} already exists. Rename or delete it first."));
         }
@@ -15432,8 +14413,7 @@ async fn add_server_files(
 
     let mut done = 0;
     for (source, target, name) in jobs {
-        fs::copy(&source, &target)
-            .map_err(|error| format!("Could not add {name}: {error}"))?;
+        fs::copy(&source, &target).map_err(|error| format!("Could not add {name}: {error}"))?;
         done += 1;
     }
     record_audit(&app, &id, "File", "Add files", &format!("{done}"));
@@ -15453,15 +14433,8 @@ async fn add_server_uploads(
     for token in &uploads {
         sources.push(uploaded_path(&app, token)?);
     }
-    let done = add_server_files(
-        app.clone(),
-        state,
-        id,
-        path,
-        sources.iter().map(|one| one.to_string_lossy().to_string()).collect(),
-        false,
-    )
-    .await;
+    let done =
+        add_server_files(app.clone(), state, id, path, sources.iter().map(|one| one.to_string_lossy().to_string()).collect(), false).await;
     for one in &sources {
         unstash(one);
     }
@@ -15470,12 +14443,7 @@ async fn add_server_uploads(
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn zip_server_paths(
-    app: AppHandle,
-    id: String,
-    paths: Vec<String>,
-    name: String,
-) -> Result<String, String> {
+async fn zip_server_paths(app: AppHandle, id: String, paths: Vec<String>, name: String) -> Result<String, String> {
     let instance = instance_by_id(&app, &id)?;
     if !instance.panel_host.is_empty() {
         if paths.is_empty() {
@@ -15498,11 +14466,7 @@ async fn zip_server_paths(
     }
     if !instance.remote_host.is_empty() {
         let name = plain_name(&name)?;
-        let name = if name.to_ascii_lowercase().ends_with(".zip") {
-            name.to_string()
-        } else {
-            format!("{name}.zip")
-        };
+        let name = if name.to_ascii_lowercase().ends_with(".zip") { name.to_string() } else { format!("{name}.zip") };
         remote::zip_paths(&app, &instance.remote_host, &instance.path, &paths, &name).await?;
         record_audit(&app, &id, "File", "Compress (SSH)", &name);
         return Ok(name);
@@ -15542,11 +14506,7 @@ async fn zip_server_paths(
         let _ = fs::remove_file(&target);
         return Err(error);
     }
-    let relative = target
-        .strip_prefix(&root)
-        .unwrap_or(&target)
-        .to_string_lossy()
-        .replace('\\', "/");
+    let relative = target.strip_prefix(&root).unwrap_or(&target).to_string_lossy().replace('\\', "/");
     record_audit(&app, &id, "File", "Zip", &relative);
     Ok(relative)
 }
@@ -15585,15 +14545,9 @@ fn zip_into_counted<W: std::io::Write + std::io::Seek>(
     if path == skip {
         return Ok(());
     }
-    let inside = path
-        .strip_prefix(base)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/");
+    let inside = path.strip_prefix(base).unwrap_or(path).to_string_lossy().replace('\\', "/");
     if path.is_dir() {
-        writer
-            .add_directory(format!("{inside}/"), options)
-            .map_err(|error| error.to_string())?;
+        writer.add_directory(format!("{inside}/"), options).map_err(|error| error.to_string())?;
         for entry in fs::read_dir(path).map_err(|error| error.to_string())?.flatten() {
             zip_into_counted(writer, base, &entry.path(), skip, options, task, done, total)?;
         }
@@ -15604,19 +14558,18 @@ fn zip_into_counted<W: std::io::Write + std::io::Seek>(
     };
     writer.start_file(inside.as_str(), options).map_err(|error| error.to_string())?;
     task.copy(&mut file, writer, done, total, &inside).map_err(|error| {
-        if error == progress::CANCELLED { error } else { format!("Could not include {}: {error}", path.display()) }
+        if error == progress::CANCELLED {
+            error
+        } else {
+            format!("Could not include {}: {error}", path.display())
+        }
     })?;
     Ok(())
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn unzip_server_path(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    path: String,
-) -> Result<String, String> {
+async fn unzip_server_path(app: AppHandle, state: State<'_, AppState>, id: String, path: String) -> Result<String, String> {
     {
         let instance = instance_by_id(&app, &id)?;
         if !instance.panel_host.is_empty() {
@@ -15630,10 +14583,7 @@ async fn unzip_server_path(
     if !archive_path.is_file() || !archive_path.to_string_lossy().to_ascii_lowercase().ends_with(".zip") {
         return Err("Not a zip file.".into());
     }
-    let stem = archive_path
-        .file_stem()
-        .map(|one| one.to_string_lossy().to_string())
-        .unwrap_or_else(|| "unzipped".into());
+    let stem = archive_path.file_stem().map(|one| one.to_string_lossy().to_string()).unwrap_or_else(|| "unzipped".into());
     let parent = archive_path.parent().unwrap_or(&root).to_path_buf();
     let mut into = parent.join(&stem);
     let mut counter = 2;
@@ -15688,7 +14638,11 @@ async fn read_server_file_download(app: AppHandle, id: String, path: String) -> 
         let wanted = if folder {
             let (dir, name) = panel::split_path(&path)?;
             let made = api.compress(&target, &dir, &[name]).await?;
-            if dir == "/" { made } else { format!("{}/{made}", dir.trim_start_matches('/')) }
+            if dir == "/" {
+                made
+            } else {
+                format!("{}/{made}", dir.trim_start_matches('/'))
+            }
         } else {
             path.clone()
         };
@@ -15707,14 +14661,7 @@ async fn read_server_file_download(app: AppHandle, id: String, path: String) -> 
             true => (remote::pack_for_download(&app, &instance.remote_host, &instance.path, &path).await?, true),
             false => (path.clone(), false),
         };
-        let bytes = remote::read_bytes(
-            &app,
-            &instance.remote_host,
-            &instance.path,
-            &wanted,
-            HANDOUT_LIMIT,
-        )
-        .await;
+        let bytes = remote::read_bytes(&app, &instance.remote_host, &instance.path, &wanted, HANDOUT_LIMIT).await;
         if packed {
             remote::drop_path(&app, &instance.remote_host, &instance.path, &wanted).await;
         }
@@ -15724,8 +14671,7 @@ async fn read_server_file_download(app: AppHandle, id: String, path: String) -> 
             data: base64::engine::general_purpose::STANDARD.encode(&bytes),
         });
     }
-    let target = paths::resolve_in_server(Path::new(&instance.path), &path)
-        .map_err(|error| error.to_string())?;
+    let target = paths::resolve_in_server(Path::new(&instance.path), &path).map_err(|error| error.to_string())?;
     if !target.is_file() {
         return Err("Not a file.".into());
     }
@@ -15735,22 +14681,14 @@ async fn read_server_file_download(app: AppHandle, id: String, path: String) -> 
     }
     let bytes = fs::read(&target).map_err(|error| format!("Could not read the file: {error}"))?;
     Ok(Handed {
-        name: target
-            .file_name()
-            .map(|one| one.to_string_lossy().to_string())
-            .unwrap_or_else(|| "file".into()),
+        name: target.file_name().map(|one| one.to_string_lossy().to_string()).unwrap_or_else(|| "file".into()),
         data: base64::engine::general_purpose::STANDARD.encode(bytes),
     })
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn copy_server_file_out(
-    app: AppHandle,
-    id: String,
-    path: String,
-    to: String,
-) -> Result<(), String> {
+async fn copy_server_file_out(app: AppHandle, id: String, path: String, to: String) -> Result<(), String> {
     let instance = instance_by_id(&app, &id)?;
     if !instance.panel_host.is_empty() {
         let (api, target) = panel_of(&app, &instance)?;
@@ -15760,7 +14698,11 @@ async fn copy_server_file_out(
             tell_job(&app, "download", &shown, "taring", 0, 0);
             let (dir, name) = panel::split_path(&path)?;
             let made = api.compress(&target, &dir, &[name]).await?;
-            if dir == "/" { made } else { format!("{}/{made}", dir.trim_start_matches('/')) }
+            if dir == "/" {
+                made
+            } else {
+                format!("{}/{made}", dir.trim_start_matches('/'))
+            }
         } else {
             path.clone()
         };
@@ -15791,19 +14733,12 @@ async fn copy_server_file_out(
             path.clone()
         };
         let last = std::sync::atomic::AtomicU64::new(u64::MAX);
-        let got = remote::download_to(
-            &app,
-            &instance.remote_host,
-            &instance.path,
-            &wanted,
-            Path::new(to.trim()),
-            |got, whole| {
-                let step = (got * 100).checked_div(whole).unwrap_or(0);
-                if last.swap(step, std::sync::atomic::Ordering::Relaxed) != step {
-                    tell_job(&app, "download", &shown, "downloading", got, whole);
-                }
-            },
-        )
+        let got = remote::download_to(&app, &instance.remote_host, &instance.path, &wanted, Path::new(to.trim()), |got, whole| {
+            let step = (got * 100).checked_div(whole).unwrap_or(0);
+            if last.swap(step, std::sync::atomic::Ordering::Relaxed) != step {
+                tell_job(&app, "download", &shown, "downloading", got, whole);
+            }
+        })
         .await;
         if folder {
             remote::drop_path(&app, &instance.remote_host, &instance.path, &wanted).await;
@@ -15813,13 +14748,11 @@ async fn copy_server_file_out(
         record_audit(&app, &id, "File", "Download file (SSH)", &path);
         return Ok(());
     }
-    let target = paths::resolve_in_server(Path::new(&instance.path), &path)
-        .map_err(|error| error.to_string())?;
+    let target = paths::resolve_in_server(Path::new(&instance.path), &path).map_err(|error| error.to_string())?;
     if !target.is_file() {
         return Err("Not a file.".into());
     }
-    fs::copy(&target, PathBuf::from(to.trim()))
-        .map_err(|error| format!("Could not save the file: {error}"))?;
+    fs::copy(&target, PathBuf::from(to.trim())).map_err(|error| format!("Could not save the file: {error}"))?;
     Ok(())
 }
 
@@ -15854,10 +14787,7 @@ fn process_tree_usage(system: &System, root: Pid) -> (f32, u64) {
             memory = memory.saturating_add(process.memory());
         }
     }
-    let cores = thread::available_parallelism()
-        .map(|value| value.get())
-        .unwrap_or(1)
-        .max(1) as f32;
+    let cores = thread::available_parallelism().map(|value| value.get()).unwrap_or(1).max(1) as f32;
     ((cpu / cores).clamp(0.0, 100.0), memory)
 }
 
@@ -15899,21 +14829,11 @@ fn process_details(app: AppHandle, state: State<'_, AppState>, id: String) -> Re
     if !instance.panel_host.is_empty() || !instance.remote_host.is_empty() {
         return Ok(None);
     }
-    let Some(pid) = state
-        .processes
-        .lock()
-        .expect("process state poisoned")
-        .get(&id)
-        .map(|process| process.pid)
-    else {
+    let Some(pid) = state.processes.lock().expect("process state poisoned").get(&id).map(|process| process.pid) else {
         return Ok(None);
     };
     let mut system = state.system.lock().expect("system state poisoned");
-    system.refresh_processes_specifics(
-        sysinfo::ProcessesToUpdate::All,
-        true,
-        sysinfo::ProcessRefreshKind::nothing().with_disk_usage(),
-    );
+    system.refresh_processes_specifics(sysinfo::ProcessesToUpdate::All, true, sysinfo::ProcessRefreshKind::nothing().with_disk_usage());
     system.refresh_cpu_usage();
     system.refresh_memory();
     let root = Pid::from_u32(pid);
@@ -15957,11 +14877,7 @@ fn process_details(app: AppHandle, state: State<'_, AppState>, id: String) -> Re
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn get_resource_snapshot(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<ResourceSnapshot, String> {
+async fn get_resource_snapshot(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<ResourceSnapshot, String> {
     let instance = instance_by_id(&app, &id)?;
     if !instance.panel_host.is_empty() {
         let live = state.panel_live.lock().expect("panel state poisoned").get(&id).cloned();
@@ -15978,38 +14894,15 @@ async fn get_resource_snapshot(
         });
     }
     if !instance.remote_host.is_empty() {
-        let pid = state
-            .remote_running
-            .lock()
-            .expect("remote state poisoned")
-            .get(&id)
-            .map(|live| live.pid)
-            .unwrap_or(0);
-        let (cpu, memory) = if pid == 0 {
-            (0.0, 0)
-        } else {
-            remote::resource(&app, &instance.remote_host, pid)
-                .await
-                .unwrap_or((0.0, 0))
-        };
+        let pid = state.remote_running.lock().expect("remote state poisoned").get(&id).map(|live| live.pid).unwrap_or(0);
+        let (cpu, memory) = if pid == 0 { (0.0, 0) } else { remote::resource(&app, &instance.remote_host, pid).await.unwrap_or((0.0, 0)) };
         if pid != 0 {
             record_far_sample(&state, &id, cpu as f32, memory);
         }
-        let (disk_free_mib, disk_total_mib) =
-            remote::disk_free_mib(&app, &instance.remote_host, &instance.path).await;
-        return Ok(ResourceSnapshot {
-            cpu_percent: cpu as f32,
-            memory_mib: memory,
-            disk_free_mib,
-            disk_total_mib,
-        });
+        let (disk_free_mib, disk_total_mib) = remote::disk_free_mib(&app, &instance.remote_host, &instance.path).await;
+        return Ok(ResourceSnapshot { cpu_percent: cpu as f32, memory_mib: memory, disk_free_mib, disk_total_mib });
     }
-    let pid = state
-        .processes
-        .lock()
-        .expect("process state poisoned")
-        .get(&id)
-        .map(|process| process.pid);
+    let pid = state.processes.lock().expect("process state poisoned").get(&id).map(|process| process.pid);
     let (cpu_percent, memory_mib) = {
         let mut system = state.system.lock().expect("system state poisoned");
         system.refresh_processes_specifics(
@@ -16017,51 +14910,27 @@ async fn get_resource_snapshot(
             true,
             sysinfo::ProcessRefreshKind::nothing().with_cpu().with_memory(),
         );
-        pid.map(|pid| process_tree_usage(&system, Pid::from_u32(pid)))
-            .map(|(cpu, memory)| (cpu, memory / 1024 / 1024))
-            .unwrap_or((0.0, 0))
+        pid.map(|pid| process_tree_usage(&system, Pid::from_u32(pid))).map(|(cpu, memory)| (cpu, memory / 1024 / 1024)).unwrap_or((0.0, 0))
     };
-    let instance_path = Path::new(&instance.path)
-        .canonicalize().map(plain_path)
-        .map_err(|error| error.to_string())?;
+    let instance_path = Path::new(&instance.path).canonicalize().map(plain_path).map_err(|error| error.to_string())?;
     let disks = Disks::new_with_refreshed_list();
     let disk = disks
         .list()
         .iter()
         .filter(|disk| instance_path.starts_with(disk.mount_point()))
         .max_by_key(|disk| disk.mount_point().as_os_str().len());
-    let (disk_free_mib, disk_total_mib) = disk
-        .map(|disk| {
-            (
-                disk.available_space() / 1024 / 1024,
-                disk.total_space() / 1024 / 1024,
-            )
-        })
-        .unwrap_or((0, 0));
+    let (disk_free_mib, disk_total_mib) =
+        disk.map(|disk| (disk.available_space() / 1024 / 1024, disk.total_space() / 1024 / 1024)).unwrap_or((0, 0));
     if pid.is_some() {
-        let tps = state
-            .tps
-            .lock()
-            .expect("tps state poisoned")
-            .get(&id)
-            .and_then(|snapshot| snapshot.tps);
+        let tps = state.tps.lock().expect("tps state poisoned").get(&id).and_then(|snapshot| snapshot.tps);
         record_resource_sample(&state, &id, cpu_percent, memory_mib, tps);
     }
-    Ok(ResourceSnapshot {
-        cpu_percent,
-        memory_mib,
-        disk_free_mib,
-        disk_total_mib,
-    })
+    Ok(ResourceSnapshot { cpu_percent, memory_mib, disk_free_mib, disk_total_mib })
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-fn get_tps_snapshot(
-    _app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<Option<TpsSnapshot>, String> {
+fn get_tps_snapshot(_app: AppHandle, state: State<'_, AppState>, id: String) -> Result<Option<TpsSnapshot>, String> {
     const FRESH_SECS: u64 = 60;
     Ok(state
         .tps
@@ -16074,33 +14943,17 @@ fn get_tps_snapshot(
 
 #[tauri::command(async)]
 #[specta::specta]
-fn get_server_ping(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<PingSnapshot, String> {
+fn get_server_ping(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<PingSnapshot, String> {
     let instance = instance_by_id(&app, &id)?;
     if !instance.remote_host.is_empty() {
-        let running = state
-            .remote_running
-            .lock()
-            .expect("remote state poisoned")
-            .contains_key(&id);
+        let running = state.remote_running.lock().expect("remote state poisoned").contains_key(&id);
         if !running {
             return Err("Player counts are only available for running servers.".into());
         }
-        let host = remote::load_hosts(&app)?
-            .into_iter()
-            .find(|one| one.id == instance.remote_host)
-            .ok_or("SSH connection not found.")?;
+        let host = remote::load_hosts(&app)?.into_iter().find(|one| one.id == instance.remote_host).ok_or("SSH connection not found.")?;
         return ping::query_at(&host.address, port_from_properties(&instance));
     }
-    if !state
-        .processes
-        .lock()
-        .expect("process state poisoned")
-        .contains_key(&id)
-    {
+    if !state.processes.lock().expect("process state poisoned").contains_key(&id) {
         return Err("Player counts are only available for servers started by the app.".into());
     }
     query_server_ping(port_from_properties(&instance))
@@ -16123,17 +14976,8 @@ fn players_from_json(text: &str, source: &str) -> Vec<PlayerEntry> {
         .flatten()
         .filter_map(|item| {
             let object = item.as_object()?;
-            let name = object
-                .get("name")
-                .or_else(|| object.get("Name"))?
-                .as_str()?
-                .to_string();
-            let uuid = object
-                .get("uuid")
-                .or_else(|| object.get("UUID"))
-                .and_then(|value| value.as_str())
-                .unwrap_or("—")
-                .to_string();
+            let name = object.get("name").or_else(|| object.get("Name"))?.as_str()?.to_string();
+            let uuid = object.get("uuid").or_else(|| object.get("UUID")).and_then(|value| value.as_str()).unwrap_or("—").to_string();
             Some(PlayerEntry {
                 name,
                 uuid,
@@ -16165,16 +15009,10 @@ async fn list_players(app: AppHandle, id: String) -> Result<Vec<PlayerEntry>, St
         if is_far(&instance) {
             let base = if pumpkin::is_pumpkin(&instance.core) { "data/" } else { "" };
             let mut by_uuid: HashMap<String, PlayerEntry> = HashMap::new();
-            for (file, source) in [
-                ("usercache.json", "known"),
-                ("whitelist.json", "whitelist"),
-                ("ops.json", "ops"),
-                ("banned-players.json", "banned"),
-            ] {
-                let text = far_read(&app, &instance, &format!("{base}{file}"),
-                )
-                .await
-                .unwrap_or_default();
+            for (file, source) in
+                [("usercache.json", "known"), ("whitelist.json", "whitelist"), ("ops.json", "ops"), ("banned-players.json", "banned")]
+            {
+                let text = far_read(&app, &instance, &format!("{base}{file}")).await.unwrap_or_default();
                 for player in players_from_json(&text, source) {
                     let entry = by_uuid.entry(player.uuid.clone()).or_insert(player.clone());
                     entry.whitelisted |= player.whitelisted;
@@ -16194,12 +15032,9 @@ async fn list_players(app: AppHandle, id: String) -> Result<Vec<PlayerEntry>, St
     let folder = player_lists_dir(&instance);
     let folder = folder.as_path();
     let mut by_uuid: HashMap<String, PlayerEntry> = HashMap::new();
-    for (file, source) in [
-        ("usercache.json", "known"),
-        ("whitelist.json", "whitelist"),
-        ("ops.json", "ops"),
-        ("banned-players.json", "banned"),
-    ] {
+    for (file, source) in
+        [("usercache.json", "known"), ("whitelist.json", "whitelist"), ("ops.json", "ops"), ("banned-players.json", "banned")]
+    {
         for player in read_player_file(folder.join(file), source) {
             let entry = by_uuid.entry(player.uuid.clone()).or_insert(player.clone());
             entry.whitelisted |= player.whitelisted;
@@ -16220,12 +15055,8 @@ async fn list_players(app: AppHandle, id: String) -> Result<Vec<PlayerEntry>, St
 async fn list_player_activity(app: AppHandle, id: String) -> Result<Vec<PlayerActivityEntry>, String> {
     let instance = instance_by_id(&app, &id)?;
     let (text, last_seen_at) = if is_far(&instance) {
-        let seen = far_log_files(&app, &instance)
-            .await
-            .into_iter()
-            .find(|one| one.name == "latest.log")
-            .map(|one| one.modified_at)
-            .unwrap_or(0);
+        let seen =
+            far_log_files(&app, &instance).await.into_iter().find(|one| one.name == "latest.log").map(|one| one.modified_at).unwrap_or(0);
         (far_read_log(&app, &instance, "latest.log", 20_000).await.unwrap_or_default(), seen)
     } else {
         let log = Path::new(&instance.path).join("logs").join("latest.log");
@@ -16252,30 +15083,13 @@ async fn list_player_activity(app: AppHandle, id: String) -> Result<Vec<PlayerAc
             }
         }
     }
-    let mut activity = sessions
-        .into_iter()
-        .map(|(name, sessions)| PlayerActivityEntry {
-            name,
-            sessions,
-            last_seen_at,
-        })
-        .collect::<Vec<_>>();
-    activity.sort_by(|left, right| {
-        right
-            .sessions
-            .cmp(&left.sessions)
-            .then_with(|| left.name.cmp(&right.name))
-    });
+    let mut activity =
+        sessions.into_iter().map(|(name, sessions)| PlayerActivityEntry { name, sessions, last_seen_at }).collect::<Vec<_>>();
+    activity.sort_by(|left, right| right.sessions.cmp(&left.sessions).then_with(|| left.name.cmp(&right.name)));
     Ok(activity)
 }
 
-fn update_player_list(
-    folder: &Path,
-    file_name: &str,
-    name: &str,
-    uuid: &str,
-    action: &str,
-) -> Result<bool, String> {
+fn update_player_list(folder: &Path, file_name: &str, name: &str, uuid: &str, action: &str) -> Result<bool, String> {
     if uuid == "—" || uuid.trim().is_empty() {
         return Err("This player's UUID was not found, so offline permissions cannot be changed.".into());
     }
@@ -16296,12 +15110,7 @@ async fn toggle_player_access_remote(
     let running = if instance.panel_host.is_empty() {
         state.remote_running.lock().expect("remote state poisoned").contains_key(&input.id)
     } else {
-        state
-            .panel_live
-            .lock()
-            .expect("panel state poisoned")
-            .get(&input.id)
-            .is_some_and(|one| one.stats.state == "running")
+        state.panel_live.lock().expect("panel state poisoned").get(&input.id).is_some_and(|one| one.stats.state == "running")
     };
     let send = async |line: String, what: &str| -> Result<(), String> {
         let line = launch::console_line(&line)?;
@@ -16330,30 +15139,15 @@ async fn toggle_player_access_remote(
         "ban" => ("banned-players.json", "ban", "pardon"),
         _ => return Err("Unsupported player permission action.".into()),
     };
-    let relative = if pumpkin::is_pumpkin(&instance.core) {
-        format!("data/{file_name}")
-    } else {
-        file_name.to_string()
-    };
-    let text = far_read(app, instance, &relative)
-        .await
-        .unwrap_or_default();
-    let entries = serde_json::from_str::<serde_json::Value>(&text)
-        .ok()
-        .and_then(|value| value.as_array().cloned())
-        .unwrap_or_default();
+    let relative = if pumpkin::is_pumpkin(&instance.core) { format!("data/{file_name}") } else { file_name.to_string() };
+    let text = far_read(app, instance, &relative).await.unwrap_or_default();
+    let entries = serde_json::from_str::<serde_json::Value>(&text).ok().and_then(|value| value.as_array().cloned()).unwrap_or_default();
     let present = entries.iter().any(|entry| {
-        let uuid = entry
-            .get("uuid")
-            .or_else(|| entry.get("UUID"))
-            .and_then(|value| value.as_str());
+        let uuid = entry.get("uuid").or_else(|| entry.get("UUID")).and_then(|value| value.as_str());
         (!input.uuid.trim().is_empty() && uuid == Some(input.uuid.as_str()))
             || (input.uuid.trim().is_empty()
                 && !name.is_empty()
-                && entry
-                    .get("name")
-                    .and_then(|value| value.as_str())
-                    .is_some_and(|found| found.eq_ignore_ascii_case(name)))
+                && entry.get("name").and_then(|value| value.as_str()).is_some_and(|found| found.eq_ignore_ascii_case(name)))
     });
     if running {
         if name.is_empty() {
@@ -16369,40 +15163,21 @@ async fn toggle_player_access_remote(
             return Err("A player name is required.".into());
         }
         let cache = mojang_cache_dir(app)?;
-        let looked = off_runtime(|| mojang::lookup_by_name(&cache, name)).map_err(|error| {
-            format!("No UUID found for {name}. Make sure it is a real account name. ({error})")
-        })?;
+        let looked = off_runtime(|| mojang::lookup_by_name(&cache, name))
+            .map_err(|error| format!("No UUID found for {name}. Make sure it is a real account name. ({error})"))?;
         uuid = looked.uuid;
     }
     let (next, added) = player_list_edit(&text, name, &uuid, &input.action)?;
     far_write(app, instance, &relative, &next).await?;
-    record_audit(
-        app,
-        &input.id,
-        "Player",
-        "Change permissions (SSH)",
-        &format!("{file_name} — {name}"),
-    );
+    record_audit(app, &input.id, "Player", "Change permissions (SSH)", &format!("{file_name} — {name}"));
     Ok(PlayerAccessResult { via_console: false, added })
 }
 
-fn player_list_edit(
-    before: &str,
-    name: &str,
-    uuid: &str,
-    action: &str,
-) -> Result<(String, bool), String> {
-    let mut entries = serde_json::from_str::<serde_json::Value>(before)
-        .ok()
-        .and_then(|value| value.as_array().cloned())
-        .unwrap_or_default();
-    let position = entries.iter().position(|entry| {
-        entry
-            .get("uuid")
-            .or_else(|| entry.get("UUID"))
-            .and_then(|value| value.as_str())
-            == Some(uuid)
-    });
+fn player_list_edit(before: &str, name: &str, uuid: &str, action: &str) -> Result<(String, bool), String> {
+    let mut entries =
+        serde_json::from_str::<serde_json::Value>(before).ok().and_then(|value| value.as_array().cloned()).unwrap_or_default();
+    let position =
+        entries.iter().position(|entry| entry.get("uuid").or_else(|| entry.get("UUID")).and_then(|value| value.as_str()) == Some(uuid));
     if let Some(index) = position {
         entries.remove(index);
     } else {
@@ -16431,12 +15206,7 @@ fn player_named_in_list(folder: &Path, file_name: &str, name: &str) -> bool {
         .and_then(|value| value.as_array().cloned())
         .unwrap_or_default()
         .iter()
-        .any(|entry| {
-            entry
-                .get("name")
-                .and_then(|value| value.as_str())
-                .is_some_and(|found| found.eq_ignore_ascii_case(name))
-        })
+        .any(|entry| entry.get("name").and_then(|value| value.as_str()).is_some_and(|found| found.eq_ignore_ascii_case(name)))
 }
 
 fn player_in_list(folder: &Path, file_name: &str, uuid: &str) -> bool {
@@ -16446,22 +15216,12 @@ fn player_in_list(folder: &Path, file_name: &str, uuid: &str) -> bool {
         .and_then(|value| value.as_array().cloned())
         .unwrap_or_default()
         .iter()
-        .any(|entry| {
-            entry
-                .get("uuid")
-                .or_else(|| entry.get("UUID"))
-                .and_then(|value| value.as_str())
-                == Some(uuid)
-        })
+        .any(|entry| entry.get("uuid").or_else(|| entry.get("UUID")).and_then(|value| value.as_str()) == Some(uuid))
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn toggle_player_access(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    input: PlayerAccessInput,
-) -> Result<PlayerAccessResult, String> {
+async fn toggle_player_access(app: AppHandle, state: State<'_, AppState>, input: PlayerAccessInput) -> Result<PlayerAccessResult, String> {
     let instance = instance_by_id(&app, &input.id)?;
     if is_far(&instance) {
         return toggle_player_access_remote(&app, &state, &instance, &input).await;
@@ -16478,10 +15238,7 @@ async fn toggle_player_access(
             return Err("Players can only be kicked while the server is running.".into());
         }
         record_audit(&app, &input.id, "Player", "Export", name);
-        return Ok(PlayerAccessResult {
-            via_console: true,
-            added: false,
-        });
+        return Ok(PlayerAccessResult { via_console: true, added: false });
     }
 
     let (file_name, add_command, remove_command) = match input.action.as_str() {
@@ -16490,13 +15247,9 @@ async fn toggle_player_access(
         "ban" => ("banned-players.json", "ban", "pardon"),
         _ => return Err("Unsupported player permission action.".into()),
     };
-    let present = player_in_list(folder, file_name, &input.uuid)
-        || (input.uuid.trim().is_empty() && player_named_in_list(folder, file_name, name));
-    let running = state
-        .processes
-        .lock()
-        .expect("process state poisoned")
-        .contains_key(&input.id);
+    let present =
+        player_in_list(folder, file_name, &input.uuid) || (input.uuid.trim().is_empty() && player_named_in_list(folder, file_name, name));
+    let running = state.processes.lock().expect("process state poisoned").contains_key(&input.id);
 
     if running {
         if name.is_empty() {
@@ -16506,17 +15259,8 @@ async fn toggle_player_access(
         if !send_process_command(&state, &input.id, &format!("{verb} {name}"))? {
             return Err("Could not send the command to the server console.".into());
         }
-        record_audit(
-            &app,
-            &input.id,
-            "Player",
-            "Role change",
-            &format!("{verb} {name}"),
-        );
-        return Ok(PlayerAccessResult {
-            via_console: true,
-            added: !present,
-        });
+        record_audit(&app, &input.id, "Player", "Role change", &format!("{verb} {name}"));
+        return Ok(PlayerAccessResult { via_console: true, added: !present });
     }
 
     let mut uuid = input.uuid.clone();
@@ -16525,23 +15269,13 @@ async fn toggle_player_access(
             return Err("A player name is required.".into());
         }
         let cache = mojang_cache_dir(&app)?;
-        let looked = off_runtime(|| mojang::lookup_by_name(&cache, name)).map_err(|error| {
-            format!("No UUID found for {name}. Make sure it is a real account name. ({error})")
-        })?;
+        let looked = off_runtime(|| mojang::lookup_by_name(&cache, name))
+            .map_err(|error| format!("No UUID found for {name}. Make sure it is a real account name. ({error})"))?;
         uuid = looked.uuid;
     }
     let added = update_player_list(folder, file_name, name, &uuid, &input.action)?;
-    record_audit(
-        &app,
-        &input.id,
-        "Player",
-        "Role change",
-        &format!("{file_name} · {}", if added { "Add" } else { "Remove" }),
-    );
-    Ok(PlayerAccessResult {
-        via_console: false,
-        added,
-    })
+    record_audit(&app, &input.id, "Player", "Role change", &format!("{file_name} · {}", if added { "Add" } else { "Remove" }));
+    Ok(PlayerAccessResult { via_console: false, added })
 }
 
 fn addon_compatibility(file_name: &str, kind: &str, client_only: bool) -> String {
@@ -16549,21 +15283,8 @@ fn addon_compatibility(file_name: &str, kind: &str, client_only: bool) -> String
         return String::new();
     }
     let lowered = file_name.to_lowercase();
-    let known_client_only = [
-        "optifine",
-        "sodium",
-        "iris",
-        "xaero",
-        "journeymap",
-        "minimap",
-        "litematica",
-        "replaymod",
-        "entityculling",
-    ];
-    if known_client_only
-        .iter()
-        .any(|needle| lowered.contains(needle))
-    {
+    let known_client_only = ["optifine", "sodium", "iris", "xaero", "journeymap", "minimap", "litematica", "replaymod", "entityculling"];
+    if known_client_only.iter().any(|needle| lowered.contains(needle)) {
         return "May be client only".into();
     }
     if client_only {
@@ -16572,10 +15293,7 @@ fn addon_compatibility(file_name: &str, kind: &str, client_only: bool) -> String
     String::new()
 }
 
-fn modrinth_loader(
-    instance: &ServerInstance,
-    _project_type: &str,
-) -> Result<(&'static str, &'static str), String> {
+fn modrinth_loader(instance: &ServerInstance, _project_type: &str) -> Result<(&'static str, &'static str), String> {
     match instance.core.as_str() {
         "Quilt" => Ok(("mods", "quilt")),
         _ => instance_loader(instance),
@@ -16716,12 +15434,7 @@ fn modrinth_project_detail(project_id: String) -> Result<ProjectDetail, String> 
 
 #[tauri::command(async)]
 #[specta::specta]
-fn list_addon_versions(
-    app: AppHandle,
-    id: String,
-    project_id: String,
-    project_type: String,
-) -> Result<Vec<AddonVersion>, String> {
+fn list_addon_versions(app: AppHandle, id: String, project_id: String, project_type: String) -> Result<Vec<AddonVersion>, String> {
     off_runtime(move || {
         let instance = instance_by_id(&app, &id)?;
         let (_, loader) = modrinth_loader(&instance, &project_type)?;
@@ -16731,9 +15444,7 @@ fn list_addon_versions(
             .build()
             .map_err(|error| error.to_string())?;
         let releases: serde_json::Value = client
-            .get(format!(
-                "https://api.modrinth.com/v2/project/{project_id}/version"
-            ))
+            .get(format!("https://api.modrinth.com/v2/project/{project_id}/version"))
             .send()
             .map_err(|error| format!("Could not fetch the version list: {error}"))?
             .error_for_status()
@@ -16743,13 +15454,7 @@ fn list_addon_versions(
         let list = |item: &serde_json::Value, key: &str| -> Vec<String> {
             item.get(key)
                 .and_then(|value| value.as_array())
-                .map(|items| {
-                    items
-                        .iter()
-                        .filter_map(|one| one.as_str())
-                        .map(str::to_owned)
-                        .collect()
-                })
+                .map(|items| items.iter().filter_map(|one| one.as_str()).map(str::to_owned).collect())
                 .unwrap_or_default()
         };
         Ok(releases
@@ -16761,18 +15466,9 @@ fn list_addon_versions(
                 let loaders = list(item, "loaders");
                 Some(AddonVersion {
                     id: item.get("id")?.as_str()?.to_string(),
-                    name: item
-                        .get("version_number")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or("Unnamed")
-                        .to_string(),
-                    channel: item
-                        .get("version_type")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or("release")
-                        .to_string(),
-                    fits: game_versions.iter().any(|one| one == &instance.version)
-                        && loaders.iter().any(|one| one == loader),
+                    name: item.get("version_number").and_then(|value| value.as_str()).unwrap_or("Unnamed").to_string(),
+                    channel: item.get("version_type").and_then(|value| value.as_str()).unwrap_or("release").to_string(),
+                    fits: game_versions.iter().any(|one| one == &instance.version) && loaders.iter().any(|one| one == loader),
                     changelog: item
                         .get("changelog")
                         .and_then(|value| value.as_str())
@@ -16784,15 +15480,8 @@ fn list_addon_versions(
                         .and_then(|value| value.as_str())
                         .map(markdown::render)
                         .filter(|value| !value.is_empty()),
-                    published: item
-                        .get("date_published")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or_default()
-                        .to_string(),
-                    downloads: item
-                        .get("downloads")
-                        .and_then(serde_json::Value::as_u64)
-                        .unwrap_or(0),
+                    published: item.get("date_published").and_then(|value| value.as_str()).unwrap_or_default().to_string(),
+                    downloads: item.get("downloads").and_then(serde_json::Value::as_u64).unwrap_or(0),
                     game_versions,
                     loaders,
                 })
@@ -16848,7 +15537,9 @@ fn test_cloud(app: AppHandle) -> Result<String, String> {
 #[specta::specta]
 fn install_geyser(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<String, String> {
     let instance = instance_by_id(&app, &id)?;
-    let done = || format!("Geyser and Floodgate are installed. Restart the server, then Bedrock players join on port {} (UDP).", geyser::BEDROCK_PORT);
+    let done = || {
+        format!("Geyser and Floodgate are installed. Restart the server, then Bedrock players join on port {} (UDP).", geyser::BEDROCK_PORT)
+    };
     if geyser::modded(&instance.core) {
         install_modrinth(app.clone(), state.clone(), id.clone(), geyser::GEYSER_MODRINTH.into(), "mod".into(), None)?;
         install_modrinth(app, state, id, geyser::FLOODGATE_MODRINTH.into(), "mod".into(), None)?;
@@ -16865,7 +15556,11 @@ fn install_geyser(app: AppHandle, state: State<'_, AppState>, id: String) -> Res
     let needs_via = latest.as_deref().is_some_and(|newest| geyser::older(&instance.version, newest));
     let installed = off_runtime(|| {
         let running = is_running(&state, &id);
-        let client = crate::net::builder().user_agent(net::USER_AGENT).timeout(Duration::from_secs(90)).build().map_err(|error| error.to_string())?;
+        let client = crate::net::builder()
+            .user_agent(net::USER_AGENT)
+            .timeout(Duration::from_secs(90))
+            .build()
+            .map_err(|error| error.to_string())?;
         for (project, platform) in [("geyser", geyser_on), ("floodgate", floodgate_on)] {
             let build: serde_json::Value = client
                 .get(format!("{}/{project}/versions/latest/builds/latest", geyser::API))
@@ -16903,7 +15598,8 @@ fn install_geyser(app: AppHandle, state: State<'_, AppState>, id: String) -> Res
 
 /// The newest Minecraft release, from Mojang's version list.
 fn latest_release() -> Result<String, String> {
-    let client = crate::net::builder().user_agent(net::USER_AGENT).timeout(Duration::from_secs(20)).build().map_err(|error| error.to_string())?;
+    let client =
+        crate::net::builder().user_agent(net::USER_AGENT).timeout(Duration::from_secs(20)).build().map_err(|error| error.to_string())?;
     let manifest: serde_json::Value = client
         .get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
         .send()
@@ -16930,7 +15626,14 @@ fn put_plugin(app: &AppHandle, instance: &ServerInstance, running: bool, file_na
         if running {
             return Err("Can't install over SSH while the server is running. Please stop it first.".into());
         }
-        return tauri::async_runtime::block_on(watched_upload(app, &instance.remote_host, &instance.path, &format!("plugins/{file_name}"), &bytes, file_name));
+        return tauri::async_runtime::block_on(watched_upload(
+            app,
+            &instance.remote_host,
+            &instance.path,
+            &format!("plugins/{file_name}"),
+            &bytes,
+            file_name,
+        ));
     }
     let folder = Path::new(&instance.path).join("plugins");
     fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
@@ -16976,24 +15679,16 @@ fn install_modrinth(
             .as_array()
             .and_then(|items| {
                 if !picked.is_empty() {
-                    return items
-                        .iter()
-                        .find(|item| item.get("id").and_then(|v| v.as_str()) == Some(picked));
+                    return items.iter().find(|item| item.get("id").and_then(|v| v.as_str()) == Some(picked));
                 }
                 items.iter().find(|item| {
                     item.get("game_versions")
                         .and_then(|value| value.as_array())
-                        .is_some_and(|versions| {
-                            versions
-                                .iter()
-                                .any(|version| version.as_str() == Some(&instance.version))
-                        })
+                        .is_some_and(|versions| versions.iter().any(|version| version.as_str() == Some(&instance.version)))
                         && item
                             .get("loaders")
                             .and_then(|value| value.as_array())
-                            .is_some_and(|loaders| {
-                                loaders.iter().any(|item| item.as_str() == Some(loader))
-                            })
+                            .is_some_and(|loaders| loaders.iter().any(|item| item.as_str() == Some(loader)))
                 })
             })
             .ok_or(if picked.is_empty() {
@@ -17005,30 +15700,17 @@ fn install_modrinth(
             .get("files")
             .and_then(|value| value.as_array())
             .and_then(|files| {
-                files
-                    .iter()
-                    .find(|file| {
-                        file.get("primary")
-                            .and_then(|value| value.as_bool())
-                            .unwrap_or(false)
-                    })
-                    .or_else(|| files.first())
+                files.iter().find(|file| file.get("primary").and_then(|value| value.as_bool()).unwrap_or(false)).or_else(|| files.first())
             })
             .ok_or("No Modrinth release file was found.")?;
-        let file_url = file
-            .get("url")
-            .and_then(|value| value.as_str())
-            .ok_or("The Modrinth file URL is malformed.")?;
+        let file_url = file.get("url").and_then(|value| value.as_str()).ok_or("The Modrinth file URL is malformed.")?;
         let file_name = file
             .get("filename")
             .and_then(|value| value.as_str())
             .and_then(|value| Path::new(value).file_name())
             .and_then(|value| value.to_str())
             .ok_or("The Modrinth file name is malformed.")?;
-        let checksum = file
-            .pointer("/hashes/sha512")
-            .and_then(|value| value.as_str())
-            .ok_or("The Modrinth file has no SHA‑512.")?;
+        let checksum = file.pointer("/hashes/sha512").and_then(|value| value.as_str()).ok_or("The Modrinth file has no SHA‑512.")?;
         if !instance.panel_host.is_empty() {
             let (api, target) = panel_of(&app, &instance)?;
             if tauri::async_runtime::block_on(api.exists(&target, &format!("{folder_name}/{file_name}")))?.is_some() {
@@ -17092,13 +15774,7 @@ fn install_modrinth(
                 &bytes,
                 file_name,
             ))?;
-            record_audit(
-                &app,
-                &id,
-                "Mod",
-                "Modrinth install (SSH)",
-                &format!("Installed {file_name}."),
-            );
+            record_audit(&app, &id, "Mod", "Modrinth install (SSH)", &format!("Installed {file_name}."));
             return Ok(());
         }
         let folder = Path::new(&instance.path).join(folder_name);
@@ -17115,43 +15791,26 @@ fn install_modrinth(
             let _ = fs::remove_file(&staging);
             return Err(error);
         }
-        fs::rename(&staging, &destination)
-            .map_err(|error| format!("Could not install the Modrinth file: {error}"))?;
-        record_audit(
-            &app,
-            &id,
-            "Mod",
-            "Modrinth install",
-            &format!("Installed {file_name}."),
-        );
+        fs::rename(&staging, &destination).map_err(|error| format!("Could not install the Modrinth file: {error}"))?;
+        record_audit(&app, &id, "Mod", "Modrinth install", &format!("Installed {file_name}."));
         Ok(())
     })
 }
 
 fn mrpack_index(path: &Path) -> Result<serde_json::Value, String> {
-    let file =
-        fs::File::open(path).map_err(|error| format!("Could not open the modpack file: {error}"))?;
-    let mut archive = ZipArchive::new(file)
-        .map_err(|error| format!("The .mrpack is malformed: {error}"))?;
-    let mut entry = archive
-        .by_name("modrinth.index.json")
-        .map_err(|_| "modrinth.index.json was not found.".to_string())?;
+    let file = fs::File::open(path).map_err(|error| format!("Could not open the modpack file: {error}"))?;
+    let mut archive = ZipArchive::new(file).map_err(|error| format!("The .mrpack is malformed: {error}"))?;
+    let mut entry = archive.by_name("modrinth.index.json").map_err(|_| "modrinth.index.json was not found.".to_string())?;
     let mut text = String::new();
-    entry
-        .read_to_string(&mut text)
-        .map_err(|error| error.to_string())?;
-    serde_json::from_str(&text)
-        .map_err(|error| format!("modrinth.index.json is malformed: {error}"))
+    entry.read_to_string(&mut text).map_err(|error| error.to_string())?;
+    serde_json::from_str(&text).map_err(|error| format!("modrinth.index.json is malformed: {error}"))
 }
 
 fn mrpack_file_compatibility(file: &serde_json::Value) -> String {
     let Some(server) = file.pointer("/env/server").and_then(|value| value.as_str()) else {
         return "Needs review".into();
     };
-    let client = file
-        .pointer("/env/client")
-        .and_then(|value| value.as_str())
-        .unwrap_or("required");
+    let client = file.pointer("/env/client").and_then(|value| value.as_str()).unwrap_or("required");
     if server == "unsupported" {
         "Client only".into()
     } else if client == "unsupported" {
@@ -17177,12 +15836,10 @@ fn extract_mrpack_overrides(pack: &Path, destination: &Path) -> Result<usize, St
     let mut written = 0_usize;
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(|error| error.to_string())?;
-        let Some(name) = entry.enclosed_name()else {
+        let Some(name) = entry.enclosed_name() else {
             continue;
         };
-        let relative = ["overrides", "server-overrides"]
-            .into_iter()
-            .find_map(|prefix| name.strip_prefix(prefix).ok());
+        let relative = ["overrides", "server-overrides"].into_iter().find_map(|prefix| name.strip_prefix(prefix).ok());
         let Some(relative) = relative else {
             continue;
         };
@@ -17257,7 +15914,13 @@ fn fetch_curseforge_mods(app: AppHandle, state: State<'_, AppState>, id: String,
     let pack = cfpack::read(Path::new(path.trim()))?;
     let files: Vec<u64> = pack.mods.iter().filter(|one| one.required).map(|one| one.file).collect();
     let done = off_runtime(|| curseforge::fetch_mods(&app, &files, Path::new(&instance.path)))?;
-    record_audit(&app, &id, "Mod", "CurseForge mods", &format!("Downloaded {} mods · {} left to download yourself", done.fetched, done.left));
+    record_audit(
+        &app,
+        &id,
+        "Mod",
+        "CurseForge mods",
+        &format!("Downloaded {} mods · {} left to download yourself", done.fetched, done.left),
+    );
     Ok(done)
 }
 
@@ -17273,12 +15936,7 @@ fn preview_cfpack(path: String) -> Result<cfpack::Pack, String> {
 
 #[tauri::command]
 #[specta::specta]
-async fn import_cfpack(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    path: String,
-) -> Result<CfImportResult, String> {
+async fn import_cfpack(app: AppHandle, state: State<'_, AppState>, id: String, path: String) -> Result<CfImportResult, String> {
     let Some(instance) = remote_instance(&app, &id)? else {
         only_local(&app, &id, "CurseForge modpack import")?;
         ensure_stopped(&state, &id)?;
@@ -17288,10 +15946,7 @@ async fn import_cfpack(
             .map_err(|error| error.to_string())?;
     };
     ensure_remote_stopped(&app, &state, &instance).await?;
-    let pack_path = PathBuf::from(path.trim())
-        .canonicalize()
-        .map(plain_path)
-        .map_err(|_| "Modpack file not found.".to_string())?;
+    let pack_path = PathBuf::from(path.trim()).canonicalize().map(plain_path).map_err(|_| "Modpack file not found.".to_string())?;
     let pack = cfpack::read(&pack_path)?;
     let data = app.path().monolab_data_dir().map_err(|error| error.to_string())?;
     let staging = data.join("cfpack-remote").join(format!("{}-{}", instance.id, unix_now()));
@@ -17328,10 +15983,7 @@ async fn import_cfpack(
 
 fn import_cfpack_local(app: AppHandle, id: String, path: String) -> Result<CfImportResult, String> {
     let instance = instance_by_id(&app, &id)?;
-    let pack_path = PathBuf::from(path.trim())
-        .canonicalize()
-        .map(plain_path)
-        .map_err(|_| "Modpack file not found.".to_string())?;
+    let pack_path = PathBuf::from(path.trim()).canonicalize().map(plain_path).map_err(|_| "Modpack file not found.".to_string())?;
     let pack = cfpack::read(&pack_path)?;
     let folder = PathBuf::from(&instance.path);
 
@@ -17346,18 +15998,9 @@ fn import_cfpack_local(app: AppHandle, id: String, path: String) -> Result<CfImp
         &id,
         "Mod",
         "CurseForge modpack import",
-        &format!(
-            "{} {} · {overrides} config files · {} mods to download yourself",
-            pack.name,
-            pack.version,
-            pack.mods.len()
-        ),
+        &format!("{} {} · {overrides} config files · {} mods to download yourself", pack.name, pack.version, pack.mods.len()),
     );
-    Ok(CfImportResult {
-        overrides,
-        left: pack.mods.len(),
-        list_path: list.to_string_lossy().to_string(),
-    })
+    Ok(CfImportResult { overrides, left: pack.mods.len(), list_path: list.to_string_lossy().to_string() })
 }
 
 #[tauri::command(async)]
@@ -17371,8 +16014,7 @@ fn search_modpacks(query: String, page: Option<u32>) -> Result<CatalogPage, Stri
             .timeout(Duration::from_secs(20))
             .build()
             .map_err(|error| error.to_string())?;
-        let facets = serde_json::to_string(&vec![vec!["project_type:modpack"]])
-            .map_err(|error| error.to_string())?;
+        let facets = serde_json::to_string(&vec![vec!["project_type:modpack"]]).map_err(|error| error.to_string())?;
         let offset = (page * per_page).to_string();
         let limit = per_page.to_string();
         let response: serde_json::Value = client
@@ -17402,18 +16044,10 @@ fn search_modpacks(query: String, page: Option<u32>) -> Result<CatalogPage, Stri
                     source: "Modrinth".into(),
                     project_id,
                     title: hit.get("title")?.as_str()?.into(),
-                    description: hit
-                        .get("description")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or_default()
-                        .into(),
+                    description: hit.get("description").and_then(|value| value.as_str()).unwrap_or_default().into(),
                     project_type: "modpack".into(),
                     installable: true,
-                    icon_url: hit
-                        .get("icon_url")
-                        .and_then(|value| value.as_str())
-                        .filter(|value| !value.is_empty())
-                        .map(str::to_string),
+                    icon_url: hit.get("icon_url").and_then(|value| value.as_str()).filter(|value| !value.is_empty()).map(str::to_string),
                     author: hit.get("author").and_then(|value| value.as_str()).map(str::to_owned),
                     downloads: hit.get("downloads").and_then(|value| value.as_u64()),
                     follows: hit.get("follows").and_then(|value| value.as_u64()),
@@ -17423,11 +16057,7 @@ fn search_modpacks(query: String, page: Option<u32>) -> Result<CatalogPage, Stri
                 })
             })
             .collect();
-        Ok(CatalogPage {
-            has_more: hits.len() as u32 >= per_page,
-            hits,
-            page,
-        })
+        Ok(CatalogPage { has_more: hits.len() as u32 >= per_page, hits, page })
     })
 }
 
@@ -17491,11 +16121,7 @@ fn search_datapacks(app: AppHandle, id: String, query: String, page: Option<u32>
                     description: hit.get("description").and_then(|value| value.as_str()).unwrap_or_default().into(),
                     project_type: "datapack".into(),
                     installable: true,
-                    icon_url: hit
-                        .get("icon_url")
-                        .and_then(|value| value.as_str())
-                        .filter(|value| !value.is_empty())
-                        .map(str::to_string),
+                    icon_url: hit.get("icon_url").and_then(|value| value.as_str()).filter(|value| !value.is_empty()).map(str::to_string),
                     author: hit.get("author").and_then(|value| value.as_str()).map(str::to_owned),
                     downloads: hit.get("downloads").and_then(|value| value.as_u64()),
                     follows: hit.get("follows").and_then(|value| value.as_u64()),
@@ -17542,7 +16168,12 @@ async fn install_datapack(app: AppHandle, id: String, project_id: String) -> Res
                 let file = release
                     .get("files")
                     .and_then(|value| value.as_array())
-                    .and_then(|files| files.iter().find(|file| file.get("primary").and_then(|one| one.as_bool()).unwrap_or(false)).or_else(|| files.first()))
+                    .and_then(|files| {
+                        files
+                            .iter()
+                            .find(|file| file.get("primary").and_then(|one| one.as_bool()).unwrap_or(false))
+                            .or_else(|| files.first())
+                    })
                     .ok_or("No Modrinth release file was found.")?;
                 let url = file.get("url").and_then(|value| value.as_str()).ok_or("The Modrinth file URL is malformed.")?;
                 let name = file
@@ -17555,7 +16186,8 @@ async fn install_datapack(app: AppHandle, id: String, project_id: String) -> Res
                 if !name.to_ascii_lowercase().ends_with(".zip") {
                     return Err(format!("{name} is not a datapack zip."));
                 }
-                let checksum = file.pointer("/hashes/sha512").and_then(|value| value.as_str()).ok_or("The Modrinth file has no SHA‑512.")?;
+                let checksum =
+                    file.pointer("/hashes/sha512").and_then(|value| value.as_str()).ok_or("The Modrinth file has no SHA‑512.")?;
                 let staging = std::env::temp_dir().join(format!("monolab-datapack-{}", unix_now()));
                 download_file_watched(&client, url, &staging, &mut |received, total| {
                     tell_addon_download(&app, "", &project_id, &name, received, total);
@@ -17599,10 +16231,7 @@ fn download_modpack(app: AppHandle, project_id: String) -> Result<String, String
             .build()
             .map_err(|error| error.to_string())?;
         let versions: serde_json::Value = client
-            .get(format!(
-                "https://api.modrinth.com/v2/project/{}/version",
-                project_id.trim()
-            ))
+            .get(format!("https://api.modrinth.com/v2/project/{}/version", project_id.trim()))
             .send()
             .map_err(|error| format!("Could not fetch modpack versions: {error}"))?
             .error_for_status()
@@ -17615,21 +16244,11 @@ fn download_modpack(app: AppHandle, project_id: String) -> Result<String, String
             .flatten()
             .find_map(|version| {
                 let files = version.get("files")?.as_array()?;
-                let file = files
-                    .iter()
-                    .find(|one| one.get("primary").and_then(|v| v.as_bool()) == Some(true))
-                    .or_else(|| files.first())?;
-                Some((
-                    file.get("url")?.as_str()?.to_string(),
-                    file.get("filename")?.as_str()?.to_string(),
-                ))
+                let file = files.iter().find(|one| one.get("primary").and_then(|v| v.as_bool()) == Some(true)).or_else(|| files.first())?;
+                Some((file.get("url")?.as_str()?.to_string(), file.get("filename")?.as_str()?.to_string()))
             })
             .ok_or("No downloadable file was found in this modpack.")?;
-        let dir = app
-            .path()
-            .monolab_data_dir()
-            .map_err(|error| error.to_string())?
-            .join("uploads");
+        let dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?.join("uploads");
         fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
         let safe: String = Path::new(&name)
             .file_name()
@@ -17661,32 +16280,22 @@ fn preview_mrpack(path: String) -> Result<Vec<MrpackFileEntry>, String> {
             Some(MrpackFileEntry {
                 path: file.get("path")?.as_str()?.into(),
                 compatibility: mrpack_file_compatibility(file),
-                download_count: file
-                    .get("downloads")
-                    .and_then(|value| value.as_array())
-                    .map_or(0, Vec::len),
+                download_count: file.get("downloads").and_then(|value| value.as_array()).map_or(0, Vec::len),
             })
         })
         .collect())
 }
 
-fn stage_mrpack(
-    app: &AppHandle,
-    instance: &ServerInstance,
-    input: &MrpackImportInput,
-    root: &Path,
-) -> Result<(usize, usize), String> {
+fn stage_mrpack(app: &AppHandle, instance: &ServerInstance, input: &MrpackImportInput, root: &Path) -> Result<(usize, usize), String> {
     let app = app.clone();
     let root = root.to_path_buf();
     off_runtime(|| {
         let pack = PathBuf::from(input.path.trim())
-            .canonicalize().map(plain_path)
+            .canonicalize()
+            .map(plain_path)
             .map_err(|_| "The .mrpack file could not be found.".to_string())?;
         let index = mrpack_index(&pack)?;
-        let files = index
-            .get("files")
-            .and_then(|value| value.as_array())
-            .ok_or("The modpack has no file list.")?;
+        let files = index.get("files").and_then(|value| value.as_array()).ok_or("The modpack has no file list.")?;
         let client = crate::net::builder()
             .user_agent("Monolab/0.1.0 (local Windows desktop app)")
             .timeout(Duration::from_secs(90))
@@ -17695,10 +16304,7 @@ fn stage_mrpack(
         let mut downloads = Vec::new();
         let mut paths = HashSet::new();
         for file in files {
-            let relative = file
-                .get("path")
-                .and_then(|value| value.as_str())
-                .ok_or("The modpack file path is malformed.")?;
+            let relative = file.get("path").and_then(|value| value.as_str()).ok_or("The modpack file path is malformed.")?;
             let path = safe_pack_relative_path(relative)?;
             if mrpack_file_compatibility(file) == "Client only" && !input.include_client_only {
                 continue;
@@ -17709,10 +16315,7 @@ fn stage_mrpack(
                 .and_then(|items| items.first())
                 .and_then(|value| value.as_str())
                 .ok_or("The modpack file has no download URL.")?;
-            let checksum = file
-                .pointer("/hashes/sha512")
-                .and_then(|value| value.as_str())
-                .ok_or("The modpack file has no SHA‑512.")?;
+            let checksum = file.pointer("/hashes/sha512").and_then(|value| value.as_str()).ok_or("The modpack file has no SHA‑512.")?;
             let destination = root.join(&path);
             if !destination.starts_with(&root) {
                 return Err("The modpack file path is malformed.".into());
@@ -17724,16 +16327,13 @@ fn stage_mrpack(
         }
         let has_overrides = mrpack_has_overrides(&pack)?;
         if downloads.is_empty() && !has_overrides {
-            return Err(
-                "No server‑side mods to install. Check whether client‑only mods are included.".into(),
-            );
+            return Err("No server‑side mods to install. Check whether client‑only mods are included.".into());
         }
-        let staging_root = app
-            .path()
-            .monolab_data_dir()
-            .map_err(|error| error.to_string())?
-            .join("mrpack-staging")
-            .join(format!("{}-{}", instance.id, unix_now()));
+        let staging_root = app.path().monolab_data_dir().map_err(|error| error.to_string())?.join("mrpack-staging").join(format!(
+            "{}-{}",
+            instance.id,
+            unix_now()
+        ));
         fs::create_dir_all(&staging_root).map_err(|error| error.to_string())?;
         let stage_result = (|| -> Result<(), String> {
             for (done, (relative, url, checksum)) in downloads.iter().enumerate() {
@@ -17763,8 +16363,7 @@ fn stage_mrpack(
             if let Some(parent) = destination.parent() {
                 fs::create_dir_all(parent).map_err(|error| error.to_string())?;
             }
-            fs::copy(&source, &destination)
-                .map_err(|error| format!("Could not install the modpack file: {error}"))?;
+            fs::copy(&source, &destination).map_err(|error| format!("Could not install the modpack file: {error}"))?;
         }
         let _ = fs::remove_dir_all(&staging_root);
         let overrides = extract_mrpack_overrides(&pack, &root)?;
@@ -17772,61 +16371,38 @@ fn stage_mrpack(
     })
 }
 
-fn import_mrpack_local(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    input: MrpackImportInput,
-) -> Result<usize, String> {
+fn import_mrpack_local(app: AppHandle, state: State<'_, AppState>, input: MrpackImportInput) -> Result<usize, String> {
     ensure_stopped(&state, &input.id)?;
     let instance = instance_by_id(&app, &input.id)?;
-    let root = Path::new(&instance.path)
-        .canonicalize().map(plain_path)
-        .map_err(|error| error.to_string())?;
+    let root = Path::new(&instance.path).canonicalize().map(plain_path).map_err(|error| error.to_string())?;
     let (mods, overrides) = stage_mrpack(&app, &instance, &input, &root)?;
-    record_audit(
-        &app,
-        &input.id,
-        "Modpack",
-        "Modpack import",
-        &format!("Installed {mods} mods and {overrides} config files."),
-    );
+    record_audit(&app, &input.id, "Modpack", "Modpack import", &format!("Installed {mods} mods and {overrides} config files."));
     Ok(mods)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn import_mrpack(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    input: MrpackImportInput,
-) -> Result<usize, String> {
+async fn import_mrpack(app: AppHandle, state: State<'_, AppState>, input: MrpackImportInput) -> Result<usize, String> {
     let Some(instance) = remote_instance(&app, &input.id)? else {
         return import_mrpack_local(app, state, input);
     };
     ensure_remote_stopped(&app, &state, &instance).await?;
-    let staging = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?
-        .join("mrpack-remote")
-        .join(format!("{}-{}", instance.id, unix_now()));
+    let staging = app.path().monolab_data_dir().map_err(|error| error.to_string())?.join("mrpack-remote").join(format!(
+        "{}-{}",
+        instance.id,
+        unix_now()
+    ));
     fs::create_dir_all(&staging).map_err(|error| error.to_string())?;
     let staged = stage_mrpack(&app, &instance, &input, &staging);
     let result = match staged {
-        Ok((mods, overrides)) => remote::upload_tree(&app, &instance.remote_host, &instance.path, &staging)
-            .await
-            .map(|_| (mods, overrides)),
+        Ok((mods, overrides)) => {
+            remote::upload_tree(&app, &instance.remote_host, &instance.path, &staging).await.map(|_| (mods, overrides))
+        }
         Err(error) => Err(error),
     };
     let _ = fs::remove_dir_all(&staging);
     let (mods, overrides) = result?;
-    record_audit(
-        &app,
-        &input.id,
-        "Modpack",
-        "Import modpack (SSH)",
-        &format!("Installed {mods} mods and {overrides} config files."),
-    );
+    record_audit(&app, &input.id, "Modpack", "Import modpack (SSH)", &format!("Installed {mods} mods and {overrides} config files."));
     Ok(mods)
 }
 
@@ -17843,13 +16419,8 @@ fn modpack_target(index: &serde_json::Value) -> Result<ModpackTarget, String> {
         .get("dependencies")
         .and_then(|value| value.as_object())
         .ok_or("The modpack does not say which Minecraft version or loader it needs.")?;
-    let text = |key: &str| {
-        deps.get(key)
-            .and_then(|value| value.as_str())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-    };
+    let text =
+        |key: &str| deps.get(key).and_then(|value| value.as_str()).map(str::trim).filter(|value| !value.is_empty()).map(str::to_string);
     let version = text("minecraft").ok_or("The modpack does not say which Minecraft version it needs.")?;
     let (core, build) = if let Some(loader) = text("fabric-loader") {
         ("Fabric", loader)
@@ -17869,12 +16440,7 @@ fn modpack_target(index: &serde_json::Value) -> Result<ModpackTarget, String> {
         .filter(|value| !value.is_empty())
         .unwrap_or("Modpack server")
         .to_string();
-    Ok(ModpackTarget {
-        name,
-        core: core.into(),
-        version,
-        build,
-    })
+    Ok(ModpackTarget { name, core: core.into(), version, build })
 }
 
 #[derive(Clone, Debug, Deserialize, specta::Type)]
@@ -17891,15 +16457,8 @@ struct ModpackCreateInput {
 
 #[tauri::command(async)]
 #[specta::specta]
-fn create_from_modpack(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    input: ModpackCreateInput,
-) -> Result<InstanceView, String> {
-    let _ = app.emit(
-        "server-download",
-        serde_json::json!({ "stage": "pack", "core": "", "version": "" }),
-    );
+fn create_from_modpack(app: AppHandle, state: State<'_, AppState>, input: ModpackCreateInput) -> Result<InstanceView, String> {
+    let _ = app.emit("server-download", serde_json::json!({ "stage": "pack", "core": "", "version": "" }));
     let path = match input.path {
         Some(path) if !path.trim().is_empty() => path,
         _ => download_modpack(app.clone(), input.project_id.clone())?,
@@ -17924,20 +16483,10 @@ fn create_from_modpack(
     };
     let view = match make(target.build.clone()) {
         Ok(view) => view,
-        Err(error) if !target.build.is_empty() && error.contains("not found") => {
-            make(String::new())?
-        }
+        Err(error) if !target.build.is_empty() && error.contains("not found") => make(String::new())?,
         Err(error) => return Err(error),
     };
-    let put = import_mrpack_local(
-        app.clone(),
-        state,
-        MrpackImportInput {
-            id: view.instance.id.clone(),
-            path,
-            include_client_only: false,
-        },
-    );
+    let put = import_mrpack_local(app.clone(), state, MrpackImportInput { id: view.instance.id.clone(), path, include_client_only: false });
     if let Err(error) = put {
         let _store = lock_instance_store();
         if let Ok(mut instances) = load_instances(&app) {
@@ -17953,9 +16502,8 @@ fn create_from_modpack(
 fn mrpack_has_overrides(pack: &Path) -> Result<bool, String> {
     let file = fs::File::open(pack).map_err(|error| error.to_string())?;
     let archive = ZipArchive::new(file).map_err(|error| error.to_string())?;
-    let found = archive
-        .file_names()
-        .any(|name| name.is_ok_and(|name| name.starts_with("overrides/") || name.starts_with("server-overrides/")));
+    let found =
+        archive.file_names().any(|name| name.is_ok_and(|name| name.starts_with("overrides/") || name.starts_with("server-overrides/")));
     Ok(found)
 }
 
@@ -17983,19 +16531,11 @@ async fn scan_addons(app: AppHandle, id: String) -> Result<Vec<AddonEntry>, Stri
     if !instance.remote_host.is_empty() {
         let mut out = Vec::new();
         for sub in ["plugins", "mods"] {
-            out.extend(
-            remote::addon_files(&app, &instance.remote_host, &instance.path, sub)
-                .await
-                .unwrap_or_default()
-                .into_iter()
-                .map(|one| {
+            out.extend(remote::addon_files(&app, &instance.remote_host, &instance.path, sub).await.unwrap_or_default().into_iter().map(
+                |one| {
                     let enabled = !one.name.ends_with(".disabled");
                     AddonEntry {
-                        name: one
-                            .name
-                            .trim_end_matches(".disabled")
-                            .trim_end_matches(".jar")
-                            .to_string(),
+                        name: one.name.trim_end_matches(".disabled").trim_end_matches(".jar").to_string(),
                         file_name: one.name,
                         kind: sub.trim_end_matches('s').into(),
                         enabled,
@@ -18004,8 +16544,8 @@ async fn scan_addons(app: AppHandle, id: String) -> Result<Vec<AddonEntry>, Stri
                         version: String::new(),
                         icon: None,
                     }
-                }),
-            );
+                },
+            ));
         }
         return Ok(out);
     }
@@ -18039,16 +16579,9 @@ async fn scan_addons(app: AppHandle, id: String) -> Result<Vec<AddonEntry>, Stri
             continue;
         }
         let mut jars: Vec<(PathBuf, String, bool)> = Vec::new();
-        for entry in fs::read_dir(directory)
-            .map_err(|error| error.to_string())?
-            .flatten()
-        {
+        for entry in fs::read_dir(directory).map_err(|error| error.to_string())?.flatten() {
             let path = entry.path();
-            let file_name = path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or_default()
-                .to_string();
+            let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default().to_string();
             let enabled = file_name.ends_with(".jar");
             if !enabled && !file_name.ends_with(".jar.disabled") {
                 continue;
@@ -18058,11 +16591,7 @@ async fn scan_addons(app: AppHandle, id: String) -> Result<Vec<AddonEntry>, Stri
         addons.extend(in_parallel(jars, |(path, file_name, enabled)| {
             let facts = addons::read_jar(&path, kind);
             AddonEntry {
-                name: if facts.listed_name.trim().is_empty() {
-                    facts.display_name
-                } else {
-                    facts.listed_name
-                },
+                name: if facts.listed_name.trim().is_empty() { facts.display_name } else { facts.listed_name },
                 compatibility: addon_compatibility(&file_name, kind, facts.client_only),
                 file_name,
                 kind: kind.into(),
@@ -18077,22 +16606,16 @@ async fn scan_addons(app: AppHandle, id: String) -> Result<Vec<AddonEntry>, Stri
     Ok(addons)
 }
 
-fn addon_file_in(
-    instance: &ServerInstance,
-    folder: &str,
-    file_name: &str,
-) -> Result<(PathBuf, PathBuf), String> {
+fn addon_file_in(instance: &ServerInstance, folder: &str, file_name: &str) -> Result<(PathBuf, PathBuf), String> {
     if file_name.contains(['/', '\\']) {
         return Err(paths::PathError::Invalid.into());
     }
     let root = Path::new(&instance.path);
-    let allowed = paths::resolve_in_server(root, folder)
-        .map_err(|_| "Add‑on folder not found.".to_string())?;
-    let normalized = paths::resolve_in_server(root, &format!("{folder}/{file_name}"))
-        .map_err(|error| match error {
-            paths::PathError::Missing => "Target not found.".to_string(),
-            other => other.to_string(),
-        })?;
+    let allowed = paths::resolve_in_server(root, folder).map_err(|_| "Add‑on folder not found.".to_string())?;
+    let normalized = paths::resolve_in_server(root, &format!("{folder}/{file_name}")).map_err(|error| match error {
+        paths::PathError::Missing => "Target not found.".to_string(),
+        other => other.to_string(),
+    })?;
     if normalized.parent() != Some(allowed.as_path()) {
         return Err("Files outside the allowed add‑on folder cannot be changed.".into());
     }
@@ -18101,13 +16624,7 @@ fn addon_file_in(
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn delete_addon(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    file_name: String,
-    kind: String,
-) -> Result<(), String> {
+async fn delete_addon(app: AppHandle, state: State<'_, AppState>, id: String, file_name: String, kind: String) -> Result<(), String> {
     {
         let instance = instance_by_id(&app, &id)?;
         if !instance.panel_host.is_empty() {
@@ -18125,13 +16642,7 @@ async fn delete_addon(
         if !instance.remote_host.is_empty() {
             let folder = if kind == "plugin" { "plugins" } else { "mods" };
             let name = plain_name(&file_name)?;
-            remote::trash_path(
-                &app,
-                &instance.remote_host,
-                &instance.path,
-                &format!("{folder}/{name}"),
-            )
-            .await?;
+            remote::trash_path(&app, &instance.remote_host, &instance.path, &format!("{folder}/{name}")).await?;
             record_audit(&app, &id, "Mod", "Delete (SSH)", name);
             return Ok(());
         }
@@ -18149,53 +16660,27 @@ async fn delete_addon(
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn toggle_addon(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    file_name: String,
-    kind: String,
-) -> Result<String, String> {
+async fn toggle_addon(app: AppHandle, state: State<'_, AppState>, id: String, file_name: String, kind: String) -> Result<String, String> {
     {
         let instance = instance_by_id(&app, &id)?;
         if !instance.panel_host.is_empty() {
             ensure_panel_stopped(&app, &instance).await?;
             let folder = if kind == "plugin" { "plugins" } else { "mods" };
             let name = plain_name(&file_name)?;
-            let to = if name.ends_with(".disabled") {
-                name.trim_end_matches(".disabled").to_string()
-            } else {
-                format!("{name}.disabled")
-            };
+            let to = if name.ends_with(".disabled") { name.trim_end_matches(".disabled").to_string() } else { format!("{name}.disabled") };
             let (api, target) = panel_of(&app, &instance)?;
             pfs::move_path(&api, &target, &format!("{folder}/{name}"), &format!("{folder}/{to}")).await?;
             record_audit(&app, &id, "Mod", "Enable/disable (panel)", &to);
             return Ok(to);
         }
         if !instance.remote_host.is_empty() {
-            if state
-                .remote_running
-                .lock()
-                .expect("remote state poisoned")
-                .contains_key(&id)
-            {
+            if state.remote_running.lock().expect("remote state poisoned").contains_key(&id) {
                 return Err("Stop the server first.".into());
             }
             let folder = if kind == "plugin" { "plugins" } else { "mods" };
             let name = plain_name(&file_name)?;
-            let to = if name.ends_with(".disabled") {
-                name.trim_end_matches(".disabled").to_string()
-            } else {
-                format!("{name}.disabled")
-            };
-            remote::move_path(
-                &app,
-                &instance.remote_host,
-                &instance.path,
-                &format!("{folder}/{name}"),
-                &format!("{folder}/{to}"),
-            )
-            .await?;
+            let to = if name.ends_with(".disabled") { name.trim_end_matches(".disabled").to_string() } else { format!("{name}.disabled") };
+            remote::move_path(&app, &instance.remote_host, &instance.path, &format!("{folder}/{name}"), &format!("{folder}/{to}")).await?;
             record_audit(&app, &id, "Mod", "Enable/disable (SSH)", &to);
             return Ok(to);
         }
@@ -18211,25 +16696,14 @@ async fn toggle_addon(
     } else {
         format!("{file_name}.disabled")
     };
-    fs::rename(normalized, allowed.join(&new_name))
-        .map_err(|error| format!("Could not toggle the add‑on: {error}"))?;
-    record_audit(
-        &app,
-        &id,
-        "Mod",
-        "Add‑on toggled",
-        &format!("{file_name} -> {new_name}"),
-    );
+    fs::rename(normalized, allowed.join(&new_name)).map_err(|error| format!("Could not toggle the add‑on: {error}"))?;
+    record_audit(&app, &id, "Mod", "Add‑on toggled", &format!("{file_name} -> {new_name}"));
     Ok(new_name)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn upgrade_instance(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    input: UpgradeInput,
-) -> Result<UpgradeHistoryEntry, String> {
+async fn upgrade_instance(app: AppHandle, state: State<'_, AppState>, input: UpgradeInput) -> Result<UpgradeHistoryEntry, String> {
     if let Some(instance) = remote_instance(&app, &input.id)? {
         ensure_remote_stopped(&app, &state, &instance).await?;
         return upgrade_remote(&app, instance, &input).await;
@@ -18244,9 +16718,7 @@ async fn upgrade_instance(
         return Err("Forge and NeoForge use an installer layout that automatic upgrades don't support yet. Back up, create a new server and move your settings over.".into());
     }
     let core = core_after(&instance.core, input.target_core.as_deref())?;
-    let root = Path::new(&instance.path)
-        .canonicalize().map(plain_path)
-        .map_err(|error| error.to_string())?;
+    let root = Path::new(&instance.path).canonicalize().map(plain_path).map_err(|error| error.to_string())?;
     let current = instance
         .server_jar
         .as_ref()
@@ -18254,7 +16726,8 @@ async fn upgrade_instance(
         .filter(|path| path.is_file())
         .or_else(|| find_jar(&root))
         .ok_or("The server jar to replace was not found.")?
-        .canonicalize().map(plain_path)
+        .canonicalize()
+        .map(plain_path)
         .map_err(|error| error.to_string())?;
     if !current.starts_with(&root) {
         return Err("A jar outside the server folder cannot be upgraded automatically.".into());
@@ -18265,13 +16738,8 @@ async fn upgrade_instance(
     let stamp = unix_now();
     let stash = upgrade_dir(&app, &instance.id)?;
     let staging = stash.join(format!("upgrade-{stamp}"));
-    fs::create_dir_all(&staging)
-        .map_err(|error| format!("Could not create the upgrade staging folder: {error}"))?;
-    let wanted = input
-        .target_build
-        .as_deref()
-        .map(str::trim)
-        .filter(|one| !one.is_empty());
+    fs::create_dir_all(&staging).map_err(|error| format!("Could not create the upgrade staging folder: {error}"))?;
+    let wanted = input.target_build.as_deref().map(str::trim).filter(|one| !one.is_empty());
     let downloaded = match download_server_jar(&app, &core, target, wanted, &staging, "") {
         Ok(Some(path)) => path,
         Ok(None) => {
@@ -18283,21 +16751,14 @@ async fn upgrade_instance(
             return Err(error);
         }
     };
-    let current_name = current
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or("The current jar file name is malformed.")?
-        .to_string();
+    let current_name = current.file_name().and_then(|name| name.to_str()).ok_or("The current jar file name is malformed.")?.to_string();
     let previous = stash.join(format!("previous-{stamp}-{current_name}"));
-    move_file(&current, &previous)
-        .map_err(|error| format!("Could not keep the existing jar: {error}"))?;
+    move_file(&current, &previous).map_err(|error| format!("Could not keep the existing jar: {error}"))?;
     let destination = root.join(core_file_name(&core));
     if let Err(error) = move_file(&downloaded, &destination) {
         let _ = move_file(&previous, &current);
         let _ = fs::remove_dir_all(&staging);
-        return Err(format!(
-            "Could not swap in the new jar, so the old one was restored: {error}"
-        ));
+        return Err(format!("Could not swap in the new jar, so the old one was restored: {error}"));
     }
     let _ = fs::remove_dir_all(&staging);
     let switched = core != instance.core;
@@ -18312,10 +16773,7 @@ async fn upgrade_instance(
     };
     let _store = lock_instance_store();
     let mut instances = load_instances(&app)?;
-    let saved = instances
-        .iter_mut()
-        .find(|saved| saved.id == instance.id)
-        .ok_or("Server not found.")?;
+    let saved = instances.iter_mut().find(|saved| saved.id == instance.id).ok_or("Server not found.")?;
     saved.version = target.into();
     saved.core = core.clone();
     saved.core_build = wanted.unwrap_or("").to_string();
@@ -18324,26 +16782,12 @@ async fn upgrade_instance(
     let mut history = read_upgrade_history(&app);
     history.push(entry.clone());
     write_upgrade_history(&app, history);
-    record_audit(
-        &app,
-        &entry.server_id,
-        "Upgrade",
-        "Server upgrade",
-        &format!("{} → {}", entry.from_version, entry.to_version),
-    );
+    record_audit(&app, &entry.server_id, "Upgrade", "Server upgrade", &format!("{} → {}", entry.from_version, entry.to_version));
     Ok(entry)
 }
 
-async fn ensure_remote_stopped(
-    app: &AppHandle,
-    state: &AppState,
-    instance: &ServerInstance,
-) -> Result<(), String> {
-    let listed = state
-        .remote_running
-        .lock()
-        .expect("remote state poisoned")
-        .contains_key(&instance.id);
+async fn ensure_remote_stopped(app: &AppHandle, state: &AppState, instance: &ServerInstance) -> Result<(), String> {
+    let listed = state.remote_running.lock().expect("remote state poisoned").contains_key(&instance.id);
     if listed {
         return Err("Stop the server first.".into());
     }
@@ -18356,11 +16800,7 @@ async fn ensure_remote_stopped(
     Ok(())
 }
 
-async fn upgrade_remote(
-    app: &AppHandle,
-    instance: ServerInstance,
-    input: &UpgradeInput,
-) -> Result<UpgradeHistoryEntry, String> {
+async fn upgrade_remote(app: &AppHandle, instance: ServerInstance, input: &UpgradeInput) -> Result<UpgradeHistoryEntry, String> {
     let target = input.target_version.trim();
     if target.is_empty() {
         return Err("Choose the Minecraft version to upgrade to.".into());
@@ -18386,13 +16826,8 @@ async fn upgrade_remote(
     let stamp = unix_now();
     let stash = upgrade_dir(app, &instance.id)?;
     let staging = stash.join(format!("upgrade-{stamp}"));
-    fs::create_dir_all(&staging)
-        .map_err(|error| format!("Could not create the upgrade staging folder: {error}"))?;
-    let wanted = input
-        .target_build
-        .as_deref()
-        .map(str::trim)
-        .filter(|one| !one.is_empty());
+    fs::create_dir_all(&staging).map_err(|error| format!("Could not create the upgrade staging folder: {error}"))?;
+    let wanted = input.target_build.as_deref().map(str::trim).filter(|one| !one.is_empty());
     tell_job(app, "upgrade", &instance.name, "fetching", 0, 0);
     let downloaded = download_server_jar(app, &core, target, wanted, &staging, "");
     let bytes = match downloaded {
@@ -18409,8 +16844,7 @@ async fn upgrade_remote(
         }
     };
     tell_job(app, "upgrade", &instance.name, "swapping", 0, 0);
-    let previous =
-        remote::swap_core(app, &instance.remote_host, &instance.path, &jar, &bytes, stamp).await;
+    let previous = remote::swap_core(app, &instance.remote_host, &instance.path, &jar, &bytes, stamp).await;
     tell_job(app, "upgrade", &instance.name, "done", 0, 0);
     let previous = previous?;
     let switched = core != instance.core;
@@ -18426,10 +16860,7 @@ async fn upgrade_remote(
     {
         let _store = lock_instance_store();
         let mut instances = load_instances(app)?;
-        let saved = instances
-            .iter_mut()
-            .find(|saved| saved.id == instance.id)
-            .ok_or("Server not found.")?;
+        let saved = instances.iter_mut().find(|saved| saved.id == instance.id).ok_or("Server not found.")?;
         saved.version = target.into();
         saved.core = core.clone();
         saved.core_build = wanted.unwrap_or("").to_string();
@@ -18438,47 +16869,18 @@ async fn upgrade_remote(
     let mut history = read_upgrade_history(app);
     history.push(entry.clone());
     write_upgrade_history(app, history);
-    record_audit(
-        app,
-        &entry.server_id,
-        "Upgrade",
-        "Upgrade server (SSH)",
-        &format!("{} → {}", entry.from_version, entry.to_version),
-    );
+    record_audit(app, &entry.server_id, "Upgrade", "Upgrade server (SSH)", &format!("{} → {}", entry.from_version, entry.to_version));
     Ok(entry)
 }
 
-async fn rollback_remote(
-    app: &AppHandle,
-    instance: ServerInstance,
-) -> Result<UpgradeHistoryEntry, String> {
-    let entry = list_upgrade_history(app.clone(), instance.id.clone())
-        .into_iter()
-        .next()
-        .ok_or("No upgrade to roll back.")?;
-    let jar = instance
-        .server_jar
-        .as_deref()
-        .map(str::trim)
-        .filter(|one| !one.is_empty())
-        .ok_or("Server jar file not found.")?
-        .to_string();
-    remote::restore_core(
-        app,
-        &instance.remote_host,
-        &instance.path,
-        &jar,
-        &entry.previous_jar,
-        unix_now(),
-    )
-    .await?;
+async fn rollback_remote(app: &AppHandle, instance: ServerInstance) -> Result<UpgradeHistoryEntry, String> {
+    let entry = list_upgrade_history(app.clone(), instance.id.clone()).into_iter().next().ok_or("No upgrade to roll back.")?;
+    let jar = instance.server_jar.as_deref().map(str::trim).filter(|one| !one.is_empty()).ok_or("Server jar file not found.")?.to_string();
+    remote::restore_core(app, &instance.remote_host, &instance.path, &jar, &entry.previous_jar, unix_now()).await?;
     {
         let _store = lock_instance_store();
         let mut instances = load_instances(app)?;
-        let saved = instances
-            .iter_mut()
-            .find(|saved| saved.id == instance.id)
-            .ok_or("Server not found.")?;
+        let saved = instances.iter_mut().find(|saved| saved.id == instance.id).ok_or("Server not found.")?;
         saved.version = entry.from_version.clone();
         if let Some(core) = &entry.from_core {
             saved.core = core.clone();
@@ -18486,23 +16888,14 @@ async fn rollback_remote(
         saved.core_build = String::new();
         save_instances(app, &instances)?;
     }
-    record_audit(
-        app,
-        &instance.id,
-        "Upgrade",
-        "Revert upgrade (SSH)",
-        &format!("Rolled back to version {}", entry.from_version),
-    );
+    record_audit(app, &instance.id, "Upgrade", "Revert upgrade (SSH)", &format!("Rolled back to version {}", entry.from_version));
     Ok(entry)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
 fn list_upgrade_history(app: AppHandle, id: String) -> Vec<UpgradeHistoryEntry> {
-    let mut history = read_upgrade_history(&app)
-        .into_iter()
-        .filter(|entry| entry.server_id == id)
-        .collect::<Vec<_>>();
+    let mut history = read_upgrade_history(&app).into_iter().filter(|entry| entry.server_id == id).collect::<Vec<_>>();
     history.sort_by_key(|a| std::cmp::Reverse(a.created_at));
     history
 }
@@ -18517,27 +16910,16 @@ fn core_file_name(core: &str) -> &'static str {
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn rollback_last_upgrade(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<UpgradeHistoryEntry, String> {
+async fn rollback_last_upgrade(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<UpgradeHistoryEntry, String> {
     if let Some(instance) = remote_instance(&app, &id)? {
         ensure_remote_stopped(&app, &state, &instance).await?;
         return rollback_remote(&app, instance).await;
     }
     ensure_stopped(&state, &id)?;
-    let entry = list_upgrade_history(app.clone(), id.clone())
-        .into_iter()
-        .next()
-        .ok_or("No upgrade to roll back.")?;
+    let entry = list_upgrade_history(app.clone(), id.clone()).into_iter().next().ok_or("No upgrade to roll back.")?;
     let instance = instance_by_id(&app, &id)?;
-    let root = Path::new(&instance.path)
-        .canonicalize().map(plain_path)
-        .map_err(|error| error.to_string())?;
-    let previous = PathBuf::from(&entry.previous_jar)
-        .canonicalize().map(plain_path)
-        .map_err(|_| "The previous jar was not found.")?;
+    let root = Path::new(&instance.path).canonicalize().map(plain_path).map_err(|error| error.to_string())?;
+    let previous = PathBuf::from(&entry.previous_jar).canonicalize().map(plain_path).map_err(|_| "The previous jar was not found.")?;
     let stash = upgrade_dir(&app, &id)?;
     let stash_real = stash.canonicalize().map(plain_path).unwrap_or(stash);
     if !previous.starts_with(&root) && !previous.starts_with(&stash_real) {
@@ -18547,8 +16929,7 @@ async fn rollback_last_upgrade(
     let current = root.join(file_name);
     let preserved = stash_real.join(format!("rollback-{}-{file_name}", unix_now()));
     if current.is_file() {
-        move_file(&current, &preserved)
-            .map_err(|error| format!("Could not keep the current jar: {error}"))?;
+        move_file(&current, &preserved).map_err(|error| format!("Could not keep the current jar: {error}"))?;
     }
     if let Err(error) = move_file(&previous, &current) {
         if preserved.is_file() {
@@ -18558,32 +16939,20 @@ async fn rollback_last_upgrade(
     }
     let _store = lock_instance_store();
     let mut instances = load_instances(&app)?;
-    let saved = instances
-        .iter_mut()
-        .find(|saved| saved.id == id)
-        .ok_or("Server not found.")?;
+    let saved = instances.iter_mut().find(|saved| saved.id == id).ok_or("Server not found.")?;
     saved.version = entry.from_version.clone();
     if let Some(core) = &entry.from_core {
         saved.core = core.clone();
     }
     saved.server_jar = Some(current.to_string_lossy().to_string());
     save_instances(&app, &instances)?;
-    record_audit(
-        &app,
-        &id,
-        "Upgrade",
-        "Upgrade rolled back",
-        &format!("Rolled back to version {}", entry.from_version),
-    );
+    record_audit(&app, &id, "Upgrade", "Upgrade rolled back", &format!("Rolled back to version {}", entry.from_version));
     Ok(entry)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-fn list_automation_history(
-    app: AppHandle,
-    id: String,
-) -> Result<Vec<AutomationHistoryEntry>, String> {
+fn list_automation_history(app: AppHandle, id: String) -> Result<Vec<AutomationHistoryEntry>, String> {
     let path = automation_history_path(&app)?;
     let mut entries = fs::read_to_string(path)
         .ok()
@@ -18602,24 +16971,11 @@ fn record_far_sample(state: &AppState, id: &str, cpu: f32, memory: u64) {
 }
 
 fn record_resource_sample(state: &AppState, id: &str, cpu: f32, memory: u64, tps: Option<f32>) {
-    let heap = state
-        .tps
-        .lock()
-        .expect("tps state poisoned")
-        .get(id)
-        .and_then(|snapshot| snapshot.heap_mib);
+    let heap = state.tps.lock().expect("tps state poisoned").get(id).and_then(|snapshot| snapshot.heap_mib);
     let memory = heap.or_else(|| no_addon(id).then_some(memory));
-    let mut history = state
-        .resource_history
-        .lock()
-        .expect("resource history poisoned");
+    let mut history = state.resource_history.lock().expect("resource history poisoned");
     let samples = history.entry(id.to_string()).or_default();
-    samples.push_back(ResourceSample {
-        at: unix_now(),
-        cpu_percent: cpu,
-        memory_mib: memory,
-        tps,
-    });
+    samples.push_back(ResourceSample { at: unix_now(), cpu_percent: cpu, memory_mib: memory, tps });
     while samples.len() > 600 {
         samples.pop_front();
     }
@@ -18661,16 +17017,8 @@ fn get_rcon_status(app: AppHandle, id: String) -> Result<RconStatus, String> {
         return Ok(RconStatus { enabled: false, port: 25575, has_password: false });
     }
     Ok(match instance_rcon(&instance) {
-        Some((port, password)) => RconStatus {
-            enabled: true,
-            port,
-            has_password: !password.is_empty(),
-        },
-        None => RconStatus {
-            enabled: false,
-            port: 25575,
-            has_password: false,
-        },
+        Some((port, password)) => RconStatus { enabled: true, port, has_password: !password.is_empty() },
+        None => RconStatus { enabled: false, port: 25575, has_password: false },
     })
 }
 
@@ -18683,18 +17031,11 @@ fn send_rcon_command(app: AppHandle, id: String, command: String) -> Result<Stri
         return Err("Commands must be a single line of up to 500 characters.".into());
     }
     let instance = instance_by_id(&app, &id)?;
-    let (port, password) = instance_rcon(&instance).ok_or(
-        "RCON is disabled on this server. Set enable-rcon=true in server.properties and restart.",
-    )?;
+    let (port, password) =
+        instance_rcon(&instance).ok_or("RCON is disabled on this server. Set enable-rcon=true in server.properties and restart.")?;
     let mut client = rcon::RconClient::connect("127.0.0.1", port, &password)?;
     let output = client.command(command)?;
-    record_audit(
-        &app,
-        &id,
-        "Console",
-        "RCON command",
-        "Command contents are not stored in the audit log for security.",
-    );
+    record_audit(&app, &id, "Console", "RCON command", "Command contents are not stored in the audit log for security.");
     Ok(output)
 }
 
@@ -18711,11 +17052,7 @@ fn player_file(server: &Path, level: &str, kind: &str, name: &str) -> Option<Pat
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn read_player_nbt(
-    app: AppHandle,
-    id: String,
-    uuid: String,
-) -> Result<nbt::PlayerSnapshot, String> {
+async fn read_player_nbt(app: AppHandle, id: String, uuid: String) -> Result<nbt::PlayerSnapshot, String> {
     let instance = instance_by_id(&app, &id)?;
     let uuid = uuid.trim();
     if uuid.len() != 36 || !uuid.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
@@ -18824,7 +17161,12 @@ fn local_player_info(root: &Path, level: &str, uuid: &str, name: &str) -> player
     }
     look(&root.join("plugins"), 0, uuid, name, &mut seen, &mut found);
     for path in found {
-        let plugin = path.strip_prefix(root.join("plugins")).ok().and_then(|rest| rest.components().next()).map(|one| one.as_os_str().to_string_lossy().to_string()).unwrap_or_default();
+        let plugin = path
+            .strip_prefix(root.join("plugins"))
+            .ok()
+            .and_then(|rest| rest.components().next())
+            .map(|one| one.as_os_str().to_string_lossy().to_string())
+            .unwrap_or_default();
         add(&path, &plugin);
     }
     info
@@ -18838,7 +17180,11 @@ async fn far_player_info(app: &AppHandle, instance: &ServerInstance, uuid: &str)
         .and_then(|text| text.lines().find_map(|line| line.trim().strip_prefix("level-name=")).map(|value| value.trim().to_string()))
         .filter(|value| !value.is_empty() && !value.contains(['/', '\\', ':']))
         .unwrap_or_else(|| "world".into());
-    for (modern, old, kind) in [("players/data", "playerdata", "data"), ("players/stats", "stats", "stats"), ("players/advancements", "advancements", "advancements")] {
+    for (modern, old, kind) in [
+        ("players/data", "playerdata", "data"),
+        ("players/stats", "stats", "stats"),
+        ("players/advancements", "advancements", "advancements"),
+    ] {
         let file = if kind == "data" { format!("{uuid}.dat") } else { format!("{uuid}.json") };
         for folder in [modern, old] {
             let path = format!("{level}/{folder}/{file}");
@@ -18931,22 +17277,14 @@ async fn read_live_inventory(app: &AppHandle, instance: &ServerInstance, uuid: &
     liveinv::find(&text, uuid, unix_now() as f64 * 1000.0)
 }
 
-async fn read_saved_player(
-    app: &AppHandle,
-    instance: &ServerInstance,
-    uuid: &str,
-) -> Result<nbt::PlayerSnapshot, String> {
+async fn read_saved_player(app: &AppHandle, instance: &ServerInstance, uuid: &str) -> Result<nbt::PlayerSnapshot, String> {
     let app = app.clone();
     let instance = instance.clone();
     if is_far(&instance) {
         let level = far_read(&app, &instance, "server.properties")
             .await
             .ok()
-            .and_then(|text| {
-                text.lines()
-                    .find_map(|line| line.trim().strip_prefix("level-name="))
-                    .map(|value| value.trim().to_string())
-            })
+            .and_then(|text| text.lines().find_map(|line| line.trim().strip_prefix("level-name=")).map(|value| value.trim().to_string()))
             .filter(|value| !value.is_empty() && !value.contains(['/', '\\', ':']))
             .unwrap_or_else(|| "world".into());
         for folder in ["players/data", "playerdata"] {
@@ -18956,15 +17294,8 @@ async fn read_saved_player(
         }
         return Err("No saved data. The server creates the file after a player joins and leaves once.".into());
     }
-    let path = player_file(
-        Path::new(&instance.path),
-        &level_name_of(&instance),
-        "data",
-        &format!("{uuid}.dat"),
-    )
-    .ok_or(
-        "No saved data. The server creates the file after a player joins and leaves once.",
-    )?;
+    let path = player_file(Path::new(&instance.path), &level_name_of(&instance), "data", &format!("{uuid}.dat"))
+        .ok_or("No saved data. The server creates the file after a player joins and leaves once.")?;
     nbt::read_player_data(&path, uuid)
 }
 
@@ -19007,8 +17338,7 @@ async fn list_player_spots(app: AppHandle, id: String) -> Result<Vec<PlayerSpot>
         let level = level_name_of(&instance);
         let mut found = Vec::new();
         for player in people {
-            let Some(path) = player_file(server, &level, "data", &format!("{}.dat", player.uuid))
-            else {
+            let Some(path) = player_file(server, &level, "data", &format!("{}.dat", player.uuid)) else {
                 continue;
             };
             let Ok(snapshot) = nbt::read_player_data(&path, &player.uuid) else {
@@ -19029,11 +17359,7 @@ async fn list_player_spots(app: AppHandle, id: String) -> Result<Vec<PlayerSpot>
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn read_world_settings(
-    app: AppHandle,
-    id: String,
-    world: String,
-) -> Result<nbt::WorldSettings, String> {
+async fn read_world_settings(app: AppHandle, id: String, world: String) -> Result<nbt::WorldSettings, String> {
     let instance = instance_by_id(&app, &id)?;
     if !instance.remote_host.is_empty() {
         let level = pull_remote_world(&app, &instance, &world).await?;
@@ -19058,16 +17384,8 @@ struct TrimReport {
 
 fn trim_candidates(level: &str, realm: &str) -> Vec<String> {
     match realm {
-        "nether" => vec![
-            format!("{level}/dimensions/minecraft/the_nether"),
-            format!("{level}/DIM-1"),
-            format!("{level}_nether/DIM-1"),
-        ],
-        "end" => vec![
-            format!("{level}/dimensions/minecraft/the_end"),
-            format!("{level}/DIM1"),
-            format!("{level}_the_end/DIM1"),
-        ],
+        "nether" => vec![format!("{level}/dimensions/minecraft/the_nether"), format!("{level}/DIM-1"), format!("{level}_nether/DIM-1")],
+        "end" => vec![format!("{level}/dimensions/minecraft/the_end"), format!("{level}/DIM1"), format!("{level}_the_end/DIM1")],
         _ => vec![format!("{level}/dimensions/minecraft/overworld"), level.to_string()],
     }
 }
@@ -19198,12 +17516,9 @@ async fn trim_chunks(
     area: Option<Vec<i32>>,
 ) -> Result<TrimReport, String> {
     let area = match area.as_deref() {
-        Some([x0, z0, x1, z1]) => Some((
-            (*x0.min(x1)).div_euclid(16),
-            (*z0.min(z1)).div_euclid(16),
-            (*x0.max(x1)).div_euclid(16),
-            (*z0.max(z1)).div_euclid(16),
-        )),
+        Some([x0, z0, x1, z1]) => {
+            Some(((*x0.min(x1)).div_euclid(16), (*z0.min(z1)).div_euclid(16), (*x0.max(x1)).div_euclid(16), (*z0.max(z1)).div_euclid(16)))
+        }
         Some(_) => return Err("The area is malformed.".into()),
         None => None,
     };
@@ -19275,7 +17590,13 @@ async fn trim_chunks(
                 .map_err(|error| error.to_string())??
                 .file_name;
         }
-        record_audit(&app, &id, "Server", if area.is_some() { "Area chunks deleted" } else { "Chunk cleanup" }, &format!("{folder} · {backup}"));
+        record_audit(
+            &app,
+            &id,
+            "Server",
+            if area.is_some() { "Area chunks deleted" } else { "Chunk cleanup" },
+            &format!("{folder} · {backup}"),
+        );
     }
     let mut sides = Vec::new();
     if apply {
@@ -19284,7 +17605,8 @@ async fn trim_chunks(
         }
     }
     let saved = backup.clone();
-    let mut report = TrimReport { regions: regions.len() as u32, chunks: 0, removed: 0, bytes_before: 0.0, bytes_after: 0.0, applied: apply, backup };
+    let mut report =
+        TrimReport { regions: regions.len() as u32, chunks: 0, removed: 0, bytes_before: 0.0, bytes_after: 0.0, applied: apply, backup };
     let total = regions.len();
     for (done, (name, _)) in regions.into_iter().enumerate() {
         let _ = app.emit("trim-progress", serde_json::json!({ "serverId": id, "done": done, "total": total }));
@@ -19313,7 +17635,10 @@ async fn trim_chunks(
             }
             let other = format!("{folder}/{side}/{name}");
             let Some(extra) = trim_read(&app, &instance, &other).await else {
-                return Err(format!("Could not read {}, so cleanup stopped here. Earlier regions are already trimmed. Backup: {}", other, saved));
+                return Err(format!(
+                    "Could not read {}, so cleanup stopped here. Earlier regions are already trimmed. Backup: {}",
+                    other, saved
+                ));
             };
             extras.push((other, extra));
         }
@@ -19321,9 +17646,8 @@ async fn trim_chunks(
         trim_write(&app, &instance, &relative, smaller).await.map_err(stopped)?;
         for (other, extra) in extras {
             let removed = plan.removed.clone();
-            let cut = tauri::async_runtime::spawn_blocking(move || trim::strip(&extra, &removed))
-                .await
-                .map_err(|error| error.to_string())?;
+            let cut =
+                tauri::async_runtime::spawn_blocking(move || trim::strip(&extra, &removed)).await.map_err(|error| error.to_string())?;
             trim_write(&app, &instance, &other, cut).await.map_err(stopped)?;
         }
     }
@@ -19373,13 +17697,11 @@ fn safe_world_level_path(instance: &ServerInstance, world: &str) -> Result<PathB
     if world.is_empty() || world.contains(['/', '\\', ':']) || world.starts_with('.') {
         return Err("The world name is malformed.".into());
     }
-    paths::resolve_in_server(Path::new(&instance.path), &format!("{world}/level.dat")).map_err(
-        |error| match error {
-            paths::PathError::Missing => "level.dat was not found.".to_string(),
-            paths::PathError::Escape => "Worlds outside the server folder cannot be opened.".to_string(),
-            other => other.to_string(),
-        },
-    )
+    paths::resolve_in_server(Path::new(&instance.path), &format!("{world}/level.dat")).map_err(|error| match error {
+        paths::PathError::Missing => "level.dat was not found.".to_string(),
+        paths::PathError::Escape => "Worlds outside the server folder cannot be opened.".to_string(),
+        other => other.to_string(),
+    })
 }
 
 #[derive(Clone, Debug, Deserialize, specta::Type)]
@@ -19396,18 +17718,13 @@ struct WorldSettingsInput {
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn save_world_settings(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    input: WorldSettingsInput,
-) -> Result<(), String> {
+async fn save_world_settings(app: AppHandle, state: State<'_, AppState>, input: WorldSettingsInput) -> Result<(), String> {
     {
         let instance = instance_by_id(&app, &input.id)?;
         if !instance.remote_host.is_empty() {
             ensure_remote_stopped(&app, &state, &instance).await?;
             let level = pull_remote_world(&app, &instance, &input.world).await?;
-            let original_hash =
-                nbt::write_level_data(&level, input.difficulty, input.hardcore, input.spawn, &input.game_rules)?;
+            let original_hash = nbt::write_level_data(&level, input.difficulty, input.hardcore, input.spawn, &input.game_rules)?;
             let mirror = level.parent().map(Path::to_path_buf).unwrap_or_default();
             for side in ["level.dat", WORLD_SIDE_FILES[0]] {
                 let local = mirror.join(side);
@@ -19439,46 +17756,27 @@ async fn save_world_settings(
     ensure_stopped(&state, &input.id)?;
     let instance = instance_by_id(&app, &input.id)?;
     let path = safe_world_level_path(&instance, &input.world)?;
-    let original_hash = nbt::write_level_data(
-        &path,
-        input.difficulty,
-        input.hardcore,
-        input.spawn,
-        &input.game_rules,
-    )?;
+    let original_hash = nbt::write_level_data(&path, input.difficulty, input.hardcore, input.spawn, &input.game_rules)?;
     record_audit(
         &app,
         &input.id,
         "World",
         "level.dat save",
-        &format!(
-            "{} · original SHA‑256 {}",
-            input.world,
-            &original_hash[..original_hash.len().min(16)]
-        ),
+        &format!("{} · original SHA‑256 {}", input.world, &original_hash[..original_hash.len().min(16)]),
     );
     Ok(())
 }
 
 fn mojang_cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?
-        .join("mojang-cache");
+    let dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?.join("mojang-cache");
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     Ok(dir)
 }
 
 #[tauri::command(async)]
 #[specta::specta]
-fn lookup_mojang_profile(
-    app: AppHandle,
-    name: String,
-) -> Result<mojang::MojangProfile, String> {
-    off_runtime(|| {
-        mojang::lookup_by_name(&mojang_cache_dir(&app)?, &name)
-    })
+fn lookup_mojang_profile(app: AppHandle, name: String) -> Result<mojang::MojangProfile, String> {
+    off_runtime(|| mojang::lookup_by_name(&mojang_cache_dir(&app)?, &name))
 }
 
 #[tauri::command(async)]
@@ -19598,26 +17896,17 @@ fn search_addon_catalog(
             loader.as_deref().unwrap_or_default(),
         )?;
         let has_more = hits.len() as u32 >= per_page;
-        Ok(CatalogPage {
-            hits,
-            has_more,
-            page,
-        })
+        Ok(CatalogPage { hits, has_more, page })
     })
 }
 
 fn is_hybrid(core: &str) -> bool {
-    matches!(
-        core,
-        "Mohist" | "Arclight" | "Magma" | "Banner" | "Ketting" | "CatServer" | "Cardboard"
-    )
+    matches!(core, "Mohist" | "Arclight" | "Magma" | "Banner" | "Ketting" | "CatServer" | "Cardboard")
 }
 
 fn looks_like_version(text: &str) -> bool {
     let text = text.trim();
-    !text.is_empty()
-        && text.starts_with(|c: char| c.is_ascii_digit())
-        && text.chars().all(|c| c.is_ascii_graphic())
+    !text.is_empty() && text.starts_with(|c: char| c.is_ascii_digit()) && text.chars().all(|c| c.is_ascii_graphic())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -19637,16 +17926,9 @@ fn search_modrinth_page(
         .build()
         .map_err(|error| error.to_string())?;
     let mut facets: Vec<Vec<String>> = Vec::new();
-    let kind = if matches!(instance.core.as_str(), "Paper" | "Purpur" | "Folia" | "Leaf" | "Spigot" | "Bukkit") {
-        "plugin"
-    } else {
-        "mod"
-    };
+    let kind = if matches!(instance.core.as_str(), "Paper" | "Purpur" | "Folia" | "Leaf" | "Spigot" | "Bukkit") { "plugin" } else { "mod" };
     if is_hybrid(&instance.core) {
-        facets.push(vec![
-            "project_type:mod".to_string(),
-            "project_type:plugin".to_string(),
-        ]);
+        facets.push(vec!["project_type:mod".to_string(), "project_type:plugin".to_string()]);
     } else {
         facets.push(vec![format!("project_type:{kind}")]);
     }
@@ -19698,22 +17980,10 @@ fn search_modrinth_page(
                 source: "Modrinth".into(),
                 project_id,
                 title: hit.get("title")?.as_str()?.into(),
-                description: hit
-                    .get("description")
-                    .and_then(|value| value.as_str())
-                    .unwrap_or_default()
-                    .into(),
-                project_type: hit
-                    .get("project_type")
-                    .and_then(|value| value.as_str())
-                    .unwrap_or("mod")
-                    .into(),
+                description: hit.get("description").and_then(|value| value.as_str()).unwrap_or_default().into(),
+                project_type: hit.get("project_type").and_then(|value| value.as_str()).unwrap_or("mod").into(),
                 installable: true,
-                icon_url: hit
-                    .get("icon_url")
-                    .and_then(|value| value.as_str())
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_owned),
+                icon_url: hit.get("icon_url").and_then(|value| value.as_str()).filter(|value| !value.is_empty()).map(str::to_owned),
                 author: hit.get("author").and_then(|value| value.as_str()).map(str::to_owned),
                 downloads: hit.get("downloads").and_then(|value| value.as_u64()),
                 follows: hit.get("follows").and_then(|value| value.as_u64()),
@@ -19792,17 +18062,9 @@ async fn inspect_addons(app: AppHandle, id: String) -> Result<AddonReport, Strin
                 Err(_) => offline = true,
             }
         }
-        let unknown = found
-            .iter()
-            .filter(|addon| addon.project_id.is_none())
-            .count();
+        let unknown = found.iter().filter(|addon| addon.project_id.is_none()).count();
         let conflicts = addons::find_conflicts(&found);
-        Ok(AddonReport {
-            addons: found,
-            conflicts,
-            unknown,
-            offline,
-        })
+        Ok(AddonReport { addons: found, conflicts, unknown, offline })
     })
 }
 
@@ -19815,9 +18077,7 @@ async fn remote_addon_list(app: &AppHandle, instance: &ServerInstance) -> Vec<ad
         for folder in ["mods", "plugins"] {
             for one in pfs::addon_files(&api, &target, folder).await {
                 let plain = one.name.trim_end_matches(".disabled").to_string();
-                let record = installs
-                    .iter()
-                    .find(|each| each.filename.as_deref() == Some(plain.as_str()) && each.source == "modrinth");
+                let record = installs.iter().find(|each| each.filename.as_deref() == Some(plain.as_str()) && each.source == "modrinth");
                 let facts = panel_jar_facts()
                     .lock()
                     .expect("jar facts poisoned")
@@ -19848,17 +18108,10 @@ async fn remote_addon_list(app: &AppHandle, instance: &ServerInstance) -> Vec<ad
     }
     let mut list = Vec::new();
     for folder in ["mods", "plugins"] {
-        for one in remote::addon_files(app, &instance.remote_host, &instance.path, folder)
-            .await
-            .unwrap_or_default()
-        {
+        for one in remote::addon_files(app, &instance.remote_host, &instance.path, folder).await.unwrap_or_default() {
             let enabled = one.name.ends_with(".jar");
             list.push(addons::InstalledAddon {
-                display_name: one
-                    .name
-                    .trim_end_matches(".disabled")
-                    .trim_end_matches(".jar")
-                    .to_string(),
+                display_name: one.name.trim_end_matches(".disabled").trim_end_matches(".jar").to_string(),
                 mod_id: String::new(),
                 version: String::new(),
                 file_name: one.name,
@@ -19922,11 +18175,8 @@ async fn panel_backfill_market(api: &panel::Api, target: &panel::Target) {
             .ok()?
             .json()
             .ok()?;
-        let ids: Vec<String> = versions
-            .as_object()?
-            .values()
-            .filter_map(|one| one.get("project_id").and_then(|id| id.as_str()).map(str::to_string))
-            .collect();
+        let ids: Vec<String> =
+            versions.as_object()?.values().filter_map(|one| one.get("project_id").and_then(|id| id.as_str()).map(str::to_string)).collect();
         let projects: serde_json::Value = client
             .get("https://api.modrinth.com/v2/projects")
             .query(&[("ids", serde_json::to_string(&ids).ok()?)])
@@ -20014,10 +18264,7 @@ async fn apply_addon_updates(
         let updates = addons::find_updates(&client, &found, loader, &instance.version)?;
 
         let mut result = AddonUpdateResult::default();
-        for update in updates
-            .into_iter()
-            .filter(|update| file_names.contains(&update.file_name))
-        {
+        for update in updates.into_iter().filter(|update| file_names.contains(&update.file_name)) {
             let current = folder.join(&update.file_name);
             if !current.is_file() {
                 continue;
@@ -20050,10 +18297,7 @@ async fn apply_addon_updates(
                     &id,
                     "Mod",
                     "Update queued",
-                    &format!(
-                        "{} {} -> {} (applied on restart)",
-                        update.display_name, update.current_version, update.new_version
-                    ),
+                    &format!("{} {} -> {} (applied on restart)", update.display_name, update.current_version, update.new_version),
                 );
                 result.queued += 1;
                 continue;
@@ -20062,17 +18306,13 @@ async fn apply_addon_updates(
             let stamp = unix_now();
             move_file(&current, &keep.join(format!("{stamp}-{}", update.file_name)))
                 .map_err(|error| format!("Could not keep the previous file: {error}"))?;
-            fs::rename(&staging, folder.join(&update.new_file_name))
-                .map_err(|error| format!("Could not install the new file: {error}"))?;
+            fs::rename(&staging, folder.join(&update.new_file_name)).map_err(|error| format!("Could not install the new file: {error}"))?;
             record_audit(
                 &app,
                 &id,
                 "Mod",
                 "Update applied",
-                &format!(
-                    "{} {} -> {}",
-                    update.display_name, update.current_version, update.new_version
-                ),
+                &format!("{} {} -> {}", update.display_name, update.current_version, update.new_version),
             );
             result.applied += 1;
         }
@@ -20092,7 +18332,13 @@ async fn apply_pending_remote(app: &AppHandle, instance: &ServerInstance) {
         let put = remote::upload(app, &instance.remote_host, &instance.path, &format!("{folder_name}/{}", one.file_name), &bytes).await;
         if put.is_ok() {
             let _ = pending::cancel(&resting, &one.id);
-            record_audit(app, &instance.id, "Mod", "Applied queued update (SSH)", &format!("{} {} -> {}", one.display_name, one.from_version, one.to_version));
+            record_audit(
+                app,
+                &instance.id,
+                "Mod",
+                "Applied queued update (SSH)",
+                &format!("{} {} -> {}", one.display_name, one.from_version, one.to_version),
+            );
             done.push(one.display_name);
         }
     }
@@ -20122,10 +18368,7 @@ async fn apply_addon_updates_remote(
     .await
     .map_err(|error| error.to_string())??;
     let mut result = AddonUpdateResult::default();
-    for update in updates
-        .into_iter()
-        .filter(|update| file_names.contains(&update.file_name))
-    {
+    for update in updates.into_iter().filter(|update| file_names.contains(&update.file_name)) {
         let staging = std::env::temp_dir().join(format!("monolab-{}", update.new_file_name));
         let (url, sha512, place) = (update.download_url.clone(), update.sha512.clone(), staging.clone());
         let got = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, String> {
@@ -20162,13 +18405,7 @@ async fn apply_addon_updates_remote(
         let _ = fs::remove_file(&staging);
         let bytes = got?;
         if update.file_name != update.new_file_name {
-            remote::drop_path(
-                app,
-                &instance.remote_host,
-                &instance.path,
-                &format!("{folder_name}/{}", update.file_name),
-            )
-            .await;
+            remote::drop_path(app, &instance.remote_host, &instance.path, &format!("{folder_name}/{}", update.file_name)).await;
         }
         watched_upload(
             app,
@@ -20184,10 +18421,7 @@ async fn apply_addon_updates_remote(
             &instance.id,
             "Mod",
             "Apply updates (SSH)",
-            &format!(
-                "{} {} -> {}",
-                update.display_name, update.current_version, update.new_version
-            ),
+            &format!("{} {} -> {}", update.display_name, update.current_version, update.new_version),
         );
         result.applied += 1;
     }
@@ -20249,8 +18483,7 @@ fn apply_pending_addons(app: &AppHandle, instance: &ServerInstance) {
 
 fn addon_restore_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
     let path = restore_dir(app, id)?.join("addons");
-    fs::create_dir_all(&path)
-        .map_err(|error| format!("Could not create the folder for previous mods: {error}"))?;
+    fs::create_dir_all(&path).map_err(|error| format!("Could not create the folder for previous mods: {error}"))?;
     Ok(path)
 }
 
@@ -20287,12 +18520,7 @@ fn list_addon_rollbacks(app: AppHandle, id: String) -> Result<Vec<AddonRollbackE
 
 #[tauri::command(async)]
 #[specta::specta]
-fn rollback_addon_update(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    id: String,
-    stored_name: String,
-) -> Result<String, String> {
+fn rollback_addon_update(app: AppHandle, state: State<'_, AppState>, id: String, stored_name: String) -> Result<String, String> {
     only_local(&app, &id, "Revert to previous version")?;
     ensure_stopped(&state, &id)?;
     let instance = instance_by_id(&app, &id)?;
@@ -20305,14 +18533,10 @@ fn rollback_addon_update(
     if !source.is_file() {
         return Err("The kept previous file was not found.".into());
     }
-    let original = stored_name
-        .split_once('-')
-        .map(|(_, rest)| rest.to_string())
-        .unwrap_or_else(|| stored_name.clone());
+    let original = stored_name.split_once('-').map(|(_, rest)| rest.to_string()).unwrap_or_else(|| stored_name.clone());
     let folder = Path::new(&instance.path).join(folder_name);
     fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
-    move_file(&source, &folder.join(&original))
-        .map_err(|error| format!("Could not restore the previous file: {error}"))?;
+    move_file(&source, &folder.join(&original)).map_err(|error| format!("Could not restore the previous file: {error}"))?;
     record_audit(&app, &id, "Mod", "Update rolled back", &original);
     Ok(original)
 }
@@ -20334,7 +18558,11 @@ fn plan_addon_install(
     })
 }
 
-fn known_installed(client: &reqwest::blocking::Client, instance: &ServerInstance, given: Option<Vec<String>>) -> std::collections::HashSet<String> {
+fn known_installed(
+    client: &reqwest::blocking::Client,
+    instance: &ServerInstance,
+    given: Option<Vec<String>>,
+) -> std::collections::HashSet<String> {
     if let Some(ids) = given {
         return ids.into_iter().collect();
     }
@@ -20372,11 +18600,7 @@ fn install_addon_with_dependencies(
             if !dependencies.contains(&dependency.project_id) {
                 continue;
             }
-            queue.push((
-                dependency.file_name.clone(),
-                dependency.download_url.clone(),
-                dependency.sha512.clone(),
-            ));
+            queue.push((dependency.file_name.clone(), dependency.download_url.clone(), dependency.sha512.clone()));
         }
 
         if !instance.remote_host.is_empty() {
@@ -20432,7 +18656,7 @@ fn install_addon_with_dependencies(
             if let Err(error) = download_file_watched(&client, url, &staging, &mut |received, total| {
                 tell_addon_download(&app, &id, &project_id, name, received, total);
             })
-                .and_then(|()| verify_sha512(&staging, hash))
+            .and_then(|()| verify_sha512(&staging, hash))
             {
                 for path in &staged {
                     let _ = fs::remove_file(path);
@@ -20443,8 +18667,7 @@ fn install_addon_with_dependencies(
             staged.push(staging);
         }
         for ((name, _, _), staging) in queue.iter().zip(staged) {
-            fs::rename(&staging, folder.join(name))
-                .map_err(|error| format!("Could not install the file: {error}"))?;
+            fs::rename(&staging, folder.join(name)).map_err(|error| format!("Could not install the file: {error}"))?;
         }
         record_audit(
             &app,
@@ -20479,16 +18702,10 @@ async fn list_log_files(app: AppHandle, id: String) -> Result<Vec<logs::LogFile>
     Ok(logs::list_files(Path::new(&instance.path)))
 }
 
-async fn log_lines_of(
-    app: &AppHandle,
-    id: &str,
-    file_name: &str,
-    limit: u32,
-) -> Result<Vec<String>, String> {
+async fn log_lines_of(app: &AppHandle, id: &str, file_name: &str, limit: u32) -> Result<Vec<String>, String> {
     let instance = instance_by_id(app, id)?;
     if is_far(&instance) {
-        let text =
-            far_read_log(app, &instance, file_name, limit).await?;
+        let text = far_read_log(app, &instance, file_name, limit).await?;
         return Ok(text.lines().map(str::to_string).collect());
     }
     let path = logs::safe_log_path(Path::new(&instance.path), file_name)?;
@@ -20497,12 +18714,7 @@ async fn log_lines_of(
 
 #[tauri::command(async)]
 #[specta::specta]
-async fn read_log_timeline(
-    app: AppHandle,
-    id: String,
-    file_name: String,
-    kind: String,
-) -> Result<Vec<logs::TimelineEvent>, String> {
+async fn read_log_timeline(app: AppHandle, id: String, file_name: String, kind: String) -> Result<Vec<logs::TimelineEvent>, String> {
     let lines = log_lines_of(&app, &id, &file_name, 20_000).await?;
     let wanted = kind.trim();
     Ok(logs::timeline(&lines)
@@ -20517,9 +18729,7 @@ fn percent_encode(text: &str) -> String {
     let mut out = String::with_capacity(text.len() * 2);
     for byte in text.as_bytes() {
         match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(*byte as char)
-            }
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(*byte as char),
             other => out.push_str(&format!("%{other:02X}")),
         }
     }
@@ -20577,19 +18787,9 @@ async fn share_log(app: AppHandle, id: String, file_name: String) -> Result<Stri
             .json()
             .map_err(|error| error.to_string())?;
         if answer.get("success").and_then(|one| one.as_bool()) != Some(true) {
-            return Err(format!(
-                "mclo.gs rejected it: {}",
-                answer
-                    .get("error")
-                    .and_then(|one| one.as_str())
-                    .unwrap_or("Unknown reason")
-            ));
+            return Err(format!("mclo.gs rejected it: {}", answer.get("error").and_then(|one| one.as_str()).unwrap_or("Unknown reason")));
         }
-        answer
-            .get("url")
-            .and_then(|one| one.as_str())
-            .map(str::to_owned)
-            .ok_or_else(|| "mclo.gs did not return a URL.".into())
+        answer.get("url").and_then(|one| one.as_str()).map(str::to_owned).ok_or_else(|| "mclo.gs did not return a URL.".into())
     })
 }
 
@@ -20599,15 +18799,8 @@ async fn summarize_logs(app: AppHandle, id: String) -> Result<Vec<logs::DailySum
     let instance = instance_by_id(&app, &id)?;
     let mut summaries = Vec::new();
     if is_far(&instance) {
-        for file in far_log_files(&app, &instance)
-            .await
-            .into_iter()
-            .take(5)
-        {
-            let Ok(text) =
-                far_read_log(&app, &instance, &file.name, 20_000)
-                    .await
-            else {
+        for file in far_log_files(&app, &instance).await.into_iter().take(5) {
+            let Ok(text) = far_read_log(&app, &instance, &file.name, 20_000).await else {
                 continue;
             };
             let lines: Vec<String> = text.lines().map(str::to_string).collect();
@@ -20642,12 +18835,8 @@ struct Bookmark {
 }
 
 fn bookmarks_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let data_dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| error.to_string())?;
-    fs::create_dir_all(&data_dir)
-        .map_err(|error| format!("Could not create the app data folder: {error}"))?;
+    let data_dir = app.path().monolab_data_dir().map_err(|error| error.to_string())?;
+    fs::create_dir_all(&data_dir).map_err(|error| format!("Could not create the app data folder: {error}"))?;
     Ok(data_dir.join("bookmarks.json"))
 }
 
@@ -20662,10 +18851,7 @@ fn load_bookmarks(app: &AppHandle) -> Vec<Bookmark> {
 #[tauri::command(async)]
 #[specta::specta]
 fn list_bookmarks(app: AppHandle, id: String) -> Result<Vec<Bookmark>, String> {
-    let mut found = load_bookmarks(&app)
-        .into_iter()
-        .filter(|bookmark| bookmark.server_id == id)
-        .collect::<Vec<_>>();
+    let mut found = load_bookmarks(&app).into_iter().filter(|bookmark| bookmark.server_id == id).collect::<Vec<_>>();
     found.sort_by(|left, right| left.name.cmp(&right.name));
     Ok(found)
 }
@@ -20694,21 +18880,11 @@ fn save_bookmark(app: AppHandle, input: BookmarkInput) -> Result<Bookmark, Strin
     if !matches!(input.dimension.as_str(), "overworld" | "nether" | "end") {
         return Err("The dimension must be Overworld, Nether or End.".into());
     }
-    let millis = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
+    let millis = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
     let mut all = load_bookmarks(&app);
-    let id = input
-        .id
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| format!("mark-{millis}"));
+    let id = input.id.filter(|value| !value.trim().is_empty()).unwrap_or_else(|| format!("mark-{millis}"));
     let entry = Bookmark {
-        created_at: all
-            .iter()
-            .find(|mark| mark.id == id)
-            .map(|mark| mark.created_at)
-            .unwrap_or_else(unix_now),
+        created_at: all.iter().find(|mark| mark.id == id).map(|mark| mark.created_at).unwrap_or_else(unix_now),
         id: id.clone(),
         server_id: input.server_id,
         name: name.into(),
@@ -20723,8 +18899,7 @@ fn save_bookmark(app: AppHandle, input: BookmarkInput) -> Result<Bookmark, Strin
         None => all.push(entry.clone()),
     }
     let text = serde_json::to_string_pretty(&all).map_err(|error| error.to_string())?;
-    fs::write(bookmarks_path(&app)?, text)
-        .map_err(|error| format!("Could not save the bookmark: {error}"))?;
+    fs::write(bookmarks_path(&app)?, text).map_err(|error| format!("Could not save the bookmark: {error}"))?;
     Ok(entry)
 }
 
@@ -20797,7 +18972,12 @@ async fn export_mrpack(app: AppHandle, id: String, target: String) -> Result<usi
                 .filter_map(|addon| {
                     let path = source_folder.join(&addon.file_name);
                     let size = fs::metadata(&path).ok()?.len();
-                    Some(PackFile { relative: format!("{folder_name}/{}", addon.file_name), sha512: addon.sha512.clone(), size, local: Some(path) })
+                    Some(PackFile {
+                        relative: format!("{folder_name}/{}", addon.file_name),
+                        sha512: addon.sha512.clone(),
+                        size,
+                        local: Some(path),
+                    })
                 })
                 .collect();
             write_mrpack(&worker, &instance, &destination, &files)
@@ -20810,7 +18990,11 @@ async fn export_mrpack(app: AppHandle, id: String, target: String) -> Result<usi
 async fn export_mrpack_remote(app: &AppHandle, instance: &ServerInstance, destination: &Path) -> Result<usize, String> {
     let (folder_name, _) = instance_loader(instance)?;
     let listed = remote::addon_files(app, &instance.remote_host, &instance.path, folder_name).await?;
-    let temp = app.path().monolab_data_dir().map_err(|error| error.to_string())?.join("mrpack-export").join(format!("{}-{}", instance.id, unix_now()));
+    let temp = app.path().monolab_data_dir().map_err(|error| error.to_string())?.join("mrpack-export").join(format!(
+        "{}-{}",
+        instance.id,
+        unix_now()
+    ));
     fs::create_dir_all(&temp).map_err(|error| error.to_string())?;
     let mut files = Vec::new();
     let mut failure = None;
@@ -20875,9 +19059,7 @@ fn write_mrpack(app: &AppHandle, instance: &ServerInstance, destination: &Path, 
     let mut writer = ZipWriter::new(file);
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     writer.start_file("modrinth.index.json", options).map_err(|error| error.to_string())?;
-    writer
-        .write_all(serde_json::to_string_pretty(&index).unwrap_or_default().as_bytes())
-        .map_err(|error| error.to_string())?;
+    writer.write_all(serde_json::to_string_pretty(&index).unwrap_or_default().as_bytes()).map_err(|error| error.to_string())?;
     for (relative, path) in &embedded {
         writer.start_file(format!("overrides/{relative}"), options).map_err(|error| error.to_string())?;
         let mut source = fs::File::open(path).map_err(|error| error.to_string())?;
@@ -20896,9 +19078,7 @@ fn save_map_png(target: String, png: String) -> Result<(), String> {
     if destination.extension().is_none_or(|ext| !ext.eq_ignore_ascii_case("png")) {
         return Err("The file name must end with .png.".into());
     }
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(png.trim())
-        .map_err(|_| "The picture data is damaged.".to_string())?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(png.trim()).map_err(|_| "The picture data is damaged.".to_string())?;
     if !bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
         return Err("The picture data is damaged.".into());
     }
@@ -20924,10 +19104,7 @@ const PORTABLE_SETTINGS: &[&str] = &[
 
 fn portable_settings(settings: &AppSettings) -> serde_json::Map<String, serde_json::Value> {
     let all = serde_json::to_value(settings).unwrap_or_default();
-    PORTABLE_SETTINGS
-        .iter()
-        .filter_map(|key| all.get(*key).map(|value| (key.to_string(), value.clone())))
-        .collect()
+    PORTABLE_SETTINGS.iter().filter_map(|key| all.get(*key).map(|value| (key.to_string(), value.clone()))).collect()
 }
 
 /// `current` with the portable settings of `incoming` laid over it; anything else in `incoming` is ignored.
@@ -20967,8 +19144,7 @@ struct SettingsImportPreview {
 
 fn read_settings_bundle(source: &str) -> Result<serde_json::Value, String> {
     let text = fs::read_to_string(source.trim()).map_err(|error| format!("Could not read the settings file: {error}"))?;
-    let bundle: serde_json::Value =
-        serde_json::from_str(&text).map_err(|error| format!("The settings file is malformed: {error}"))?;
+    let bundle: serde_json::Value = serde_json::from_str(&text).map_err(|error| format!("The settings file is malformed: {error}"))?;
     if !matches!(bundle.get("kind").and_then(|value| value.as_str()), Some("monolab-settings")) {
         return Err("Not a settings file exported from Monolab.".into());
     }
@@ -21042,11 +19218,8 @@ fn export_settings(app: AppHandle, target: String, display: Option<String>) -> R
         "app": portable_settings(&read_app_settings(&app)),
         "display": display,
     });
-    fs::write(
-        &destination,
-        serde_json::to_string_pretty(&bundle).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| format!("Could not export settings: {error}"))?;
+    fs::write(&destination, serde_json::to_string_pretty(&bundle).map_err(|error| error.to_string())?)
+        .map_err(|error| format!("Could not export settings: {error}"))?;
     Ok(instances.len())
 }
 
@@ -21066,10 +19239,8 @@ fn import_settings(app: AppHandle, source: String) -> Result<ImportSummary, Stri
         let merged = merged_settings(&read_app_settings(&app), incoming)?;
         set_app_settings(app.clone(), merged)?;
     }
-    let incoming: Vec<ServerInstance> = serde_json::from_value(
-        bundle.get("instances").cloned().unwrap_or_default(),
-    )
-    .map_err(|error| format!("Could not read the server list: {error}"))?;
+    let incoming: Vec<ServerInstance> = serde_json::from_value(bundle.get("instances").cloned().unwrap_or_default())
+        .map_err(|error| format!("Could not read the server list: {error}"))?;
 
     let _store = lock_instance_store();
     let mut current = load_instances(&app)?;
@@ -21080,10 +19251,7 @@ fn import_settings(app: AppHandle, source: String) -> Result<ImportSummary, Stri
             skipped += 1;
             continue;
         }
-        if current
-            .iter()
-            .any(|saved| saved.id == instance.id || saved.path == instance.path)
-        {
+        if current.iter().any(|saved| saved.id == instance.id || saved.path == instance.path) {
             skipped += 1;
             continue;
         }
@@ -21098,9 +19266,7 @@ fn import_settings(app: AppHandle, source: String) -> Result<ImportSummary, Stri
     }
 
     let mut marks = load_bookmarks(&app);
-    let incoming_marks: Vec<Bookmark> =
-        serde_json::from_value(bundle.get("bookmarks").cloned().unwrap_or_default())
-            .unwrap_or_default();
+    let incoming_marks: Vec<Bookmark> = serde_json::from_value(bundle.get("bookmarks").cloned().unwrap_or_default()).unwrap_or_default();
     let mut mark_count = 0;
     for mark in incoming_marks {
         if !marks.iter().any(|saved| saved.id == mark.id) {
@@ -21114,11 +19280,7 @@ fn import_settings(app: AppHandle, source: String) -> Result<ImportSummary, Stri
             .and_then(|text| fs::write(path, text).map_err(|error| error.to_string()));
     }
 
-    Ok(ImportSummary {
-        instances: added,
-        bookmarks: mark_count,
-        skipped,
-    })
+    Ok(ImportSummary { instances: added, bookmarks: mark_count, skipped })
 }
 
 #[tauri::command(async)]
@@ -21127,10 +19289,7 @@ fn stop_servers_for_update(app: AppHandle, state: State<'_, AppState>) -> Result
     // The installer ends the app without RunEvent::Exit, so the playit helper would outlive it.
     playit::stop();
     let running = {
-        let processes = state
-            .processes
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let processes = state.processes.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         processes.len()
     };
     if running == 0 {
@@ -21138,13 +19297,7 @@ fn stop_servers_for_update(app: AppHandle, state: State<'_, AppState>) -> Result
     }
     let handle = app.clone();
     off_runtime(move || shutdown_managed_servers(&handle));
-    record_audit(
-        &app,
-        "",
-        "App",
-        "Servers stopped before update",
-        "All running servers were stopped before installing the update.",
-    );
+    record_audit(&app, "", "App", "Servers stopped before update", "All running servers were stopped before installing the update.");
     Ok(running)
 }
 
@@ -21158,10 +19311,7 @@ struct AppRelease {
 const APP_RELEASES: &str = "https://api.github.com/repos/chicodev11/Monolab/releases?per_page=60";
 
 fn fetch_app_releases() -> Result<Vec<AppRelease>, String> {
-    let client = net::builder()
-        .timeout(Duration::from_secs(20))
-        .build()
-        .map_err(|error| error.to_string())?;
+    let client = net::builder().timeout(Duration::from_secs(20)).build().map_err(|error| error.to_string())?;
     let releases: serde_json::Value = client
         .get(APP_RELEASES)
         .send()
@@ -21177,22 +19327,18 @@ fn fetch_app_releases() -> Result<Vec<AppRelease>, String> {
         .filter(|one| {
             !one.get("draft").and_then(|v| v.as_bool()).unwrap_or(false)
                 && !one.get("prerelease").and_then(|v| v.as_bool()).unwrap_or(false)
-                && one.get("assets").and_then(|v| v.as_array()).is_some_and(|assets| {
-                    assets
-                        .iter()
-                        .any(|asset| asset.get("name").and_then(|v| v.as_str()) == Some("latest.json"))
-                })
+                && one
+                    .get("assets")
+                    .and_then(|v| v.as_array())
+                    .is_some_and(|assets| assets.iter().any(|asset| asset.get("name").and_then(|v| v.as_str()) == Some("latest.json")))
         })
         .filter_map(|one| {
             let version = one.get("tag_name")?.as_str()?.strip_prefix('v')?.to_string();
             if !valid_app_version(&version) {
                 return None;
             }
-            let published = one
-                .get("published_at")
-                .and_then(|v| v.as_str())
-                .map(|date| date.chars().take(10).collect())
-                .unwrap_or_default();
+            let published =
+                one.get("published_at").and_then(|v| v.as_str()).map(|date| date.chars().take(10).collect()).unwrap_or_default();
             Some(AppRelease { version, published })
         })
         .collect();
@@ -21207,9 +19353,7 @@ fn valid_app_version(version: &str) -> bool {
 #[tauri::command(async)]
 #[specta::specta]
 async fn app_releases() -> Result<Vec<AppRelease>, String> {
-    tauri::async_runtime::spawn_blocking(|| off_runtime(fetch_app_releases))
-        .await
-        .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(|| off_runtime(fetch_app_releases)).await.map_err(|error| error.to_string())?
 }
 
 /// The stable channel's manifest (also in tauri.conf.json) and the beta one next to it: a release
@@ -21354,10 +19498,7 @@ fn sweep_stray_helpers(app: &AppHandle) {
 fn shutdown_managed_servers(app: &AppHandle) {
     let state = app.state::<AppState>();
     let pending = {
-        let mut processes = state
-            .processes
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut processes = state.processes.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         for process in processes.values_mut() {
             if let Some(stdin) = process.child.stdin.as_mut() {
                 let _ = stdin.write_all(b"stop\n");
@@ -21375,10 +19516,7 @@ fn shutdown_managed_servers(app: &AppHandle) {
     let deadline = Instant::now() + Duration::from_secs(25);
     loop {
         {
-            let mut processes = state
-                .processes
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut processes = state.processes.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             processes.retain(|_, process| !matches!(process.child.try_wait(), Ok(Some(_))));
             if processes.is_empty() {
                 return;
@@ -21389,10 +19527,7 @@ fn shutdown_managed_servers(app: &AppHandle) {
         }
         thread::sleep(Duration::from_millis(250));
     }
-    let mut processes = state
-        .processes
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut processes = state.processes.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     for process in processes.values_mut() {
         kill_process_tree(process.pid);
         let _ = process.child.kill();
@@ -21916,8 +20051,7 @@ fn export_bindings(path: &std::path::Path) -> Result<(), String> {
 fn export_bindings_here(path: &std::path::Path) -> Result<(), String> {
     specta_builder()
         .export(
-            specta_typescript::Typescript::default()
-                .header("// Generated file — do not edit. `npm run bindings:check` keeps it in sync."),
+            specta_typescript::Typescript::default().header("// Generated file — do not edit. `npm run bindings:check` keeps it in sync."),
             path,
         )
         .map_err(|error| error.to_string())?;
@@ -21959,14 +20093,14 @@ fn save_ui_crash(message: String, detail: String) {
 fn record_panics() {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let where_at = info
-            .location()
-            .map(|at| format!("{}:{}", at.file(), at.line()))
-            .unwrap_or_else(|| "?".into());
+        let where_at = info.location().map(|at| format!("{}:{}", at.file(), at.line())).unwrap_or_else(|| "?".into());
         let trace = std::backtrace::Backtrace::force_capture().to_string();
         let line = format!("[{}] {where_at} — {info}\n{trace}\n\n", unix_now());
         // Asked about on the next start; sent only if the user agrees.
-        let message = info.payload().downcast_ref::<&str>().map(|text| text.to_string())
+        let message = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|text| text.to_string())
             .or_else(|| info.payload().downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "panic".into());
         app_crash::keep(&app_crash::make("panic", &message, &format!("{where_at}\n{trace}"), unix_now()));
@@ -22024,10 +20158,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec![tray::HIDDEN_ARG]),
-        ))
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec![tray::HIDDEN_ARG])))
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
@@ -22220,9 +20351,7 @@ mod tests {
         let host = relay_proto::DeviceId([7; 16]);
         let other = relay_proto::DeviceId([9; 16]);
         let teammate = super::monolink_label(&host, "team-1");
-        let call = |peer: &relay_proto::DeviceId, team: &str, command: &str| {
-            serde_json::json!({ "peer": peer.text(), "team": team, "command": command, "body": "{}" })
-        };
+        let call = |peer: &relay_proto::DeviceId, team: &str, command: &str| serde_json::json!({ "peer": peer.text(), "team": team, "command": command, "body": "{}" });
         let guard = |label: &str, command: &str, args: serde_json::Value| super::monolink_guard(label, command, Some(&args));
         // The main window: every app command, but only the team log from a host.
         assert!(guard("main", "set_custom_command", serde_json::json!({})).is_none());
@@ -22316,11 +20445,7 @@ mod tests {
 
         assert!(!old.exists(), "the old folder is still there");
         assert!(new.join("addons/9-mine.jar").is_file(), "the subfolder did not come along");
-        assert_eq!(
-            std::fs::read(new.join("1-manual.zip")).unwrap(),
-            b"first",
-            "overwrote something already moved"
-        );
+        assert_eq!(std::fs::read(new.join("1-manual.zip")).unwrap(), b"first", "overwrote something already moved");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -22378,24 +20503,16 @@ mod tests {
 
     #[test]
     fn reads_an_animated_texture_mcmeta() {
-        let plain = super::read_animation(
-            r#"{ "animation": { "frametime": 3, "interpolate": true, "width": 16, "height": 16 } }"#,
-        )
-        .expect("animation");
+        let plain = super::read_animation(r#"{ "animation": { "frametime": 3, "interpolate": true, "width": 16, "height": 16 } }"#)
+            .expect("animation");
         assert_eq!(plain.frametime, 3);
         assert!(plain.interpolate);
         assert_eq!((plain.width, plain.height), (16, 16));
         assert!(plain.frames.is_empty(), "frames play in order when none are given");
 
-        let picked = super::read_animation(
-            r#"{ "animation": { "frames": [0, 1, { "index": 2, "time": 10 }, 3] } }"#,
-        )
-        .expect("animation");
+        let picked = super::read_animation(r#"{ "animation": { "frames": [0, 1, { "index": 2, "time": 10 }, 3] } }"#).expect("animation");
         assert_eq!(picked.frametime, 1, "one tick when not given");
-        assert_eq!(
-            picked.frames.iter().map(|one| (one.index, one.time)).collect::<Vec<_>>(),
-            vec![(0, 0), (1, 0), (2, 10), (3, 0)]
-        );
+        assert_eq!(picked.frames.iter().map(|one| (one.index, one.time)).collect::<Vec<_>>(), vec![(0, 0), (1, 0), (2, 10), (3, 0)]);
 
         assert!(super::read_animation(r#"{ "pack": { "pack_format": 34 } }"#).is_none());
         assert!(super::read_animation("{ this is not json }").is_none());
@@ -22439,36 +20556,20 @@ mod tests {
                 "Purpur 1.21.1 server",
                 Some("hardcore · purpur-1.21.1-2333.jar"),
             ),
-            (
-                r"java -jar C:/mc/folia-26.1.2-15.jar nogui",
-                "Folia 26.1.2 server",
-                Some("mc · folia-26.1.2-15.jar"),
-            ),
+            (r"java -jar C:/mc/folia-26.1.2-15.jar nogui", "Folia 26.1.2 server", Some("mc · folia-26.1.2-15.jar")),
             (
                 r"java -jar fabric-server-mc.1.21.4-loader.0.16.9-launcher.1.0.1.jar nogui",
                 "Fabric 1.21.4 server",
                 Some("fabric-server-mc.1.21.4-loader.0.16.9-launcher.1.0.1.jar"),
             ),
-            (
-                r"java -jar D:/proxy/velocity-3.4.0.jar",
-                "Velocity 3.4.0 server",
-                Some("proxy · velocity-3.4.0.jar"),
-            ),
-            (
-                r"java -Xmx2G -jar C:/vanilla/server.jar nogui",
-                "Minecraft server",
-                Some("vanilla · server.jar"),
-            ),
+            (r"java -jar D:/proxy/velocity-3.4.0.jar", "Velocity 3.4.0 server", Some("proxy · velocity-3.4.0.jar")),
+            (r"java -Xmx2G -jar C:/vanilla/server.jar nogui", "Minecraft server", Some("vanilla · server.jar")),
             (
                 r"javaw.exe -cp C:/Users/me/AppData/Roaming/.minecraft/libraries/... net.minecraft.client.main.Main --username me --gameDir C:/Users/me/AppData/Roaming/.minecraft",
                 "Minecraft game",
                 Some("Not a server"),
             ),
-            (
-                r"java -jar C:/tools/jetbrains/gradle-wrapper.jar --daemon",
-                "Other Java program",
-                Some("jetbrains · gradle-wrapper.jar"),
-            ),
+            (r"java -jar C:/tools/jetbrains/gradle-wrapper.jar --daemon", "Other Java program", Some("jetbrains · gradle-wrapper.jar")),
         ];
         for (command, expected, why) in cases {
             let (label, detail) = super::guess_java(command);
@@ -22478,12 +20579,8 @@ mod tests {
     }
     #[test]
     fn knows_when_the_server_finished_starting() {
-        assert!(super::is_ready_line(
-            "[13:54:20 INFO]: Done (10.725s)! For help, type \"help\""
-        ));
-        assert!(super::is_ready_line(
-            "2026-08-30 15:36:37  INFO main pumpkin: Started server; took 57ms"
-        ));
+        assert!(super::is_ready_line("[13:54:20 INFO]: Done (10.725s)! For help, type \"help\""));
+        assert!(super::is_ready_line("2026-08-30 15:36:37  INFO main pumpkin: Started server; took 57ms"));
         assert!(!super::is_ready_line("[13:54:10 INFO]: Preparing spawn area: 42%"));
         assert!(!super::is_ready_line("[13:54:11 INFO]: Done preparing level \"world\" (2.054s)"));
     }
@@ -22494,16 +20591,10 @@ mod tests {
         let line = format!(
             "{esc}[2m2026-08-26 15:36:37{esc}[0m {esc}[32m INFO{esc}[0m main {esc}[2mpumpkin{esc}[0m{esc}[2m:{esc}[0m Started server; took {esc}[33m57ms{esc}[0m"
         );
-        assert_eq!(
-            super::strip_ansi(&line),
-            "2026-08-26 15:36:37  INFO main pumpkin: Started server; took 57ms"
-        );
+        assert_eq!(super::strip_ansi(&line), "2026-08-26 15:36:37  INFO main pumpkin: Started server; took 57ms");
         let plain = "[15:36:37 INFO]: Done (1.234s)! For help, type \"help\"";
         assert_eq!(super::strip_ansi(plain), plain);
-        assert_eq!(
-            super::strip_ansi(&format!("{esc}[1;31;40mred{esc}[0m")),
-            "red"
-        );
+        assert_eq!(super::strip_ansi(&format!("{esc}[1;31;40mred{esc}[0m")), "red");
         assert_eq!(super::strip_ansi(&format!("{esc}[2Jend")), "end");
     }
 
@@ -22543,26 +20634,17 @@ mod tests {
         let modern = root.join("world/players/data");
         std::fs::create_dir_all(&modern).unwrap();
         std::fs::write(modern.join("a.dat"), b"x").unwrap();
-        assert_eq!(
-            super::player_file(&root, "world", "data", "a.dat"),
-            Some(modern.join("a.dat"))
-        );
+        assert_eq!(super::player_file(&root, "world", "data", "a.dat"), Some(modern.join("a.dat")));
 
         let old = root.join("world/playerdata");
         std::fs::create_dir_all(&old).unwrap();
         std::fs::write(old.join("b.dat"), b"x").unwrap();
-        assert_eq!(
-            super::player_file(&root, "world", "data", "b.dat"),
-            Some(old.join("b.dat"))
-        );
+        assert_eq!(super::player_file(&root, "world", "data", "b.dat"), Some(old.join("b.dat")));
 
         let stats = root.join("world/stats");
         std::fs::create_dir_all(&stats).unwrap();
         std::fs::write(stats.join("c.json"), b"{}").unwrap();
-        assert_eq!(
-            super::player_file(&root, "world", "stats", "c.json"),
-            Some(stats.join("c.json"))
-        );
+        assert_eq!(super::player_file(&root, "world", "stats", "c.json"), Some(stats.join("c.json")));
 
         assert_eq!(super::player_file(&root, "world", "data", "missing.dat"), None);
         std::fs::remove_dir_all(&root).ok();
@@ -22591,10 +20673,7 @@ mod tests {
         let older = folder.join("libraries/net/neoforged/neoforge/21.1.77");
         std::fs::create_dir_all(&older).unwrap();
         std::fs::write(older.join(mine), "x").unwrap();
-        assert_eq!(
-            super::script_args_file(&folder).unwrap(),
-            format!("libraries/net/neoforged/neoforge/21.1.251/{mine}")
-        );
+        assert_eq!(super::script_args_file(&folder).unwrap(), format!("libraries/net/neoforged/neoforge/21.1.251/{mine}"));
         assert_eq!(super::detect_launch_mode("Custom", &folder), "script");
 
         std::fs::remove_dir_all(folder.join("libraries")).unwrap();
@@ -22614,10 +20693,7 @@ mod tests {
     #[test]
     fn unwraps_a_zipped_server_folder() {
         let names = |list: &[&str]| list.iter().map(|one| one.to_string()).collect::<Vec<_>>();
-        assert_eq!(
-            super::archive_root_prefix(&names(&["Pack/server.jar", "Pack/eula.txt"])),
-            Some("Pack/".into())
-        );
+        assert_eq!(super::archive_root_prefix(&names(&["Pack/server.jar", "Pack/eula.txt"])), Some("Pack/".into()));
     }
 
     #[test]
@@ -22677,11 +20753,7 @@ mod tests {
             panel_daemon: String::new(),
             named: false,
         };
-        let mut instances = vec![
-            make(&paper, super::sniff::UNKNOWN),
-            make(&bare, super::sniff::UNKNOWN),
-            make(&paper, "Fabric"),
-        ];
+        let mut instances = vec![make(&paper, super::sniff::UNKNOWN), make(&bare, super::sniff::UNKNOWN), make(&paper, "Fabric")];
         assert!(resniff_unknown_cores(&mut instances));
         assert_eq!(instances[0].core, "Paper");
         assert_eq!(instances[1].core, super::sniff::UNKNOWN);
@@ -22742,8 +20814,7 @@ mod tests {
     #[test]
     fn reads_tps_from_the_value_list_not_the_timestamp() {
         let snapshot =
-            parse_tps_line("[13:45:22 INFO]: TPS from last 1m, 5m, 15m: 19.8, 20.0, 20.0")
-                .expect("should recognise the TPS line");
+            parse_tps_line("[13:45:22 INFO]: TPS from last 1m, 5m, 15m: 19.8, 20.0, 20.0").expect("should recognise the TPS line");
         assert_eq!(snapshot.tps, Some(19.8));
         assert_eq!(snapshot.mspt, None);
     }
@@ -22757,8 +20828,7 @@ mod tests {
 
     #[test]
     fn reads_average_tick_time_from_the_numeric_row() {
-        let snapshot = parse_tps_line("[13:45:22 INFO]: ◴ 1.2/0.5/8.0, 1.3/0.4/9.1, 1.4/0.3/22.0")
-            .expect("should recognise the MSPT line");
+        let snapshot = parse_tps_line("[13:45:22 INFO]: ◴ 1.2/0.5/8.0, 1.3/0.4/9.1, 1.4/0.3/22.0").expect("should recognise the MSPT line");
         assert_eq!(snapshot.mspt, Some(1.2));
         assert_eq!(snapshot.tps, None);
     }
@@ -22771,16 +20841,11 @@ mod tests {
 
     #[test]
     fn replaces_a_configuration_line_in_place() {
-        let updated = replace_config_line(
-            "# comment\nbind = \"0.0.0.0:25577\"\nmotd = \"hi\"",
-            "bind",
-            "bind = \"0.0.0.0:25578\"",
-        );
+        let updated = replace_config_line("# comment\nbind = \"0.0.0.0:25577\"\nmotd = \"hi\"", "bind", "bind = \"0.0.0.0:25578\"");
         assert!(updated.contains("bind = \"0.0.0.0:25578\""));
         assert!(updated.contains("motd = \"hi\""));
         assert!(!updated.contains("25577"));
     }
-
 }
 
 #[cfg(test)]

@@ -1,4 +1,3 @@
-
 use crate::data_root::MonolabDirs;
 use crate::{hidden_command, kill_process_tree, load_instances, off_runtime, web};
 use serde::Serialize;
@@ -13,8 +12,7 @@ use std::{
 use tauri::{AppHandle, Manager};
 
 const VERSION: &str = "1.0.10";
-const DOWNLOAD: &str =
-    "https://github.com/playit-cloud/playit-agent/releases/download/v1.0.10/playit-windows-x86_64-signed.exe";
+const DOWNLOAD: &str = "https://github.com/playit-cloud/playit-agent/releases/download/v1.0.10/playit-windows-x86_64-signed.exe";
 const API: &str = "https://api.playit.gg";
 const PIPE: &str = r"\\.\pipe\monolab-playitd";
 const CLAIM_WAIT: Duration = Duration::from_secs(600);
@@ -83,11 +81,7 @@ fn lock() -> MutexGuard<'static, Live> {
 }
 
 fn folder(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .monolab_data_dir()
-        .map_err(|error| format!("Could not find the app data folder: {error}"))?
-        .join("playit");
+    let dir = app.path().monolab_data_dir().map_err(|error| format!("Could not find the app data folder: {error}"))?.join("playit");
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     Ok(dir)
 }
@@ -145,11 +139,7 @@ fn ensure_exe(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn call(
-    secret: Option<&str>,
-    path: &str,
-    body: serde_json::Value,
-) -> Result<serde_json::Value, String> {
+fn call(secret: Option<&str>, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
     let client = crate::net::builder()
         .user_agent(format!("Monolab {}", env!("CARGO_PKG_VERSION")))
         .timeout(Duration::from_secs(20))
@@ -159,19 +149,13 @@ fn call(
     if let Some(secret) = secret {
         request = request.header("Authorization", format!("Agent-Key {}", secret.trim()));
     }
-    let answer = request
-        .send()
-        .map_err(|error| format!("Could not reach playit: {error}"))?;
+    let answer = request.send().map_err(|error| format!("Could not reach playit: {error}"))?;
     if answer.status().as_u16() == 429 {
         return Err("playit is rate-limiting requests. Please try again shortly.".into());
     }
     let text = answer.text().map_err(|error| error.to_string())?;
-    let value: serde_json::Value = serde_json::from_str(&text).map_err(|_| {
-        format!(
-            "Could not read the playit response: {}",
-            text.chars().take(160).collect::<String>()
-        )
-    })?;
+    let value: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|_| format!("Could not read the playit response: {}", text.chars().take(160).collect::<String>()))?;
     let data = value.get("data").cloned().unwrap_or(serde_json::Value::Null);
     match value.get("status").and_then(|status| status.as_str()) {
         Some("success") => Ok(data),
@@ -218,11 +202,7 @@ pub fn begin_claim(app: &AppHandle) -> Result<String, String> {
     let generation = {
         let mut live = lock();
         live.generation += 1;
-        live.claim = Some(Claim {
-            url: url.clone(),
-            state: "waiting".into(),
-            error: String::new(),
-        });
+        live.claim = Some(Claim { url: url.clone(), state: "waiting".into(), error: String::new() });
         live.generation
     };
     let app = app.clone();
@@ -325,9 +305,7 @@ pub fn start(app: &AppHandle) -> Result<(), String> {
         });
     }
     if let Some(out) = child.stdout.take() {
-        std::thread::spawn(move || {
-            for _ in BufReader::new(out).lines().map_while(Result::ok) {}
-        });
+        std::thread::spawn(move || for _ in BufReader::new(out).lines().map_while(Result::ok) {});
     }
     let mut live = lock();
     live.child = Some(child);
@@ -373,11 +351,8 @@ fn refresh(app: &AppHandle, force: bool) -> Result<(), String> {
         }
     }
     let data = off_runtime(|| call(Some(&secret), "/agents/rundata", serde_json::json!({})))?;
-    let tunnels = data
-        .get("tunnels")
-        .and_then(|list| list.as_array())
-        .map(|list| list.iter().map(tunnel_of).collect::<Vec<_>>())
-        .unwrap_or_default();
+    let tunnels =
+        data.get("tunnels").and_then(|list| list.as_array()).map(|list| list.iter().map(tunnel_of).collect::<Vec<_>>()).unwrap_or_default();
     let pending = data
         .get("pending")
         .and_then(|list| list.as_array())
@@ -402,19 +377,11 @@ fn refresh(app: &AppHandle, force: bool) -> Result<(), String> {
 }
 
 fn text(value: &serde_json::Value, key: &str) -> String {
-    value
-        .get(key)
-        .and_then(|inner| inner.as_str())
-        .unwrap_or_default()
-        .to_string()
+    value.get(key).and_then(|inner| inner.as_str()).unwrap_or_default().to_string()
 }
 
 fn tunnel_of(one: &serde_json::Value) -> Tunnel {
-    let port = one
-        .get("port")
-        .and_then(|range| range.get("from"))
-        .and_then(|from| from.as_u64())
-        .unwrap_or(0) as u16;
+    let port = one.get("port").and_then(|range| range.get("from")).and_then(|from| from.as_u64()).unwrap_or(0) as u16;
     let host = {
         let custom = text(one, "custom_domain");
         if custom.is_empty() {
@@ -433,15 +400,16 @@ fn tunnel_of(one: &serde_json::Value) -> Tunnel {
     Tunnel {
         id: text(one, "id"),
         name: text(one, "name"),
-        local_port: one
-            .get("local_port")
-            .and_then(|value| value.as_u64())
-            .unwrap_or(0) as u16,
+        local_port: one.get("local_port").and_then(|value| value.as_u64()).unwrap_or(0) as u16,
         address,
         disabled: one.get("disabled").is_some_and(|value| !value.is_null()),
         protocol: {
             let proto = text(one, "proto");
-            if proto.is_empty() { text(one, "port_type") } else { proto }
+            if proto.is_empty() {
+                text(one, "port_type")
+            } else {
+                proto
+            }
         },
     }
 }
@@ -461,11 +429,7 @@ pub fn status(app: &AppHandle) -> Status {
         running,
         claim: live.claim.clone(),
         tunnels: live.tunnels.clone(),
-        error: if error.is_empty() {
-            live.error.clone()
-        } else {
-            error
-        },
+        error: if error.is_empty() { live.error.clone() } else { error },
     }
 }
 
@@ -483,10 +447,7 @@ pub fn expose(app: &AppHandle, id: &str) -> Result<Status, String> {
     let Some(secret) = read_secret(app) else {
         return Err("Link a playit account first.".into());
     };
-    let instance = load_instances(app)?
-        .into_iter()
-        .find(|one| one.id == id)
-        .ok_or_else(|| "Server not found.".to_string())?;
+    let instance = load_instances(app)?.into_iter().find(|one| one.id == id).ok_or_else(|| "Server not found.".to_string())?;
     tunnel_port_allowed(instance.port, crate::read_app_settings(app).web_panel_port)?;
     if !running() {
         start(app)?;
@@ -494,12 +455,7 @@ pub fn expose(app: &AppHandle, id: &str) -> Result<Status, String> {
     refresh(app, true)?;
     let (agent_id, already) = {
         let live = lock();
-        (
-            live.agent_id.clone(),
-            live.tunnels
-                .iter()
-                .any(|one| one.local_port == instance.port),
-        )
+        (live.agent_id.clone(), live.tunnels.iter().any(|one| one.local_port == instance.port))
     };
     if already {
         return Ok(status(app));
@@ -548,25 +504,11 @@ pub fn unexpose(app: &AppHandle, id: &str) -> Result<Status, String> {
     let Some(secret) = read_secret(app) else {
         return Err("Link a playit account first.".into());
     };
-    let instance = load_instances(app)?
-        .into_iter()
-        .find(|one| one.id == id)
-        .ok_or_else(|| "Server not found.".to_string())?;
+    let instance = load_instances(app)?.into_iter().find(|one| one.id == id).ok_or_else(|| "Server not found.".to_string())?;
     refresh(app, true)?;
-    let ids: Vec<String> = lock()
-        .tunnels
-        .iter()
-        .filter(|one| one.local_port == instance.port)
-        .map(|one| one.id.clone())
-        .collect();
+    let ids: Vec<String> = lock().tunnels.iter().filter(|one| one.local_port == instance.port).map(|one| one.id.clone()).collect();
     for tunnel_id in ids {
-        off_runtime(|| {
-            call(
-                Some(&secret),
-                "/tunnels/delete",
-                serde_json::json!({ "tunnel_id": tunnel_id }),
-            )
-        })?;
+        off_runtime(|| call(Some(&secret), "/tunnels/delete", serde_json::json!({ "tunnel_id": tunnel_id })))?;
     }
     refresh(app, true)?;
     Ok(status(app))
@@ -618,38 +560,21 @@ mod tests {
     #[test]
     fn briefs_an_error() {
         assert_eq!(brief(&serde_json::json!("NotAccepted")), "NotAccepted");
-        assert_eq!(
-            brief(&serde_json::json!({ "auth": "InvalidAgentKey" })),
-            "auth · InvalidAgentKey"
-        );
-        assert_eq!(
-            brief(&serde_json::json!({ "message": "NotAllowedWithReadOnly", "type": "auth" })),
-            "NotAllowedWithReadOnly (auth)"
-        );
+        assert_eq!(brief(&serde_json::json!({ "auth": "InvalidAgentKey" })), "auth · InvalidAgentKey");
+        assert_eq!(brief(&serde_json::json!({ "message": "NotAllowedWithReadOnly", "type": "auth" })), "NotAllowedWithReadOnly (auth)");
     }
 
     #[test]
     #[ignore]
     fn talks_to_the_real_playit_api() {
         let code: String = web::make_key().chars().take(10).collect();
-        let answer = call(
-            None,
-            "/claim/setup",
-            serde_json::json!({ "code": code, "agent_type": "assignable", "version": "Monolab test" }),
-        );
+        let answer = call(None, "/claim/setup", serde_json::json!({ "code": code, "agent_type": "assignable", "version": "Monolab test" }));
         println!("{answer:?}");
         let state = answer.expect("the API should answer");
-        assert!(
-            matches!(state.as_str(), Some("WaitingForUserVisit") | Some("WaitingForUser")),
-            "{state}"
-        );
-        let refused = call(None, "/claim/exchange", serde_json::json!({ "code": code }))
-            .expect_err("should be refused before approval");
+        assert!(matches!(state.as_str(), Some("WaitingForUserVisit") | Some("WaitingForUser")), "{state}");
+        let refused = call(None, "/claim/exchange", serde_json::json!({ "code": code })).expect_err("should be refused before approval");
         println!("{refused}");
-        assert!(
-            ["CodeNotFound", "NotAccepted", "NotSetup"].iter().any(|word| refused.contains(word)),
-            "{refused}"
-        );
+        assert!(["CodeNotFound", "NotAccepted", "NotSetup"].iter().any(|word| refused.contains(word)), "{refused}");
     }
 
     #[test]
@@ -661,11 +586,7 @@ mod tests {
         let exe = dir.join(format!("playitd-{VERSION}.exe"));
         if !exe.is_file() {
             println!("Downloading playit… (about 5 MB)");
-            let client = crate::net::builder()
-                .user_agent("Monolab test")
-                .timeout(Duration::from_secs(300))
-                .build()
-                .unwrap();
+            let client = crate::net::builder().user_agent("Monolab test").timeout(Duration::from_secs(300)).build().unwrap();
             let body = client.get(DOWNLOAD).send().unwrap().error_for_status().unwrap().bytes().unwrap();
             assert!(body.starts_with(b"MZ"), "the download is not an executable");
             assert!(body.len() > 1024 * 1024, "the download is too small");

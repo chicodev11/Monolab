@@ -4,9 +4,9 @@
 
 pub mod advancement;
 pub mod announcement;
+pub mod bbmodel;
 pub mod biome;
 pub mod block;
-pub mod bbmodel;
 pub mod canvas;
 pub mod cosmetic;
 pub mod enchant;

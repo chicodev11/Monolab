@@ -1,14 +1,10 @@
-
 use std::collections::HashMap;
 
 use crate::panel::{split_path, Api, Target};
 use crate::remote::{plain_trash_name, FileRow, TRASH_NOTE};
 
 fn unix_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|one| one.as_secs())
-        .unwrap_or(0)
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|one| one.as_secs()).unwrap_or(0)
 }
 
 pub async fn list_dir(api: &Api, target: &Target, relative: &str) -> Result<Vec<FileRow>, String> {
@@ -40,9 +36,7 @@ async fn edit_trash_notes(api: &Api, target: &Target, change: impl FnOnce(&mut H
 
 async fn write_trash_notes(api: &Api, target: &Target, note: &HashMap<String, String>) {
     if let Ok(text) = serde_json::to_string_pretty(note) {
-        let _ = api
-            .write_text(target, &format!(".monolab-trash/{TRASH_NOTE}"), &text)
-            .await;
+        let _ = api.write_text(target, &format!(".monolab-trash/{TRASH_NOTE}"), &text).await;
     }
 }
 
@@ -79,9 +73,7 @@ pub async fn trash_list(api: &Api, target: &Target) -> Result<Vec<(FileRow, Stri
 
 pub async fn trash_restore(api: &Api, target: &Target, stored: &str) -> Result<String, String> {
     crate::paths::check_relative(stored)?;
-    let note = read_trash_notes(api, target)
-        .await
-        .ok_or("Could not read the trash list. Please try again shortly.")?;
+    let note = read_trash_notes(api, target).await.ok_or("Could not read the trash list. Please try again shortly.")?;
     let back = note.get(stored).cloned().unwrap_or_else(|| plain_trash_name(stored));
     if api.exists(target, &back).await?.is_some() {
         return Err(format!("Something is already at {back}. Move it out of the way first."));
@@ -140,9 +132,7 @@ pub async fn read_log(api: &Api, target: &Target, name: &str, lines: u32) -> Res
         use std::io::Read;
         let bytes = api.read_bytes(target, &at, 64 * 1024 * 1024).await?;
         let mut out = String::new();
-        flate2::read::GzDecoder::new(&bytes[..])
-            .read_to_string(&mut out)
-            .map_err(|error| format!("Could not extract {name}: {error}"))?;
+        flate2::read::GzDecoder::new(&bytes[..]).read_to_string(&mut out).map_err(|error| format!("Could not extract {name}: {error}"))?;
         out
     } else {
         match api.read_text(target, &at).await {
@@ -166,12 +156,8 @@ pub async fn worlds(api: &Api, target: &Target) -> Vec<(String, u64)> {
     let mut out = Vec::new();
     for one in rows.iter().filter(|one| one.directory) {
         let looks = one.name.ends_with("_nether") || one.name.ends_with("_the_end");
-        let has_level = looks
-            || api
-                .list(target, &one.name)
-                .await
-                .map(|inside| inside.iter().any(|file| file.name == "level.dat"))
-                .unwrap_or(false);
+        let has_level =
+            looks || api.list(target, &one.name).await.map(|inside| inside.iter().any(|file| file.name == "level.dat")).unwrap_or(false);
         if has_level {
             out.push((one.name.clone(), one.modified_at));
         }

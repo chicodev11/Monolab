@@ -172,7 +172,11 @@ impl Studio {
         let mut lines = Vec::new();
         for (id, data) in rows {
             let model = rules::model(&data).trim().to_string();
-            let model_text = if model.is_empty() { String::new() } else { self.data_of("model", &model).map(|one| Value::Object(one).to_string()).unwrap_or_default() };
+            let model_text = if model.is_empty() {
+                String::new()
+            } else {
+                self.data_of("model", &model).map(|one| Value::Object(one).to_string()).unwrap_or_default()
+            };
             let def = Def::read(&id, &data, model_text);
             let mut problems = def.problems();
             let base = clean(&rules::base(&data));
@@ -191,7 +195,14 @@ impl Studio {
         for (id, line) in lines {
             self.problem("mob", &id, &line);
         }
-        let changed: HashSet<String> = self.play.mobs.defs.iter().filter(|(id, def)| old.get(*id).is_none_or(|was| was.text != def.text)).map(|(id, _)| id.clone()).collect();
+        let changed: HashSet<String> = self
+            .play
+            .mobs
+            .defs
+            .iter()
+            .filter(|(id, def)| old.get(*id).is_none_or(|was| was.text != def.text))
+            .map(|(id, _)| id.clone())
+            .collect();
         let living: Vec<u32> = self.play.mobs.alive.keys().copied().collect();
         for eid in living {
             let Some(alive) = self.play.mobs.alive.remove(&eid) else { continue };
@@ -420,7 +431,8 @@ impl Studio {
     /// Natural spawns: every `every` seconds, for each online player in a listed world, `chance`% to try one spot
     /// 16..`radius` blocks away on the surface.
     async fn spawn_naturally(&mut self, server: &Server) {
-        let rows: Vec<(String, rules::Spawn)> = self.play.mobs.defs.iter().map(|(id, def)| (id.clone(), rules::spawn(&def.data))).filter(|(_, spawn)| spawn.enabled).collect();
+        let rows: Vec<(String, rules::Spawn)> =
+            self.play.mobs.defs.iter().map(|(id, def)| (id.clone(), rules::spawn(&def.data))).filter(|(_, spawn)| spawn.enabled).collect();
         if rows.is_empty() {
             return;
         }
@@ -459,7 +471,8 @@ impl Studio {
                 if light < spawn.light_min || light > spawn.light_max {
                     continue;
                 }
-                if !spawn.biomes.is_empty() && !biome_listed(&spawn.biomes, &crate::map::biome_name(&format!("{:?}", world.get_biome(at)))) {
+                if !spawn.biomes.is_empty() && !biome_listed(&spawn.biomes, &crate::map::biome_name(&format!("{:?}", world.get_biome(at))))
+                {
                     continue;
                 }
                 self.spawn_mob(server, &id, &world, (f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5)).await;
@@ -522,7 +535,10 @@ impl Studio {
     /// and the vanilla name otherwise (a studio mob counts for both).
     pub async fn quest_kill(&mut self, server: &Server, entity_id: i32) {
         let eid = entity_id as u32;
-        let Some(killer) = self.play.mobs.alive.get(&eid).and_then(|one| one.hit_by).or_else(|| self.play.mobs.last_hit.get(&eid).copied()) else { return };
+        let Some(killer) = self.play.mobs.alive.get(&eid).and_then(|one| one.hit_by).or_else(|| self.play.mobs.last_hit.get(&eid).copied())
+        else {
+            return;
+        };
         let Some(player) = server.get_all_players().into_iter().find(|one| one.as_entity().get_id() == killer) else { return };
         if let Some(id) = self.play.mobs.alive.get(&eid).map(|one| one.id.clone()) {
             self.quest_event(server, &player, "kill", &format!("studio:{id}"), 1).await;
@@ -557,7 +573,13 @@ impl Studio {
         let Some((id, killer)) = self.play.mobs.alive.get(&eid).map(|one| (one.id.clone(), one.hit_by)) else { return };
         self.fire_skills(server, eid, "death", killer).await;
         self.play.models.rider_died(eid);
-        let Some((data, plain, loot, exp, vanilla, drop_equipment)) = self.play.mobs.defs.get(&id).map(|def| (def.data.clone(), def.plain.clone(), def.loot.clone(), def.exp, def.vanilla_drops, def.drop_equipment)) else {
+        let Some((data, plain, loot, exp, vanilla, drop_equipment)) = self
+            .play
+            .mobs
+            .defs
+            .get(&id)
+            .map(|def| (def.data.clone(), def.plain.clone(), def.loot.clone(), def.exp, def.vanilla_drops, def.drop_equipment))
+        else {
             self.play.mobs.alive.remove(&eid);
             return;
         };
@@ -599,7 +621,12 @@ impl Studio {
         if self.play.mobs.alive.get(&eid).and_then(|alive| self.play.mobs.defs.get(&alive.id)).is_some_and(|def| !def.vanilla_drops) {
             return;
         }
-        let tables: Vec<Data> = self.active_rows("loot").into_iter().map(|(_, data)| data.clone()).filter(|data| fields::text(object(data, "drops"), "from", "none") == "mob").collect();
+        let tables: Vec<Data> = self
+            .active_rows("loot")
+            .into_iter()
+            .map(|(_, data)| data.clone())
+            .filter(|data| fields::text(object(data, "drops"), "from", "none") == "mob")
+            .collect();
         if tables.is_empty() || server.get_all_players().iter().any(|one| one.as_entity().get_id() == eid) {
             return;
         }
@@ -608,10 +635,14 @@ impl Studio {
         let world = entity.get_world();
         let world = crate::world_name(&world.get_id(), &world.get_dimension());
         let player = killer.and_then(|killer| server.get_all_players().into_iter().find(|one| one.as_entity().get_id() == killer));
-        let run = player.as_ref().map(|one| Run::of(one, vec![("mob".into(), kind.clone())])).unwrap_or_else(|| Run::server(vec![("mob".into(), kind.clone())]));
+        let run = player
+            .as_ref()
+            .map(|one| Run::of(one, vec![("mob".into(), kind.clone())]))
+            .unwrap_or_else(|| Run::server(vec![("mob".into(), kind.clone())]));
         for data in tables {
             let from = object(&data, "drops");
-            let targets: Vec<String> = fields::lines(from, "targets").into_iter().filter(|one| !one.trim().is_empty()).map(|one| clean(&one)).collect();
+            let targets: Vec<String> =
+                fields::lines(from, "targets").into_iter().filter(|one| !one.trim().is_empty()).map(|one| clean(&one)).collect();
             if !targets.is_empty() && !targets.iter().any(|one| *one == kind || one == "*") {
                 continue;
             }
@@ -691,7 +722,10 @@ impl Studio {
     /// One skill: cooldown and chance, then its conditions and actions once per target.
     async fn run_skill(&mut self, server: &Server, eid: u32, index: usize, skill: &Skill, other: Option<u32>) {
         let now = self.ticks;
-        let Some((id, ready)) = self.play.mobs.alive.get(&eid).map(|one| (one.id.clone(), one.ready.get(&index).copied().unwrap_or(0))) else { return };
+        let Some((id, ready)) = self.play.mobs.alive.get(&eid).map(|one| (one.id.clone(), one.ready.get(&index).copied().unwrap_or(0)))
+        else {
+            return;
+        };
         if now < ready {
             return;
         }
@@ -726,7 +760,13 @@ impl Studio {
         let Some(alive) = self.play.mobs.alive.get(&eid) else { return Vec::new() };
         match skill.targets.as_str() {
             "self" => self.target_of(server, eid).into_iter().collect(),
-            "target" => alive.entity.as_mob().and_then(|mob| mob.get_target()).and_then(|target| self.target_of(server, target.get_id())).into_iter().collect(),
+            "target" => alive
+                .entity
+                .as_mob()
+                .and_then(|mob| mob.get_target())
+                .and_then(|target| self.target_of(server, target.get_id()))
+                .into_iter()
+                .collect(),
             "nearby" => {
                 let (x, y, z) = alive.entity.get_position();
                 let world = alive.entity.get_world();
@@ -869,7 +909,13 @@ impl Studio {
                 let count = number(one, "count", 10.0, 1.0, 1000.0) as i32;
                 let (x, y, z) = target.get_position();
                 let (width, height) = (f64::from(target.get_width()), f64::from(target.get_height()));
-                target.get_world().spawn_particle(particle, (x, y + height / 2.0, z), (width / 2.0, height / 2.0, width / 2.0), 0.02, count);
+                target.get_world().spawn_particle(
+                    particle,
+                    (x, y + height / 2.0, z),
+                    (width / 2.0, height / 2.0, width / 2.0),
+                    0.02,
+                    count,
+                );
             }
             "projectile" => self.shoot(server, one, run, &target).await,
             "summon" => self.summon(server, one, &target).await,
@@ -913,7 +959,11 @@ impl Studio {
             }
             return;
         }
-        let Some(kind) = mob_type(&clean(&name)).or_else(|| names::entity_type(&clean(&name)).filter(|kind| !matches!(kind, EntityType::Player))) else { return };
+        let Some(kind) =
+            mob_type(&clean(&name)).or_else(|| names::entity_type(&clean(&name)).filter(|kind| !matches!(kind, EntityType::Player)))
+        else {
+            return;
+        };
         let world = target.get_world();
         for _ in 0..count {
             let _ = world.spawn_entity(kind, at).await;
@@ -977,7 +1027,10 @@ fn light_at(world: &World, at: BlockPos) -> i64 {
 
 /// Whether a biome (`minecraft:plains`) is in a list that may leave out `minecraft:`.
 fn biome_listed(list: &[String], biome: &str) -> bool {
-    list.iter().map(|one| one.trim().to_ascii_lowercase()).filter(|one| !one.is_empty()).any(|one| if one.contains(':') { one == biome } else { format!("minecraft:{one}") == biome })
+    list.iter()
+        .map(|one| one.trim().to_ascii_lowercase())
+        .filter(|one| !one.is_empty())
+        .any(|one| if one.contains(':') { one == biome } else { format!("minecraft:{one}") == biome })
 }
 
 /// The horizontal way a yaw (degrees) faces.

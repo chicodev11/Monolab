@@ -66,8 +66,12 @@ impl Studio {
             let name = quest::name(&data, &id);
             let run = Run::of(player, vec![("quest".into(), id.clone()), ("quest_name".into(), name.clone())]);
             let steps = match change {
-                Change::Counted(count, amount, text) => json!([{ "type": "actionbar", "text": format!("<gold>{name}</gold> <gray>·</gray> {text} <gray>({count}/{amount})") }]),
-                Change::Next(text) => json!([{ "type": "message", "text": format!("<gold>{name}</gold> <gray>›</gray> {text}") }, { "type": "sound", "sound": "entity.experience_orb.pickup", "volume": 1, "pitch": 1.2 }]),
+                Change::Counted(count, amount, text) => {
+                    json!([{ "type": "actionbar", "text": format!("<gold>{name}</gold> <gray>·</gray> {text} <gray>({count}/{amount})") }])
+                }
+                Change::Next(text) => {
+                    json!([{ "type": "message", "text": format!("<gold>{name}</gold> <gray>›</gray> {text}") }, { "type": "sound", "sound": "entity.experience_orb.pickup", "volume": 1, "pitch": 1.2 }])
+                }
                 Change::Finished => {
                     self.quest_finished(server, &data, &run).await;
                     continue;
@@ -139,4 +143,3 @@ impl Studio {
             .collect()
     }
 }
-

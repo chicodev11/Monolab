@@ -1,4 +1,3 @@
-
 use serde::Serialize;
 use std::{
     fs,
@@ -30,10 +29,7 @@ pub struct BackupFile {
 }
 
 fn unix_now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|value| value.as_secs())
-        .unwrap_or_default()
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|value| value.as_secs()).unwrap_or_default()
 }
 
 pub fn world_dirs(server: &Path) -> Vec<String> {
@@ -48,9 +44,7 @@ pub fn world_dirs(server: &Path) -> Vec<String> {
                 return None;
             }
             let name = entry.file_name().to_string_lossy().to_string();
-            let keep = path.join("level.dat").is_file()
-                || name.ends_with("_nether")
-                || name.ends_with("_the_end");
+            let keep = path.join("level.dat").is_file() || name.ends_with("_nether") || name.ends_with("_the_end");
             keep.then_some(name)
         })
         .collect()
@@ -63,22 +57,29 @@ pub enum Pack<'a> {
     Picked(&'a [String]),
 }
 
-pub fn create(
-    server: &Path,
-    note: &str,
-    vault: &Path,
-    worlds_only: bool,
-) -> Result<BackupFile, String> {
+pub fn create(server: &Path, note: &str, vault: &Path, worlds_only: bool) -> Result<BackupFile, String> {
     make(server, note, vault, if worlds_only { Pack::Worlds } else { Pack::All }, &crate::progress::Task::quiet())
 }
 
 /// A backup the app shows progress for and can cancel.
-pub fn create_followed(server: &Path, note: &str, vault: &Path, worlds_only: bool, task: &crate::progress::Task) -> Result<BackupFile, String> {
+pub fn create_followed(
+    server: &Path,
+    note: &str,
+    vault: &Path,
+    worlds_only: bool,
+    task: &crate::progress::Task,
+) -> Result<BackupFile, String> {
     make(server, note, vault, if worlds_only { Pack::Worlds } else { Pack::All }, task)
 }
 
 /// A backup of only the picked files and folders.
-pub fn create_picked(server: &Path, note: &str, vault: &Path, picks: &[String], task: &crate::progress::Task) -> Result<BackupFile, String> {
+pub fn create_picked(
+    server: &Path,
+    note: &str,
+    vault: &Path,
+    picks: &[String],
+    task: &crate::progress::Task,
+) -> Result<BackupFile, String> {
     make(server, note, vault, Pack::Picked(picks), task)
 }
 
@@ -106,15 +107,13 @@ fn make(server: &Path, note: &str, vault: &Path, what: Pack, task: &crate::progr
         }
     }
     let out = vault;
-    fs::create_dir_all(out)
-        .map_err(|error| format!("Could not create the backup folder: {error}"))?;
+    fs::create_dir_all(out).map_err(|error| format!("Could not create the backup folder: {error}"))?;
     let created_at = unix_now();
     let file_name = format!("{created_at}-{}.zip", safe(note));
     let path = out.join(&file_name);
 
     let staging = out.join(format!(".{file_name}.making"));
-    let file = fs::File::create(&staging)
-        .map_err(|error| format!("Could not create the backup file: {error}"))?;
+    let file = fs::File::create(&staging).map_err(|error| format!("Could not create the backup file: {error}"))?;
     let mut writer = ZipWriter::new(file);
     let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
     let total = match &what {
@@ -131,33 +130,15 @@ fn make(server: &Path, note: &str, vault: &Path, what: Pack, task: &crate::progr
         let _ = fs::remove_file(&staging);
         return Err(error);
     }
-    writer
-        .finish()
-        .map_err(|error| format!("Could not finish the backup: {error}"))?;
-    fs::rename(&staging, &path)
-        .map_err(|error| format!("Could not move the backup file: {error}"))?;
+    writer.finish().map_err(|error| format!("Could not finish the backup: {error}"))?;
+    fs::rename(&staging, &path).map_err(|error| format!("Could not move the backup file: {error}"))?;
 
     let size = fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0);
-    Ok(BackupFile {
-        file_name,
-        size_mib: (size as f64) / 1024.0 / 1024.0,
-        created_at,
-        note: note.to_string(),
-        worlds_only,
-    })
+    Ok(BackupFile { file_name, size_mib: (size as f64) / 1024.0 / 1024.0, created_at, note: note.to_string(), worlds_only })
 }
 
 fn safe(note: &str) -> String {
-    let cleaned: String = note
-        .chars()
-        .map(|letter| {
-            if letter.is_alphanumeric() || letter == '-' {
-                letter
-            } else {
-                '_'
-            }
-        })
-        .collect();
+    let cleaned: String = note.chars().map(|letter| if letter.is_alphanumeric() || letter == '-' { letter } else { '_' }).collect();
     if cleaned.is_empty() {
         "backup".into()
     } else {
@@ -193,9 +174,7 @@ fn pack<W: Write + Seek>(
         };
         let inside = relative.to_string_lossy().replace('\\', "/");
         if path.is_dir() {
-            writer
-                .add_directory(format!("{inside}/"), options)
-                .map_err(|error| error.to_string())?;
+            writer.add_directory(format!("{inside}/"), options).map_err(|error| error.to_string())?;
             pack(writer, root, &path, options, only, count)?;
             continue;
         }
@@ -229,13 +208,17 @@ fn pack_size(root: &Path, here: &Path, only: Option<&[String]>) -> u64 {
     total
 }
 
-fn add_file<W: Write + Seek>(writer: &mut ZipWriter<W>, path: &Path, inside: String, options: SimpleFileOptions, count: &mut Count) -> Result<(), String> {
+fn add_file<W: Write + Seek>(
+    writer: &mut ZipWriter<W>,
+    path: &Path,
+    inside: String,
+    options: SimpleFileOptions,
+    count: &mut Count,
+) -> Result<(), String> {
     let Ok(mut source) = fs::File::open(path) else {
         return Ok(());
     };
-    writer
-        .start_file(inside.as_str(), options)
-        .map_err(|error| error.to_string())?;
+    writer.start_file(inside.as_str(), options).map_err(|error| error.to_string())?;
     let mut buffer = [0_u8; 64 * 1024];
     loop {
         count.task.check()?;
@@ -244,16 +227,20 @@ fn add_file<W: Write + Seek>(writer: &mut ZipWriter<W>, path: &Path, inside: Str
             Ok(read) => read,
             Err(_) => break,
         };
-        writer
-            .write_all(&buffer[..read])
-            .map_err(|error| error.to_string())?;
+        writer.write_all(&buffer[..read]).map_err(|error| error.to_string())?;
         count.done += read as u64;
         count.task.step(count.done, count.total, "bytes", &inside);
     }
     Ok(())
 }
 
-fn pack_picked<W: Write + Seek>(writer: &mut ZipWriter<W>, server: &Path, picks: &[String], options: SimpleFileOptions, count: &mut Count) -> Result<(), String> {
+fn pack_picked<W: Write + Seek>(
+    writer: &mut ZipWriter<W>,
+    server: &Path,
+    picks: &[String],
+    options: SimpleFileOptions,
+    count: &mut Count,
+) -> Result<(), String> {
     for one in picks {
         let path = server.join(one);
         if path.is_dir() {
@@ -316,11 +303,11 @@ pub fn restore(server: &Path, file_name: &str, vault: &Path) -> Result<BackupFil
     let path = pick(vault, file_name)?;
     let safety = create(server, "Before rollback", vault, false)?;
     let file = fs::File::open(&path).map_err(|error| format!("Could not open the backup: {error}"))?;
-    let mut archive =
-        ZipArchive::new(file).map_err(|error| format!("The backup is corrupted: {error}"))?;
+    let mut archive = ZipArchive::new(file).map_err(|error| format!("The backup is corrupted: {error}"))?;
     if is_worlds_only(file_name) {
         // A world backup replaces those world folders whole, so chunks made after it don't linger.
-        let mut tops: Vec<String> = archive.file_names().filter_map(|name| name.ok()?.split_once('/').map(|(top, _)| top.to_string())).collect();
+        let mut tops: Vec<String> =
+            archive.file_names().filter_map(|name| name.ok()?.split_once('/').map(|(top, _)| top.to_string())).collect();
         tops.sort();
         tops.dedup();
         for top in tops.iter().filter(|top| !top.is_empty() && *top != "." && *top != ".." && !top.contains('\\')) {
@@ -331,9 +318,7 @@ pub fn restore(server: &Path, file_name: &str, vault: &Path) -> Result<BackupFil
         }
     }
     for at in 0..archive.len() {
-        let mut item = archive
-            .by_index(at)
-            .map_err(|error| format!("Could not read the backup: {error}"))?;
+        let mut item = archive.by_index(at).map_err(|error| format!("Could not read the backup: {error}"))?;
         let Some(inside) = item.enclosed_name() else {
             continue;
         };
@@ -348,10 +333,8 @@ pub fn restore(server: &Path, file_name: &str, vault: &Path) -> Result<BackupFil
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
-        let mut out = fs::File::create(&target)
-            .map_err(|error| format!("Could not roll back {}: {error}", inside.display()))?;
-        std::io::copy(&mut item, &mut out)
-            .map_err(|error| format!("Could not roll back {}: {error}", inside.display()))?;
+        let mut out = fs::File::create(&target).map_err(|error| format!("Could not roll back {}: {error}", inside.display()))?;
+        std::io::copy(&mut item, &mut out).map_err(|error| format!("Could not roll back {}: {error}", inside.display()))?;
     }
     Ok(safety)
 }
@@ -455,12 +438,8 @@ pub fn contents(server: &Path, vault: &Path, file_name: &str, task: &crate::prog
     walk(server, server, &mut now);
     task.check()?;
     // Only files whose size matches need reading; read them on a few threads at once.
-    let wanted: Vec<(usize, u64)> = then
-        .iter()
-        .enumerate()
-        .filter(|(_, (path, size))| now.get(path) == Some(size))
-        .map(|(at, (_, size))| (at, *size))
-        .collect();
+    let wanted: Vec<(usize, u64)> =
+        then.iter().enumerate().filter(|(_, (path, size))| now.get(path) == Some(size)).map(|(at, (_, size))| (at, *size)).collect();
     let same = same_files(server, &then, &sums, &wanted, task)?;
     let entries = compare(then, now, is_partial(file_name), |_, at| same.contains(&at));
     Ok(BackupContents { entries, exact: true })
@@ -605,11 +584,9 @@ fn pick(vault: &Path, file_name: &str) -> Result<PathBuf, String> {
     if file_name.contains(['/', '\\']) {
         return Err("The backup name is malformed.".into());
     }
-    let path = crate::paths::resolve_in_server(vault, file_name).map_err(|error| {
-        match error {
-            crate::paths::PathError::Missing => "That backup was not found.".to_string(),
-            _ => "The backup name is malformed.".to_string(),
-        }
+    let path = crate::paths::resolve_in_server(vault, file_name).map_err(|error| match error {
+        crate::paths::PathError::Missing => "That backup was not found.".to_string(),
+        _ => "The backup name is malformed.".to_string(),
     })?;
     if !path.is_file() {
         return Err("That backup was not found.".into());
@@ -671,19 +648,11 @@ mod tests {
 
         let zip = fs::File::open(kept.join(&made.file_name)).unwrap();
         let mut archive = ZipArchive::new(zip).unwrap();
-        let names: Vec<String> = (0..archive.len())
-            .map(|at| archive.by_index(at).unwrap().name().unwrap().to_string())
-            .collect();
+        let names: Vec<String> = (0..archive.len()).map(|at| archive.by_index(at).unwrap().name().unwrap().to_string()).collect();
         assert!(names.iter().any(|one| one.contains("world/level.dat")), "{names:?}");
         assert!(names.iter().any(|one| one.contains("world_nether/")), "{names:?}");
-        assert!(
-            !names.iter().any(|one| one.contains("mods/")),
-            "mods were included: {names:?}"
-        );
-        assert!(
-            !names.iter().any(|one| one.contains("server.properties")),
-            "top-level files were included: {names:?}"
-        );
+        assert!(!names.iter().any(|one| one.contains("mods/")), "mods were included: {names:?}");
+        assert!(!names.iter().any(|one| one.contains("server.properties")), "top-level files were included: {names:?}");
 
         assert_eq!(list(&away).len(), 1);
         assert_eq!(list(&server.join(FOLDER)).len(), 0, "looking at the old place");
@@ -692,9 +661,7 @@ mod tests {
         assert!(!whole.worlds_only);
         let zip = fs::File::open(kept.join(&whole.file_name)).unwrap();
         let mut archive = ZipArchive::new(zip).unwrap();
-        let names: Vec<String> = (0..archive.len())
-            .map(|at| archive.by_index(at).unwrap().name().unwrap().to_string())
-            .collect();
+        let names: Vec<String> = (0..archive.len()).map(|at| archive.by_index(at).unwrap().name().unwrap().to_string()).collect();
         assert!(names.iter().any(|one| one.contains("mods/big.jar")), "{names:?}");
 
         std::fs::write(server.join("world").join("later.mca"), b"y").unwrap();
@@ -724,13 +691,8 @@ mod tests {
         assert_eq!(list(&vault).len(), 1);
         let zip = fs::File::open(vault.join(&made.file_name)).unwrap();
         let mut archive = ZipArchive::new(zip).unwrap();
-        let names: Vec<String> = (0..archive.len())
-            .map(|at| archive.by_index(at).unwrap().name().unwrap().to_string())
-            .collect();
-        assert!(
-            !names.iter().any(|one| one.contains("garbage.zip")),
-            "old backups were included: {names:?}"
-        );
+        let names: Vec<String> = (0..archive.len()).map(|at| archive.by_index(at).unwrap().name().unwrap().to_string()).collect();
+        assert!(!names.iter().any(|one| one.contains("garbage.zip")), "old backups were included: {names:?}");
 
         fs::write(world.join("level.dat"), b"second").unwrap();
         restore(&root, &made.file_name, &vault).unwrap();

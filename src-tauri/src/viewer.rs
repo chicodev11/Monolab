@@ -117,10 +117,7 @@ fn hex_dump(bytes: &[u8]) -> String {
     let mut out = String::new();
     for (row, chunk) in bytes.chunks(16).enumerate() {
         let hex: Vec<String> = chunk.iter().map(|byte| format!("{byte:02x}")).collect();
-        let shown: String = chunk
-            .iter()
-            .map(|byte| if byte.is_ascii_graphic() || *byte == b' ' { *byte as char } else { '.' })
-            .collect();
+        let shown: String = chunk.iter().map(|byte| if byte.is_ascii_graphic() || *byte == b' ' { *byte as char } else { '.' }).collect();
         out.push_str(&format!("{:08x}  {:<47}  {shown}\n", row * 16, hex.join(" ")));
     }
     out
@@ -153,9 +150,7 @@ fn zip_entry(bytes: &[u8], entry: &str) -> Result<Vec<u8>, String> {
         return Err("This file is too large to open in the app.".into());
     }
     let mut out = Vec::new();
-    file.take(ENTRY_LIMIT)
-        .read_to_end(&mut out)
-        .map_err(|error| format!("Could not read the archive: {error}"))?;
+    file.take(ENTRY_LIMIT).read_to_end(&mut out).map_err(|error| format!("Could not read the archive: {error}"))?;
     Ok(out)
 }
 
@@ -171,7 +166,11 @@ fn quote(text: &str) -> String {
 
 fn key(text: &str) -> String {
     let plain = !text.is_empty() && text.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '+'));
-    if plain { text.to_string() } else { quote(text) }
+    if plain {
+        text.to_string()
+    } else {
+        quote(text)
+    }
 }
 
 fn numbers<T: std::fmt::Display>(prefix: &str, suffix: &str, items: &[T], out: &mut String) {
@@ -267,10 +266,7 @@ fn vineflower(app: &AppHandle) -> Result<PathBuf, String> {
     }
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     let part = dir.join(format!("vineflower-{VINEFLOWER}.part"));
-    let client = crate::net::builder()
-        .timeout(Duration::from_secs(120))
-        .build()
-        .map_err(|error| error.to_string())?;
+    let client = crate::net::builder().timeout(Duration::from_secs(120)).build().map_err(|error| error.to_string())?;
     let url = format!("https://repo1.maven.org/maven2/org/vineflower/vineflower/{VINEFLOWER}/vineflower-{VINEFLOWER}.jar");
     crate::download_file(&client, &url, &part)?;
     if let Err(error) = crate::hashes::verify_sha1(&part, VINEFLOWER_SHA1) {
@@ -284,10 +280,7 @@ fn vineflower(app: &AppHandle) -> Result<PathBuf, String> {
 fn decompile(app: &AppHandle, name: &str, bytes: &[u8]) -> Result<FileView, String> {
     let java = tool_java(app)?;
     let jar = vineflower(app)?;
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|time| time.as_nanos())
-        .unwrap_or(0);
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|time| time.as_nanos()).unwrap_or(0);
     let work = std::env::temp_dir().join(format!("monolab-decompile-{stamp}"));
     let out = work.join("out");
     fs::create_dir_all(&out).map_err(|error| error.to_string())?;

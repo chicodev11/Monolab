@@ -112,13 +112,10 @@ pub fn models(app: &AppHandle) -> Vec<CodexModel> {
 
 fn configured_model(app: &AppHandle) -> Option<String> {
     let text = std::fs::read_to_string(codex_home(app)?.join("config.toml")).ok()?;
-    text.lines()
-        .map(str::trim)
-        .take_while(|line| !line.starts_with('['))
-        .find_map(|line| {
-            let (key, value) = line.split_once('=')?;
-            (key.trim() == "model").then(|| value.trim().trim_matches(['"', '\'']).to_string())
-        })
+    text.lines().map(str::trim).take_while(|line| !line.starts_with('[')).find_map(|line| {
+        let (key, value) = line.split_once('=')?;
+        (key.trim() == "model").then(|| value.trim().trim_matches(['"', '\'']).to_string())
+    })
 }
 
 fn usable_model(app: &AppHandle, chosen: &str) -> String {
@@ -152,10 +149,7 @@ pub fn account_of(text: &str) -> (String, String) {
 }
 
 pub fn account(app: &AppHandle) -> (String, String) {
-    codex_home(app)
-        .and_then(|dir| std::fs::read_to_string(dir.join("auth.json")).ok())
-        .map(|text| account_of(&text))
-        .unwrap_or_default()
+    codex_home(app).and_then(|dir| std::fs::read_to_string(dir.join("auth.json")).ok()).map(|text| account_of(&text)).unwrap_or_default()
 }
 
 fn command_for(program: &Path) -> std::process::Command {
@@ -261,14 +255,11 @@ pub fn open(app: &AppHandle, server: &str, fresh: bool, mode: &str, model: &str)
             let _ = std::fs::remove_file(file);
         }
     }
-    let id = format!(
-        "codex{}",
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|one| one.as_millis()).unwrap_or(0)
-    );
-    sessions().lock().expect("codex poisoned").insert(
-        id.clone(),
-        Session { server: server.to_string(), mode: mode.to_string(), model, turn: None },
-    );
+    let id = format!("codex{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|one| one.as_millis()).unwrap_or(0));
+    sessions()
+        .lock()
+        .expect("codex poisoned")
+        .insert(id.clone(), Session { server: server.to_string(), mode: mode.to_string(), model, turn: None });
     Ok(id)
 }
 
@@ -351,7 +342,10 @@ pub fn send(app: &AppHandle, id: &str, content: &str) -> Result<(), String> {
     command.arg("-c").arg(format!("mcp_servers.monolab.url={}", toml_string(&format!("{url}?server={server}"))));
     command.arg("-c").arg(format!("mcp_servers.monolab.bearer_token_env_var={}", toml_string(TOKEN_VAR)));
     command.arg("-c").arg("mcp_servers.monolab.default_tools_approval_mode=\"approve\"");
-    command.arg("-c").arg(format!("developer_instructions={}", toml_string(&(claude_agent::briefing_for(app, &instance, &dir) + &crate::skills::summary(app, &server)))));
+    command.arg("-c").arg(format!(
+        "developer_instructions={}",
+        toml_string(&(claude_agent::briefing_for(app, &instance, &dir) + &crate::skills::summary(app, &server)))
+    ));
     for image in &images {
         command.arg("-i").arg(image);
     }
@@ -457,10 +451,7 @@ fn translate(event: &Value) -> Vec<Value> {
         ("item.started", "command_execution") => vec![tool_use(item_id, "Bash", json!({ "command": s("command") }))],
         ("item.completed", "command_execution") => {
             let failed = item.get("exit_code").and_then(Value::as_i64).is_some_and(|code| code != 0);
-            vec![
-                tool_use(item_id, "Bash", json!({ "command": s("command") })),
-                tool_result(item_id, &s("aggregated_output"), failed),
-            ]
+            vec![tool_use(item_id, "Bash", json!({ "command": s("command") })), tool_result(item_id, &s("aggregated_output"), failed)]
         }
         ("item.started", "mcp_tool_call") => {
             let name = format!("mcp__{}__{}", s("server"), s("tool"));
@@ -470,12 +461,16 @@ fn translate(event: &Value) -> Vec<Value> {
             let name = format!("mcp__{}__{}", s("server"), s("tool"));
             let error = item.get("error").and_then(|one| one.get("message").and_then(Value::as_str).or(one.as_str())).unwrap_or("");
             let output = item.get("result").map(mcp_text).unwrap_or_default();
-            let flagged = item
-                .get("result")
-                .is_some_and(|result| [result.get("isError"), result.get("is_error")].into_iter().flatten().any(|one| one.as_bool() == Some(true)));
+            let flagged = item.get("result").is_some_and(|result| {
+                [result.get("isError"), result.get("is_error")].into_iter().flatten().any(|one| one.as_bool() == Some(true))
+            });
             vec![
                 tool_use(item_id, &name, item.get("arguments").cloned().unwrap_or_else(|| json!({}))),
-                tool_result(item_id, if error.is_empty() { &output } else { error }, flagged || !error.is_empty() || s("status") == "failed"),
+                tool_result(
+                    item_id,
+                    if error.is_empty() { &output } else { error },
+                    flagged || !error.is_empty() || s("status") == "failed",
+                ),
             ]
         }
         ("item.completed", "file_change") => {
@@ -484,7 +479,13 @@ fn translate(event: &Value) -> Vec<Value> {
                 .and_then(Value::as_array)
                 .map(|all| {
                     all.iter()
-                        .map(|one| format!("{} {}", one.get("kind").and_then(Value::as_str).unwrap_or("update"), one.get("path").and_then(Value::as_str).unwrap_or("")))
+                        .map(|one| {
+                            format!(
+                                "{} {}",
+                                one.get("kind").and_then(Value::as_str).unwrap_or("update"),
+                                one.get("path").and_then(Value::as_str).unwrap_or("")
+                            )
+                        })
                         .collect()
                 })
                 .unwrap_or_default();
@@ -549,13 +550,8 @@ pub fn close(id: &str) {
 }
 
 pub fn close_server(server: &str) {
-    let ids: Vec<String> = sessions()
-        .lock()
-        .expect("codex poisoned")
-        .iter()
-        .filter(|(_, one)| one.server == server)
-        .map(|(id, _)| id.clone())
-        .collect();
+    let ids: Vec<String> =
+        sessions().lock().expect("codex poisoned").iter().filter(|(_, one)| one.server == server).map(|(id, _)| id.clone()).collect();
     for id in ids {
         close(&id);
     }

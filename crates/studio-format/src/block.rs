@@ -53,7 +53,22 @@ pub const DEFAULT_SOIL: [&str; 1] = ["farmland"];
 
 /// Note block instruments every version since 1.14 has (later ones add mob heads; those states stay vanilla).
 pub const INSTRUMENTS: [&str; 16] = [
-    "harp", "basedrum", "snare", "hat", "bass", "flute", "bell", "guitar", "chime", "xylophone", "iron_xylophone", "cow_bell", "didgeridoo", "bit", "banjo", "pling",
+    "harp",
+    "basedrum",
+    "snare",
+    "hat",
+    "bass",
+    "flute",
+    "bell",
+    "guitar",
+    "chime",
+    "xylophone",
+    "iron_xylophone",
+    "cow_bell",
+    "didgeridoo",
+    "bit",
+    "banjo",
+    "pling",
 ];
 pub const NOTES: u32 = 25;
 /// Note block states we may give: 16 instruments × 25 notes × powered, less `harp, note 0, unpowered` (vanilla).
@@ -103,7 +118,8 @@ pub fn state(shape: &str, number: u32) -> Option<State> {
     if number <= NOTE_STATES {
         let instrument = INSTRUMENTS[(number / (NOTES * 2)) as usize];
         let note = (number / 2) % NOTES;
-        let properties = vec![("instrument", instrument.to_string()), ("note", note.to_string()), ("powered", (number % 2 == 1).to_string())];
+        let properties =
+            vec![("instrument", instrument.to_string()), ("note", note.to_string()), ("powered", (number % 2 == 1).to_string())];
         return Some(State { block: "note_block", properties });
     }
     let rest = number - NOTE_STATES - 1;
@@ -117,16 +133,28 @@ pub fn state(shape: &str, number: u32) -> Option<State> {
 
 /// How many states a shape has to give.
 pub fn most(shape: &str) -> u32 {
-    if shape == "plant" { PLANT_STATES } else { CUBE_STATES }
+    if shape == "plant" {
+        PLANT_STATES
+    } else {
+        CUBE_STATES
+    }
 }
 
 pub fn ids_kind(shape: &str) -> &'static str {
-    if shape == "plant" { IDS_PLANT } else { IDS_CUBE }
+    if shape == "plant" {
+        IDS_PLANT
+    } else {
+        IDS_CUBE
+    }
 }
 
 pub fn shape(data: &Data) -> String {
     let one = fields::text(data, "shape", "cube");
-    if SHAPES.contains(&one.as_str()) { one } else { "cube".into() }
+    if SHAPES.contains(&one.as_str()) {
+        one
+    } else {
+        "cube".into()
+    }
 }
 
 /// How a block looks: one texture on every side, a side texture with its own top and bottom, or a model.
@@ -181,7 +209,11 @@ pub fn sounds(data: &Data) -> String {
     let fallback = if shape(data) == "plant" { "short_grass" } else { "stone" };
     let raw = fields::text(data, "sounds", fallback).trim().to_ascii_lowercase();
     let bare = raw.trim_start_matches("minecraft:").to_string();
-    if bare.is_empty() { fallback.into() } else { bare }
+    if bare.is_empty() {
+        fallback.into()
+    } else {
+        bare
+    }
 }
 
 /// How fast a held item mines a block that wants `tool`: the vanilla speed of its tier, or `None` when it isn't that
@@ -211,7 +243,11 @@ pub fn break_ticks(hardness: f64, speed: f64, harvest: bool) -> u32 {
         return 0;
     }
     let per_tick = speed.max(0.01) / hardness / if harvest { 30.0 } else { 100.0 };
-    if per_tick >= 1.0 { 0 } else { (1.0 / per_tick).ceil() as u32 }
+    if per_tick >= 1.0 {
+        0
+    } else {
+        (1.0 / per_tick).ceil() as u32
+    }
 }
 
 /// Break ticks for a player holding `material`, from the block's fields.
@@ -281,12 +317,17 @@ pub fn growth(data: &Data) -> Option<Growth> {
         return None;
     }
     let part = item::part(data, "growth")?;
-    let stages: Vec<String> = fields::lines(part, "stages").iter().map(|one| one.trim().to_string()).filter(|one| !one.is_empty()).take(MOST_STAGES).collect();
+    let stages: Vec<String> =
+        fields::lines(part, "stages").iter().map(|one| one.trim().to_string()).filter(|one| !one.is_empty()).take(MOST_STAGES).collect();
     if stages.is_empty() {
         return None;
     }
     let soil = match part.get("soil") {
-        Some(Value::Array(_)) => fields::lines(part, "soil").iter().map(|one| one.trim().trim_start_matches("minecraft:").to_ascii_lowercase()).filter(|one| !one.is_empty()).collect(),
+        Some(Value::Array(_)) => fields::lines(part, "soil")
+            .iter()
+            .map(|one| one.trim().trim_start_matches("minecraft:").to_ascii_lowercase())
+            .filter(|one| !one.is_empty())
+            .collect(),
         _ => DEFAULT_SOIL.iter().map(|one| (*one).to_string()).collect(),
     };
     let empty = Data::new();
@@ -310,7 +351,11 @@ pub fn stage_key(id: &str, stage: u32) -> String {
 
 /// How many stages bone meal grows a crop: one or two, from a roll in 0..1.
 pub fn bonemeal_stages(roll: f64) -> u32 {
-    if roll < 0.5 { 1 } else { 2 }
+    if roll < 0.5 {
+        1
+    } else {
+        2
+    }
 }
 
 /// What is wrong with a block file, for its status. Empty = fine.
@@ -404,14 +449,55 @@ pub fn instrument_under(below: &str) -> &'static str {
         return "hat";
     }
     const WOOD: [&str; 18] = [
-        "_planks", "_log", "_wood", "_stem", "_hyphae", "bookshelf", "chest", "crafting_table", "note_block", "jukebox", "barrel", "lectern", "composter", "bamboo_block", "mushroom_block", "loom", "_table", "beehive",
+        "_planks",
+        "_log",
+        "_wood",
+        "_stem",
+        "_hyphae",
+        "bookshelf",
+        "chest",
+        "crafting_table",
+        "note_block",
+        "jukebox",
+        "barrel",
+        "lectern",
+        "composter",
+        "bamboo_block",
+        "mushroom_block",
+        "loom",
+        "_table",
+        "beehive",
     ];
     if WOOD.iter().any(|part| name.contains(part)) && !name.contains("ender_chest") {
         return "bass";
     }
     const STONE: [&str; 26] = [
-        "stone", "cobble", "_ore", "netherrack", "obsidian", "quartz", "brick", "terracotta", "concrete", "deepslate", "basalt", "andesite", "diorite", "granite", "tuff", "calcite",
-        "prismarine", "purpur", "nylium", "coral_block", "bedrock", "furnace", "dispenser", "dropper", "observer", "ender_chest",
+        "stone",
+        "cobble",
+        "_ore",
+        "netherrack",
+        "obsidian",
+        "quartz",
+        "brick",
+        "terracotta",
+        "concrete",
+        "deepslate",
+        "basalt",
+        "andesite",
+        "diorite",
+        "granite",
+        "tuff",
+        "calcite",
+        "prismarine",
+        "purpur",
+        "nylium",
+        "coral_block",
+        "bedrock",
+        "furnace",
+        "dispenser",
+        "dropper",
+        "observer",
+        "ender_chest",
     ];
     if STONE.iter().any(|part| name.contains(part)) {
         return "basedrum";
@@ -465,7 +551,9 @@ mod tests {
         for block in MUSHROOMS {
             assert!(!seen.contains(&format!("minecraft:{block}[down=true,east=true,north=true,south=true,up=true,west=true]")));
         }
-        assert!(!seen.contains("minecraft:tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]"));
+        assert!(
+            !seen.contains("minecraft:tripwire[attached=false,disarmed=false,east=false,north=false,powered=false,south=false,west=false]")
+        );
     }
 
     #[test]
@@ -474,9 +562,18 @@ mod tests {
         assert_eq!(state("cube", 2).unwrap().key(), "instrument=harp,note=1,powered=false");
         assert_eq!(state("cube", 50).unwrap().key(), "instrument=basedrum,note=0,powered=false");
         assert_eq!(state("cube", NOTE_STATES).unwrap().key(), "instrument=pling,note=24,powered=true");
-        assert_eq!(state("cube", NOTE_STATES + 1).unwrap().text(), "minecraft:brown_mushroom_block[down=false,east=false,north=false,south=false,up=false,west=false]");
-        assert_eq!(state("cube", CUBE_STATES).unwrap().text(), "minecraft:mushroom_stem[down=false,east=true,north=true,south=true,up=true,west=true]");
-        assert_eq!(state("plant", 1).unwrap().key(), "attached=true,disarmed=false,east=false,north=false,powered=false,south=false,west=false");
+        assert_eq!(
+            state("cube", NOTE_STATES + 1).unwrap().text(),
+            "minecraft:brown_mushroom_block[down=false,east=false,north=false,south=false,up=false,west=false]"
+        );
+        assert_eq!(
+            state("cube", CUBE_STATES).unwrap().text(),
+            "minecraft:mushroom_stem[down=false,east=true,north=true,south=true,up=true,west=true]"
+        );
+        assert_eq!(
+            state("plant", 1).unwrap().key(),
+            "attached=true,disarmed=false,east=false,north=false,powered=false,south=false,west=false"
+        );
     }
 
     #[test]
@@ -497,7 +594,9 @@ mod tests {
 
     #[test]
     fn crops() {
-        let wheat = data(json!({ "shape": "plant", "look": { "texture": "w0" }, "growth": { "stages": ["w1", " ", "w2"], "minutes": 2, "light": 9, "harvest": { "loot": "wheat", "exp": 2 } } }));
+        let wheat = data(
+            json!({ "shape": "plant", "look": { "texture": "w0" }, "growth": { "stages": ["w1", " ", "w2"], "minutes": 2, "light": 9, "harvest": { "loot": "wheat", "exp": 2 } } }),
+        );
         assert!(problems(&wheat).is_empty(), "{:?}", problems(&wheat));
         let grow = growth(&wheat).unwrap();
         assert_eq!(grow.stages, vec!["w1", "w2"]);

@@ -2,24 +2,31 @@
 //! loot tables, advancements and worlds. Same files and the same action lists as the Paper add-on
 //! (`StudioActions.java` and friends); what Pumpkin's plugin API can't do yet is said in that file's status.
 
+use super::blocks::Outcome;
 use super::{Studio, render, shows, values, world_named};
 use crate::names;
 use pumpkin_plugin_api::command::{ArgumentType, Command, CommandNode, StringType};
 use pumpkin_plugin_api::common::Hand;
-use pumpkin_plugin_api::gui::Gui;
-use pumpkin_plugin_api::java_dialog::{Action, ActionButton, AfterAction, CustomClickAction, Dialog, DialogBody, DialogInput, DialogInputBool, DialogInputNumberRange, DialogInputSingleOption, DialogInputText, DialogType};
-use pumpkin_plugin_api::java_dialogs::DynamicCustomAction;
 use pumpkin_plugin_api::common::{NbtTag, NbtTree};
+use pumpkin_plugin_api::gui::Gui;
+use pumpkin_plugin_api::java_dialog::{
+    Action, ActionButton, AfterAction, CustomClickAction, Dialog, DialogBody, DialogInput, DialogInputBool, DialogInputNumberRange,
+    DialogInputSingleOption, DialogInputText, DialogType,
+};
+use pumpkin_plugin_api::java_dialogs::DynamicCustomAction;
 use pumpkin_plugin_api::persistent_data::PersistentDataHolder;
 use pumpkin_plugin_api::text::TextComponent;
 use pumpkin_plugin_api::uuid::Uuid;
-use pumpkin_plugin_api::world::Entity;
-use pumpkin_plugin_api::wit::pumpkin::plugin::recipe::{CookingRecipe, CookingType, Ingredient, ShapedRecipe, ShapelessRecipe, StonecuttingRecipe};
-use pumpkin_plugin_api::wit::pumpkin::plugin::server::{CommandSender as RunAs, FlatWorldLayer, FlatWorldSettings, PluginGeneratorSettings, WorldGenerator};
+use pumpkin_plugin_api::wit::pumpkin::plugin::recipe::{
+    CookingRecipe, CookingType, Ingredient, ShapedRecipe, ShapelessRecipe, StonecuttingRecipe,
+};
+use pumpkin_plugin_api::wit::pumpkin::plugin::server::{
+    CommandSender as RunAs, FlatWorldLayer, FlatWorldSettings, PluginGeneratorSettings, WorldGenerator,
+};
 use pumpkin_plugin_api::wit::pumpkin::plugin::sounds::SoundCategory;
+use pumpkin_plugin_api::world::Entity;
 use pumpkin_plugin_api::{Dimension, GameRuleValue, ItemStack, Player, Screen, Server};
 use serde_json::{Map, Value, json};
-use super::blocks::Outcome;
 
 mod shops;
 mod steps;
@@ -45,8 +52,33 @@ const PRESSED_TICKS: u64 = 1;
 const MOST_TRACES: u32 = 20;
 const LOOK_DISTANCE: f64 = 8.0;
 pub const RULE_EVENTS: [&str; 27] = [
-    "join", "first_join", "quit", "chat", "death", "respawn", "break", "place", "world_change", "command", "timer", "schedule", "click", "click_entity", "kill", "hit",
-    "hurt", "eat", "craft", "fish", "sneak", "drop", "pickup", "level_up", "teleport", "gamemode", "server_start",
+    "join",
+    "first_join",
+    "quit",
+    "chat",
+    "death",
+    "respawn",
+    "break",
+    "place",
+    "world_change",
+    "command",
+    "timer",
+    "schedule",
+    "click",
+    "click_entity",
+    "kill",
+    "hit",
+    "hurt",
+    "eat",
+    "craft",
+    "fish",
+    "sneak",
+    "drop",
+    "pickup",
+    "level_up",
+    "teleport",
+    "gamemode",
+    "server_start",
 ];
 
 /// Who an action list runs for, and its placeholders (`<arg1>`, `<message>`, `<input:kit>`...).
@@ -176,8 +208,10 @@ impl Studio {
         self.play.advancements_dirty = true;
         self.play.worlds.clear();
         self.play.models.reload();
-        let block_rows: Vec<(String, Data)> = self.active_rows("block").into_iter().map(|(id, data)| (id.to_string(), data.clone())).collect();
-        let furniture_rows: Vec<(String, Data)> = self.active_rows("furniture").into_iter().map(|(id, data)| (id.to_string(), data.clone())).collect();
+        let block_rows: Vec<(String, Data)> =
+            self.active_rows("block").into_iter().map(|(id, data)| (id.to_string(), data.clone())).collect();
+        let furniture_rows: Vec<(String, Data)> =
+            self.active_rows("furniture").into_iter().map(|(id, data)| (id.to_string(), data.clone())).collect();
         let block_problems = self.blocks.as_mut().map(|blocks| blocks.load(server, &block_rows, &furniture_rows)).unwrap_or_default();
         for (kind, id, text) in block_problems {
             self.problem(kind, &id, &text);
@@ -198,20 +232,36 @@ impl Studio {
         for kind in studio_format::KINDS {
             for (id, data) in self.active_rows(kind) {
                 if uses_step(&Value::Object(data.clone()), "set_group") || uses_step(&Value::Object(data.clone()), "group") {
-                    problems.push((kind.into(), id.into(), "LuckPerms groups are Paper only: set group does nothing here and the group condition never passes.".into()));
+                    problems.push((
+                        kind.into(),
+                        id.into(),
+                        "LuckPerms groups are Paper only: set group does nothing here and the group condition never passes.".into(),
+                    ));
                 }
                 if uses_step(&Value::Object(data.clone()), "money") {
-                    problems.push((kind.into(), id.into(), "Vault money is Paper only: the money action does nothing here and the money condition never passes.".into()));
+                    problems.push((
+                        kind.into(),
+                        id.into(),
+                        "Vault money is Paper only: the money action does nothing here and the money condition never passes.".into(),
+                    ));
                 }
                 if uses_expansion(&Value::Object(data.clone())) {
-                    problems.push((kind.into(), id.into(), "Pumpkin plugins can't add studio actions yet, so the plugin's actions and conditions are skipped here.".into()));
+                    problems.push((
+                        kind.into(),
+                        id.into(),
+                        "Pumpkin plugins can't add studio actions yet, so the plugin's actions and conditions are skipped here.".into(),
+                    ));
                 }
             }
         }
         for (id, data) in self.active_rows("rule") {
             let event = when_event(data);
             if event.contains(':') {
-                problems.push(("rule".into(), id.into(), "Pumpkin plugins can't add studio triggers yet, so this rule never runs here.".into()));
+                problems.push((
+                    "rule".into(),
+                    id.into(),
+                    "Pumpkin plugins can't add studio triggers yet, so this rule never runs here.".into(),
+                ));
             } else if !RULE_EVENTS.contains(&event.as_str()) {
                 problems.push(("rule".into(), id.into(), format!("\"when.event\" must be one of: {}.", RULE_EVENTS.join(", "))));
             }
@@ -244,7 +294,9 @@ impl Studio {
         for (id, data) in self.active_rows("song") {
             let text = studio_format::song::problems(data).into_iter().next().or_else(|| match self.play.songs.get(id) {
                 None => Some("Restart the server to add this song: jukebox songs are only taken while it starts.".into()),
-                Some(was) if *was != studio_format::song::fingerprint(data, id) => Some("Changed since the server started: jukeboxes play it as it was until the next restart.".into()),
+                Some(was) if *was != studio_format::song::fingerprint(data, id) => {
+                    Some("Changed since the server started: jukeboxes play it as it was until the next restart.".into())
+                }
                 Some(_) => None,
             });
             if let Some(text) = text {
@@ -259,13 +311,18 @@ impl Studio {
             }
         }
         for (id, data) in self.active_rows("shop") {
-            let text = studio_format::shop::problems(data).into_iter().next().or_else(|| (studio_format::shop::currency(data) == "vault").then(|| "Vault money is Paper only, so this shop doesn't open on Pumpkin. Use a variable instead.".to_string()));
+            let text = studio_format::shop::problems(data).into_iter().next().or_else(|| {
+                (studio_format::shop::currency(data) == "vault")
+                    .then(|| "Vault money is Paper only, so this shop doesn't open on Pumpkin. Use a variable instead.".to_string())
+            });
             if let Some(text) = text {
                 problems.push(("shop".into(), id.into(), text));
             }
         }
         for (id, data) in self.active_rows("trade") {
-            let text = studio_format::trade::problems(data).into_iter().next().unwrap_or_else(|| "Pumpkin has no trade screen for plugins yet, so the trade action does nothing here (Paper opens it).".into());
+            let text = studio_format::trade::problems(data).into_iter().next().unwrap_or_else(|| {
+                "Pumpkin has no trade screen for plugins yet, so the trade action does nothing here (Paper opens it).".into()
+            });
             problems.push(("trade".into(), id.into(), text));
         }
         for (id, data) in self.active_rows("painting") {
@@ -281,7 +338,9 @@ impl Studio {
         for (id, data) in self.active_rows("biome") {
             let text = studio_format::biome::problems(data).into_iter().next().or_else(|| match self.play.biomes.get(id) {
                 None => Some("Restart the server to add this biome: biomes are only taken while it starts.".into()),
-                Some(was) if *was != studio_format::biome::registry_json(data) => Some("Changed since the server started: it looks as it was until the next restart.".into()),
+                Some(was) if *was != studio_format::biome::registry_json(data) => {
+                    Some("Changed since the server started: it looks as it was until the next restart.".into())
+                }
                 Some(_) => None,
             });
             if let Some(text) = text {
@@ -290,8 +349,14 @@ impl Studio {
         }
         for (id, data) in self.active_rows("world") {
             let kind = fields::text(data, "type", "normal");
-            if matches!(kind.as_str(), "amplified" | "large_biomes") && !matches!(fields::text(data, "environment", "normal").as_str(), "normal" | "overworld") {
-                problems.push(("world".into(), id.into(), format!("\"{kind}\" works only in the overworld; this one is made with its dimension's own terrain.")));
+            if matches!(kind.as_str(), "amplified" | "large_biomes")
+                && !matches!(fields::text(data, "environment", "normal").as_str(), "normal" | "overworld")
+            {
+                problems.push((
+                    "world".into(),
+                    id.into(),
+                    format!("\"{kind}\" works only in the overworld; this one is made with its dimension's own terrain."),
+                ));
             }
         }
         for (kind, id, text) in problems {
@@ -305,7 +370,8 @@ impl Studio {
         self.rebuild_play(server).await;
         let now = self.ticks;
         let due: Vec<Waiting> = {
-            let (ready, later): (Vec<Waiting>, Vec<Waiting>) = std::mem::take(&mut self.play.waiting).into_iter().partition(|one| one.due <= now);
+            let (ready, later): (Vec<Waiting>, Vec<Waiting>) =
+                std::mem::take(&mut self.play.waiting).into_iter().partition(|one| one.due <= now);
             self.play.waiting = later;
             ready
         };
@@ -360,7 +426,11 @@ impl Studio {
             return;
         }
         let rows: HashMap<String, Data> = if self.was_on {
-            self.active_rows("cosmetic").into_iter().filter(|(_, data)| cosmetic::problems(data).is_empty()).map(|(id, data)| (id.to_string(), data.clone())).collect()
+            self.active_rows("cosmetic")
+                .into_iter()
+                .filter(|(_, data)| cosmetic::problems(data).is_empty())
+                .map(|(id, data)| (id.to_string(), data.clone()))
+                .collect()
         } else {
             HashMap::new()
         };
@@ -381,7 +451,8 @@ impl Studio {
             let who = id_text(player.get_id());
             let body = player.as_entity();
             let worn = cosmetic::parse(&body.get_string(TAG, cosmetic::KEY).await.unwrap_or_default());
-            let hidden = matches!(player.get_gamemode(), pumpkin_plugin_api::player::GameMode::Spectator) || body.is_invisible() || body.is_dead();
+            let hidden =
+                matches!(player.get_gamemode(), pumpkin_plugin_api::player::GameMode::Spectator) || body.is_invisible() || body.is_dead();
             let mut allowed = HashMap::new();
             for (_, id) in &worn {
                 let permission = rows.get(id).map(cosmetic::permission).unwrap_or_default();
@@ -403,7 +474,11 @@ impl Studio {
                 };
                 let made = serde_json::to_string(&data).unwrap_or_default();
                 if let Some((was, was_made, display)) = had {
-                    if was == id && was_made == made && display.is_valid() && display.get_vehicle().is_some_and(|ride| ride.get_id() == body.get_id()) {
+                    if was == id
+                        && was_made == made
+                        && display.is_valid()
+                        && display.get_vehicle().is_some_and(|ride| ride.get_id() == body.get_id())
+                    {
                         display.set_rotation(body.get_yaw(), 0.0);
                         self.play.cosmetics_shown.entry(who.clone()).or_default().insert(slot.to_string(), (was, was_made, display));
                         continue;
@@ -422,7 +497,12 @@ impl Studio {
                     let (x, y, z) = cosmetic::translation(&data);
                     let size = cosmetic::scale(&data);
                     let still = Quaternionf { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
-                    display.set_transformation(DisplayTransformation { translation: Vector3f { x, y, z }, left_rotation: still, scale: Vector3f { x: size, y: size, z: size }, right_rotation: still });
+                    display.set_transformation(DisplayTransformation {
+                        translation: Vector3f { x, y, z },
+                        left_rotation: still,
+                        scale: Vector3f { x: size, y: size, z: size },
+                        right_rotation: still,
+                    });
                     display.set_teleport_duration(cosmetic::EVERY_TICKS as i32);
                     body.add_passenger(display.get_entity()).await;
                 }
@@ -436,7 +516,13 @@ impl Studio {
                 && !player.is_flying()
                 && let Some(particle) = super::mobs::particle(&cosmetic::particle(&data))
             {
-                body.get_world().spawn_particle(particle, (now.0, now.1 + 0.1, now.2), (0.15, 0.05, 0.15), 0.0, cosmetic::count(&data) as i32);
+                body.get_world().spawn_particle(
+                    particle,
+                    (now.0, now.1 + 0.1, now.2),
+                    (0.15, 0.05, 0.15),
+                    0.0,
+                    cosmetic::count(&data) as i32,
+                );
             }
         }
     }
@@ -531,7 +617,16 @@ impl Studio {
             }
             for (name, level) in &wanted {
                 let Some(kind) = super::mobs::status_effect(name) else { continue };
-                player.add_effect(StatusEffectInstance { effect_type: kind, duration: seconds * 20, amplifier: (*level).clamp(1, 255) as u8 - 1, ambient: true, show_particles: false, show_icon: true }).await;
+                player
+                    .add_effect(StatusEffectInstance {
+                        effect_type: kind,
+                        duration: seconds * 20,
+                        amplifier: (*level).clamp(1, 255) as u8 - 1,
+                        ambient: true,
+                        show_particles: false,
+                        show_icon: true,
+                    })
+                    .await;
             }
             if !wanted.is_empty() {
                 self.play.set_given.insert(who, wanted.into_keys().collect());
@@ -562,7 +657,8 @@ impl Studio {
         let filled = self.fill_vars(text, run);
         let player = run.player.and_then(|id| server.get_player_by_uuid(id));
         let who = player.as_ref().map(crate::who_of);
-        let mut all: Vec<(String, String)> = values(server, who.as_ref()).into_iter().map(|(key, value)| (key.to_string(), value)).collect();
+        let mut all: Vec<(String, String)> =
+            values(server, who.as_ref()).into_iter().map(|(key, value)| (key.to_string(), value)).collect();
         all.extend(run.extra.iter().map(|(key, value)| (key.clone(), value.clone())));
         let borrowed: Vec<(&str, String)> = all.iter().map(|(key, value)| (key.as_str(), value.clone())).collect();
         studio_format::mini::fill(&super::canvas::swap(&filled), &borrowed)
@@ -572,7 +668,8 @@ impl Studio {
         let filled = self.fill_vars(text, run);
         let player = run.player.and_then(|id| server.get_player_by_uuid(id));
         let who = player.as_ref().map(crate::who_of);
-        let mut all: Vec<(String, String)> = values(server, who.as_ref()).into_iter().map(|(key, value)| (key.to_string(), value)).collect();
+        let mut all: Vec<(String, String)> =
+            values(server, who.as_ref()).into_iter().map(|(key, value)| (key.to_string(), value)).collect();
         all.extend(run.extra.iter().map(|(key, value)| (key.clone(), value.clone())));
         let borrowed: Vec<(&str, String)> = all.iter().map(|(key, value)| (key.as_str(), value.clone())).collect();
         render(&filled, &borrowed)
@@ -668,19 +765,25 @@ impl Studio {
                 compare(left.as_ref(), &fields::text(one, "op", "="), &right)
             }
             "chance" => (self.next_random() % 10_000) as f64 / 100.0 < number_of(one.get("percent"), 50.0),
-            "online" => compare(Some(&json!(server.get_player_count())), &fields::text(one, "op", ">="), &fields::scalar(one, "value", "1")),
+            "online" => {
+                compare(Some(&json!(server.get_player_count())), &fields::text(one, "op", ">="), &fields::scalar(one, "value", "1"))
+            }
             "holding" => match &player {
                 Some(player) => holding(player, &fields::text(one, "item", "")).await,
                 None => false,
             },
             "advancement" => player.is_some_and(|player| player.has_advancement(&advancement_key(&fields::text(one, "advancement", "")))),
             "quest" => match &player {
-                Some(player) => self.quest_state(player, fields::text(one, "quest", "").trim(), &fields::text(one, "state", "active")).await,
+                Some(player) => {
+                    self.quest_state(player, fields::text(one, "quest", "").trim(), &fields::text(one, "state", "active")).await
+                }
                 None => false,
             },
             // Vault money is Paper only.
             "money" => false,
-            "has_item" | "gamemode" | "health" | "level" | "sneaking" | "time" | "weather" | "group" => self.more_check(server, one, run, player.as_ref()).await,
+            "has_item" | "gamemode" | "health" | "level" | "sneaking" | "time" | "weather" | "group" => {
+                self.more_check(server, one, run, player.as_ref()).await
+            }
             // Unknown ones pass. That includes M6 conditions other plugins add ("plugin:name"): Pumpkin plugins can't
             // add them yet (said in the file's status), so they don't stop the run.
             _ => true,
@@ -693,14 +796,24 @@ impl Studio {
     pub async fn run_actions(&mut self, server: &Server, actions: Option<&Value>, run: &Run) -> Vec<String> {
         let listed: Vec<Value> = actions.and_then(Value::as_array).cloned().unwrap_or_default();
         // Functions go in place of their step now, so a wait inside one puts the rest of the whole run off.
-        let steps = studio_format::function::expand(&listed, &|id| self.data_of("function", id).map(|data| studio_format::function::actions(&data)), MOST_STEPS);
+        let steps = studio_format::function::expand(
+            &listed,
+            &|id| self.data_of("function", id).map(|data| studio_format::function::actions(&data)),
+            MOST_STEPS,
+        );
         let started = steps.iter().map(|one| one.get("type").and_then(Value::as_str).unwrap_or("?").to_string()).collect();
         self.continue_at(server, steps, run, 0).await;
         started
     }
 
     /// Boxed: actions can run actions (skills, menus), so this future is recursive.
-    fn continue_at<'a>(&'a mut self, server: &'a Server, steps: Vec<Value>, run: &'a Run, waited: u64) -> pumpkin_plugin_api::BoxFuture<'a, ()> {
+    fn continue_at<'a>(
+        &'a mut self,
+        server: &'a Server,
+        steps: Vec<Value>,
+        run: &'a Run,
+        waited: u64,
+    ) -> pumpkin_plugin_api::BoxFuture<'a, ()> {
         Box::pin(async move {
             let mut steps = steps;
             let mut run = run.clone();
@@ -723,7 +836,12 @@ impl Studio {
                         if waited + ticks > MOST_WAIT {
                             return;
                         }
-                        self.play.waiting.push(Waiting { due: self.ticks + ticks, steps: steps.split_off(at), run, waited: waited + ticks });
+                        self.play.waiting.push(Waiting {
+                            due: self.ticks + ticks,
+                            steps: steps.split_off(at),
+                            run,
+                            waited: waited + ticks,
+                        });
                         return;
                     }
                     // Flow: an if or a repeat puts its steps in front of the rest, so a wait inside one waits for all after it.
@@ -743,7 +861,8 @@ impl Studio {
                                 next.extend(body.iter().cloned());
                             }
                             if !body.is_empty() && times > 0 {
-                                let was = run.extra.iter().find(|(key, _)| key == "index").map(|(_, value)| value.clone()).unwrap_or_default();
+                                let was =
+                                    run.extra.iter().find(|(key, _)| key == "index").map(|(_, value)| value.clone()).unwrap_or_default();
                                 next.push(json!({ "type": ROUND, "index": was }));
                             }
                         }
@@ -764,7 +883,13 @@ impl Studio {
                             continue;
                         }
                         for (each, _) in crate::players_of(server) {
-                            let each_run = Run { player: Some(each.get_id()), name: each.get_name(), extra: run.extra.clone(), caster: run.caster, target: None };
+                            let each_run = Run {
+                                player: Some(each.get_id()),
+                                name: each.get_name(),
+                                extra: run.extra.clone(),
+                                caster: run.caster,
+                                target: None,
+                            };
                             self.continue_at(server, body.clone(), &each_run, waited).await;
                         }
                     }
@@ -786,7 +911,11 @@ impl Studio {
     /// The steps of an `if` branch or a loop body, functions put in place.
     fn branch(&self, list: Option<&Value>) -> Vec<Value> {
         let listed: Vec<Value> = list.and_then(Value::as_array).cloned().unwrap_or_default();
-        studio_format::function::expand(&listed, &|id| self.data_of("function", id).map(|data| studio_format::function::actions(&data)), MOST_STEPS)
+        studio_format::function::expand(
+            &listed,
+            &|id| self.data_of("function", id).map(|data| studio_format::function::actions(&data)),
+            MOST_STEPS,
+        )
     }
 
     async fn step(&mut self, server: &Server, one: &Data, run: &Run) {
@@ -830,13 +959,23 @@ impl Studio {
                 if let Some(player) = &player {
                     let sound = fields::text(one, "sound", "entity.experience_orb.pickup").to_ascii_lowercase();
                     let sound = if sound.contains(':') { sound } else { format!("minecraft:{sound}") };
-                    player.play_custom_sound(&sound, SoundCategory::Master, number_of(one.get("volume"), 1.0) as f32, number_of(one.get("pitch"), 1.0) as f32);
+                    player.play_custom_sound(
+                        &sound,
+                        SoundCategory::Master,
+                        number_of(one.get("volume"), 1.0) as f32,
+                        number_of(one.get("pitch"), 1.0) as f32,
+                    );
                 }
             }
             "command" => {
-                let Some(line) = fields::command_line(&fields::text(one, "command", ""), &run.extra, |text| self.plain_for(server, text, run)) else {
+                let Some(line) =
+                    fields::command_line(&fields::text(one, "command", ""), &run.extra, |text| self.plain_for(server, text, run))
+                else {
                     if let Some(player) = &player {
-                        player.send_system_message(TextComponent::text("That can't go into a command. Use letters, numbers, _ . and - only."), false);
+                        player.send_system_message(
+                            TextComponent::text("That can't go into a command. Use letters, numbers, _ . and - only."),
+                            false,
+                        );
                     }
                     return;
                 };
@@ -907,7 +1046,8 @@ impl Studio {
             "structure" => self.place_structure_action(server, player.as_ref(), one, run).await,
             "quest" => {
                 if let Some(player) = &player {
-                    self.quest_action(server, player, fields::text(one, "quest", "").trim(), &fields::text(one, "mode", "start"), run).await;
+                    self.quest_action(server, player, fields::text(one, "quest", "").trim(), &fields::text(one, "mode", "start"), run)
+                        .await;
                 }
             }
             "cosmetic" => {
@@ -947,16 +1087,20 @@ impl Studio {
                 }
             }
             // M5: actions for mob skills (on rules, commands and items they work on the run's player).
-            "damage" | "heal" | "potion" | "launch" | "particle" | "projectile" | "summon" => self.mob_action(server, &kind, one, run).await,
+            "damage" | "heal" | "potion" | "launch" | "particle" | "projectile" | "summon" => {
+                self.mob_action(server, &kind, one, run).await
+            }
             "loot" => {
                 if let Some(player) = &player
-                    && let Some(table) = self.data_of("loot", &fields::text(one, "loot", "")) {
-                        for stack in self.roll(server, &table, run).await {
-                            give(player, stack).await;
-                        }
+                    && let Some(table) = self.data_of("loot", &fields::text(one, "loot", ""))
+                {
+                    for stack in self.roll(server, &table, run).await {
+                        give(player, stack).await;
                     }
+                }
             }
-            "take" | "xp" | "gamemode" | "kick" | "block" | "fill" | "bossbar" | "food" | "health" | "set_permission" | "set_group" | "manage_world" | "region" => {
+            "take" | "xp" | "gamemode" | "kick" | "block" | "fill" | "bossbar" | "food" | "health" | "set_permission" | "set_group"
+            | "manage_world" | "region" => {
                 self.more_step(server, &kind, one, run, player.as_ref()).await;
             }
             _ => {
@@ -995,7 +1139,8 @@ impl Studio {
             return;
         }
         self.play.vars_dirty = false;
-        let players: Map<String, Value> = self.play.vars_players.iter().map(|(id, vars)| (id.clone(), Value::Object(vars.clone()))).collect();
+        let players: Map<String, Value> =
+            self.play.vars_players.iter().map(|(id, vars)| (id.clone(), Value::Object(vars.clone()))).collect();
         let text = json!({ "server": self.play.vars_server, "players": players }).to_string();
         let file = self.vars_file();
         let _ = fs::create_dir_all(file.parent().unwrap_or(&self.root));
@@ -1040,7 +1185,10 @@ impl Studio {
             }
             let stack = ItemStack::new(&item_key("painting")?, 1);
             let variant = NbtTree { root: 0, tags: vec![NbtTag::StringTag(format!("{TAG}:{id}"))] };
-            stack.set_component_nbt(pumpkin_plugin_api::wit::pumpkin::plugin::data_components::DataComponent::PaintingVariant, variant).await.ok()?;
+            stack
+                .set_component_nbt(pumpkin_plugin_api::wit::pumpkin::plugin::data_components::DataComponent::PaintingVariant, variant)
+                .await
+                .ok()?;
             stack.set_count(count.min(stack.get_max_count().await)).await;
             return Some(stack);
         }
@@ -1048,13 +1196,19 @@ impl Studio {
             && let Some((kind, id)) = reference.split_once('/')
         {
             // M3: a block's or furniture piece's own item, or the studio item it's linked to.
-            let own = self.with_blocks(async |me, blocks| {
-                let me = RefCell::new(me);
-                blocks.own_item(reference, &|text| me.borrow_mut().text_for(server, text, run)).await
-            }).await;
+            let own = self
+                .with_blocks(async |me, blocks| {
+                    let me = RefCell::new(me);
+                    blocks.own_item(reference, &|text| me.borrow_mut().text_for(server, text, run)).await
+                })
+                .await;
             let Some(stack) = own else {
                 let link = fields::text(&self.data_of(kind, id)?, "item", "").trim().to_string();
-                return if link.is_empty() || link.contains('/') { None } else { Box::pin(self.stack(server, &format!("studio:{link}"), amount, run)).await };
+                return if link.is_empty() || link.contains('/') {
+                    None
+                } else {
+                    Box::pin(self.stack(server, &format!("studio:{link}"), amount, run)).await
+                };
             };
             let most = stack.get_max_count().await;
             stack.set_count(count.min(most)).await;
@@ -1064,12 +1218,15 @@ impl Studio {
             let data = self.data_of("item", id)?;
             let stack = self.build_item(server, &data, run).await?;
             item_parts(&stack, id, &data).await;
-            let enchants: Vec<(String, u32)> = studio_format::enchant::on_item(&data).into_iter().filter(|(one, _)| self.data_of("enchant", one).is_some()).collect();
+            let enchants: Vec<(String, u32)> =
+                studio_format::enchant::on_item(&data).into_iter().filter(|(one, _)| self.data_of("enchant", one).is_some()).collect();
             if !enchants.is_empty() {
                 self.write_enchants(server, &stack, &enchants, run).await;
             }
             // `food.leftover`: what is left after eating it (a bowl), a plain or studio item.
-            let leftover = studio_format::item::part(&data, "food").map(|food| fields::text(food, "leftover", "").trim().to_string()).unwrap_or_default();
+            let leftover = studio_format::item::part(&data, "food")
+                .map(|food| fields::text(food, "leftover", "").trim().to_string())
+                .unwrap_or_default();
             if !leftover.is_empty() && self.play.leftover_depth < 4 {
                 self.play.leftover_depth += 1;
                 let left = Box::pin(self.stack(server, &leftover, 1, run)).await;
@@ -1151,7 +1308,12 @@ impl Studio {
         };
         self.fire_enchants(server, &player, &stack, "hitActions", vec![("target".into(), target.clone())]).await;
         let Some(id) = stack.get_string(TAG, "item").await else { return };
-        let Some(list) = self.data_of("item", &id).and_then(|data| data.get("hitActions").filter(|one| one.as_array().is_some_and(|list| !list.is_empty())).cloned()) else { return };
+        let Some(list) = self
+            .data_of("item", &id)
+            .and_then(|data| data.get("hitActions").filter(|one| one.as_array().is_some_and(|list| !list.is_empty())).cloned())
+        else {
+            return;
+        };
         self.run_actions(server, Some(&list), &Run::of(&player, vec![("item".into(), id), ("target".into(), target)])).await;
     }
 
@@ -1301,10 +1463,12 @@ impl Studio {
     /// A right click on a block: our block's use actions, or placing a held studio block or piece. True = ours.
     pub async fn block_clicked(&mut self, server: &Server, player: &Player) -> bool {
         let run = Run::of(player, Vec::new());
-        let out = self.with_blocks(async |me, blocks| {
-            let me = RefCell::new(me);
-            blocks.right_click(player, &|text| me.borrow_mut().text_for(server, text, &run)).await
-        }).await;
+        let out = self
+            .with_blocks(async |me, blocks| {
+                let me = RefCell::new(me);
+                blocks.right_click(player, &|text| me.borrow_mut().text_for(server, text, &run)).await
+            })
+            .await;
         self.carry_out(server, Some(player), out, None).await
     }
 
@@ -1322,10 +1486,12 @@ impl Studio {
     /// The drop event of one of ours: its own item and loot instead of the borrowed block's.
     pub async fn studio_block_drops(&mut self, server: &Server, at: (i32, i32, i32), player: Option<&Player>, items: &mut Vec<ItemStack>) {
         let run = player.map(|one| Run::of(one, Vec::new())).unwrap_or_default();
-        let out = self.with_blocks(async |me, blocks| {
-            let me = RefCell::new(me);
-            blocks.drops(at, &|text| me.borrow_mut().text_for(server, text, &run)).await
-        }).await;
+        let out = self
+            .with_blocks(async |me, blocks| {
+                let me = RefCell::new(me);
+                blocks.drops(at, &|text| me.borrow_mut().text_for(server, text, &run)).await
+            })
+            .await;
         if out.cancel {
             items.clear();
         }
@@ -1430,16 +1596,24 @@ impl Studio {
 
     /// One of ours dug out on our clock: what a break event and its drop event would do, then the block goes.
     async fn break_own(&mut self, server: &Server, player: &Player, world: &pumpkin_plugin_api::world::World, at: (i32, i32, i32)) {
-        let block = pumpkin_plugin_api::world::block_state_to_info(world.get_block_state_id(pumpkin_plugin_api::common::BlockPos { x: at.0, y: at.1, z: at.2 })).map(|info| info.name).unwrap_or_default();
+        let block = pumpkin_plugin_api::world::block_state_to_info(world.get_block_state_id(pumpkin_plugin_api::common::BlockPos {
+            x: at.0,
+            y: at.1,
+            z: at.2,
+        }))
+        .map(|info| info.name)
+        .unwrap_or_default();
         self.block_broken(at, &block);
         self.block_breaking(server, Some(player), at).await;
         // Experience only when it drops (harvested, see `Blocks::breaking`).
         let exp = self.blocks.as_ref().and_then(|blocks| blocks.exp_if_dropping(at));
         let name = block.trim_start_matches("minecraft:").split('[').next().unwrap_or_default().to_string();
         self.fire(server, "break", Some(player), vec![("block".into(), name)], |when| {
-            let wanted: Vec<String> = fields::lines(when, "blocks").iter().filter(|one| !one.trim().is_empty()).map(|one| clean_name(one)).collect();
+            let wanted: Vec<String> =
+                fields::lines(when, "blocks").iter().filter(|one| !one.trim().is_empty()).map(|one| clean_name(one)).collect();
             wanted.is_empty() || wanted.contains(&clean_name(&block))
-        }).await;
+        })
+        .await;
         self.broke_with_item(server, player, &block).await;
         if let Some(blocks) = &self.blocks {
             blocks.clear(world, at).await;
@@ -1459,14 +1633,16 @@ impl Studio {
     /// A click on a furniture piece: hitting breaks it, right-clicking sits and runs its use actions. True = ours.
     pub async fn piece_clicked(&mut self, server: &Server, player: &Player, entity_id: i32, attack: bool) -> bool {
         let run = Run::of(player, Vec::new());
-        let out = self.with_blocks(async |me, blocks| {
-            if attack {
-                let me = RefCell::new(me);
-                blocks.hit_piece(player, entity_id, &|text| me.borrow_mut().text_for(server, text, &run)).await
-            } else {
-                blocks.use_piece(player, entity_id).await
-            }
-        }).await;
+        let out = self
+            .with_blocks(async |me, blocks| {
+                if attack {
+                    let me = RefCell::new(me);
+                    blocks.hit_piece(player, entity_id, &|text| me.borrow_mut().text_for(server, text, &run)).await
+                } else {
+                    blocks.use_piece(player, entity_id).await
+                }
+            })
+            .await;
         self.carry_out(server, Some(player), out, None).await
     }
 
@@ -1474,15 +1650,17 @@ impl Studio {
     /// breaking it gives. The fork then finds it in the inventory, or gives it in creative.
     pub async fn picked(&mut self, server: &Server, player: &Player, state: Option<u16>, entity_id: Option<i32>) -> Option<ItemStack> {
         let run = Run::of(player, Vec::new());
-        let out = self.with_blocks(async |me, blocks| {
-            let me = RefCell::new(me);
-            let name = |text: &str| me.borrow_mut().text_for(server, text, &run);
-            match (state, entity_id) {
-                (Some(state), _) => blocks.pick_block(state, &name).await,
-                (None, Some(entity_id)) => blocks.pick_piece(player, entity_id, &name).await,
-                (None, None) => None,
-            }
-        }).await?;
+        let out = self
+            .with_blocks(async |me, blocks| {
+                let me = RefCell::new(me);
+                let name = |text: &str| me.borrow_mut().text_for(server, text, &run);
+                match (state, entity_id) {
+                    (Some(state), _) => blocks.pick_block(state, &name).await,
+                    (None, Some(entity_id)) => blocks.pick_piece(player, entity_id, &name).await,
+                    (None, None) => None,
+                }
+            })
+            .await?;
         let mut items = out.items;
         if let Some(link) = &out.studio_item {
             items.extend(self.stack(server, &format!("studio:{link}"), 1, &run).await);
@@ -1548,11 +1726,25 @@ impl Studio {
                     } else if let Some(problem) = problem {
                         Err(problem)
                     } else {
-                        manager.register_shaped(key.clone(), ShapedRecipe { pattern: shape, key: key_list, output, group: None, category: None, show_notification: None }).await.map_err(refused)
+                        manager
+                            .register_shaped(
+                                key.clone(),
+                                ShapedRecipe {
+                                    pattern: shape,
+                                    key: key_list,
+                                    output,
+                                    group: None,
+                                    category: None,
+                                    show_notification: None,
+                                },
+                            )
+                            .await
+                            .map_err(refused)
                     }
                 }
                 "shapeless" => {
-                    let wanted: Vec<String> = fields::lines(&data, "ingredients").into_iter().filter(|one| !one.trim().is_empty()).collect();
+                    let wanted: Vec<String> =
+                        fields::lines(&data, "ingredients").into_iter().filter(|one| !one.trim().is_empty()).collect();
                     let mut ingredients: Vec<Ingredient> = Vec::new();
                     for one in &wanted {
                         if let Some(found) = self.ingredient(server, one).await {
@@ -1562,7 +1754,10 @@ impl Studio {
                     if wanted.is_empty() || wanted.len() > 9 || ingredients.len() != wanted.len() {
                         Err("\"ingredients\" needs 1 to 9 items or studio items.".into())
                     } else {
-                        manager.register_shapeless(key.clone(), ShapelessRecipe { ingredients, output, group: None, category: None }).await.map_err(refused)
+                        manager
+                            .register_shapeless(key.clone(), ShapelessRecipe { ingredients, output, group: None, category: None })
+                            .await
+                            .map_err(refused)
                     }
                 }
                 "furnace" | "blasting" | "smoking" | "campfire" => match self.ingredient(server, &fields::text(&data, "input", "")).await {
@@ -1573,14 +1768,22 @@ impl Studio {
                             "campfire" => CookingType::Campfire,
                             _ => CookingType::Smelting,
                         };
-                        manager.register_cooking(key.clone(), station, CookingRecipe { ingredient: input, output, experience, cooking_time, group: None, category: None }).await.map_err(refused)
+                        manager
+                            .register_cooking(
+                                key.clone(),
+                                station,
+                                CookingRecipe { ingredient: input, output, experience, cooking_time, group: None, category: None },
+                            )
+                            .await
+                            .map_err(refused)
                     }
                     None => Err("\"input\" must be an item or a studio item.".into()),
                 },
                 "stonecutting" => match self.ingredient(server, &fields::text(&data, "input", "")).await {
-                    Some(ingredient) => {
-                        manager.register_stonecutting(key.clone(), StonecuttingRecipe { ingredient, output, group: None }).await.map_err(refused)
-                    }
+                    Some(ingredient) => manager
+                        .register_stonecutting(key.clone(), StonecuttingRecipe { ingredient, output, group: None })
+                        .await
+                        .map_err(refused),
                     None => Err("\"input\" must be an item or a studio item.".into()),
                 },
                 other => Err(format!("Unknown recipe type {other}.")),
@@ -1631,7 +1834,9 @@ impl Studio {
             let name = fields::text(data, "name", "").trim().to_ascii_lowercase();
             if valid_command(&name) {
                 let mut names = vec![name];
-                names.extend(fields::lines(data, "aliases").into_iter().map(|one| one.trim().to_ascii_lowercase()).filter(|one| valid_command(one)));
+                names.extend(
+                    fields::lines(data, "aliases").into_iter().map(|one| one.trim().to_ascii_lowercase()).filter(|one| valid_command(one)),
+                );
                 wanted.push((names, fields::text(data, "description", "A studio command.")));
             }
         }
@@ -1650,7 +1855,8 @@ impl Studio {
                 next.insert(main, (names, description));
             }
         }
-        let gone: Vec<String> = self.play.registered.iter().filter(|(main, was)| next.get(*main) != Some(*was)).map(|(main, _)| main.clone()).collect();
+        let gone: Vec<String> =
+            self.play.registered.iter().filter(|(main, was)| next.get(*main) != Some(*was)).map(|(main, _)| main.clone()).collect();
         for main in &gone {
             self.play.registered.remove(main);
         }
@@ -1666,16 +1872,28 @@ impl Studio {
     }
 
     /// Someone typed a studio command (`name` is the one Pumpkin matched, `args` what followed).
-    pub async fn run_command(&mut self, server: &Server, name: &str, sender: &pumpkin_plugin_api::command::CommandSender, args: &str) -> Result<(), String> {
+    pub async fn run_command(
+        &mut self,
+        server: &Server,
+        name: &str,
+        sender: &pumpkin_plugin_api::command::CommandSender,
+        args: &str,
+    ) -> Result<(), String> {
         let player = sender.as_player();
-        if let Some((id, menu)) = self.active_rows("menu").into_iter().find(|(_, data)| fields::text(data, "command", "").trim().eq_ignore_ascii_case(name)).map(|(id, data)| (id.to_string(), data.clone())) {
+        if let Some((id, menu)) = self
+            .active_rows("menu")
+            .into_iter()
+            .find(|(_, data)| fields::text(data, "command", "").trim().eq_ignore_ascii_case(name))
+            .map(|(id, data)| (id.to_string(), data.clone()))
+        {
             let _ = menu;
             let Some(player) = player else { return Err("Only players can open menus.".into()) };
             self.open_menu(server, &player, &id).await;
             return Ok(());
         }
         let found = self.active_rows("command").into_iter().find(|(_, data)| {
-            fields::text(data, "name", "").trim().eq_ignore_ascii_case(name) || fields::lines(data, "aliases").iter().any(|one| one.trim().eq_ignore_ascii_case(name))
+            fields::text(data, "name", "").trim().eq_ignore_ascii_case(name)
+                || fields::lines(data, "aliases").iter().any(|one| one.trim().eq_ignore_ascii_case(name))
         });
         let Some((id, data)) = found.map(|(id, data)| (id.to_string(), data.clone())) else {
             return Err(format!("/{name} was removed from the studio."));
@@ -1696,14 +1914,16 @@ impl Studio {
             let until = self.play.cooldowns.get(&key).copied().unwrap_or(0);
             if now < until {
                 let left = (until - now).div_ceil(1000);
-                let text = fields::text(&data, "cooldownMessage", "<gray>Wait <seconds>s before using this again.").replace("<seconds>", &left.to_string());
+                let text = fields::text(&data, "cooldownMessage", "<gray>Wait <seconds>s before using this again.")
+                    .replace("<seconds>", &left.to_string());
                 sender.send_message(render(&text, &[]));
                 return Ok(());
             }
             self.play.cooldowns.insert(key, now + cooldown * 1000);
         }
         let words: Vec<&str> = args.split_whitespace().collect();
-        let mut extra: Vec<(String, String)> = (0..9).map(|at| (format!("arg{}", at + 1), words.get(at).unwrap_or(&"").to_string())).collect();
+        let mut extra: Vec<(String, String)> =
+            (0..9).map(|at| (format!("arg{}", at + 1), words.get(at).unwrap_or(&"").to_string())).collect();
         extra.push(("args".into(), words.join(" ")));
         extra.push(("sender".into(), sender.get_name()));
         let run = match &player {
@@ -1868,8 +2088,20 @@ impl Studio {
     }
 
     /// Runs every rule for `event` whose `when` matches.
-    pub async fn fire(&mut self, server: &Server, event: &str, player: Option<&Player>, extra: Vec<(String, String)>, matches: impl Fn(&Data) -> bool) {
-        let rules: Vec<(String, Data)> = self.active_rows("rule").into_iter().filter(|(_, data)| when_event(data) == event).map(|(id, data)| (id.to_string(), data.clone())).collect();
+    pub async fn fire(
+        &mut self,
+        server: &Server,
+        event: &str,
+        player: Option<&Player>,
+        extra: Vec<(String, String)>,
+        matches: impl Fn(&Data) -> bool,
+    ) {
+        let rules: Vec<(String, Data)> = self
+            .active_rows("rule")
+            .into_iter()
+            .filter(|(_, data)| when_event(data) == event)
+            .map(|(id, data)| (id.to_string(), data.clone()))
+            .collect();
         for (id, data) in rules {
             if !matches(object(&data, "when")) {
                 continue;
@@ -1907,8 +2139,20 @@ impl Studio {
 
     /// The app's test tool: runs the rules for `event` (only `only` when it isn't empty) as if it happened, with these
     /// placeholders. Cooldowns are skipped and not started. One row per rule for the event, traced as usual.
-    pub(super) async fn fire_test(&mut self, server: &Server, event: &str, only: &str, player: Option<&Player>, extra: Vec<(String, String)>) -> Vec<Value> {
-        let rules: Vec<(String, Data)> = self.active_rows("rule").into_iter().filter(|(id, data)| when_event(data) == event && (only.is_empty() || *id == only)).map(|(id, data)| (id.to_string(), data.clone())).collect();
+    pub(super) async fn fire_test(
+        &mut self,
+        server: &Server,
+        event: &str,
+        only: &str,
+        player: Option<&Player>,
+        extra: Vec<(String, String)>,
+    ) -> Vec<Value> {
+        let rules: Vec<(String, Data)> = self
+            .active_rows("rule")
+            .into_iter()
+            .filter(|(id, data)| when_event(data) == event && (only.is_empty() || *id == only))
+            .map(|(id, data)| (id.to_string(), data.clone()))
+            .collect();
         let mut out = Vec::new();
         for (id, data) in rules {
             if !rule_matches(event, object(&data, "when"), &extra) {
@@ -1932,13 +2176,21 @@ impl Studio {
         if self.play.traces_this_second > MOST_TRACES {
             return;
         }
-        self.play.traces.push(json!({ "type": "trace", "rule": rule, "event": event, "player": player, "passed": passed, "ran": ran, "at": crate::now_ms() }).to_string());
+        self.play.traces.push(
+            json!({ "type": "trace", "rule": rule, "event": event, "player": player, "passed": passed, "ran": ran, "at": crate::now_ms() })
+                .to_string(),
+        );
     }
 
     /// Once a second: timers and schedules.
     async fn second(&mut self, server: &Server) {
         super::canvas::load(&self.root);
-        let timed: Vec<(String, Data)> = self.active_rows("rule").into_iter().filter(|(_, data)| matches!(when_event(data).as_str(), "timer" | "schedule")).map(|(id, data)| (id.to_string(), data.clone())).collect();
+        let timed: Vec<(String, Data)> = self
+            .active_rows("rule")
+            .into_iter()
+            .filter(|(_, data)| matches!(when_event(data).as_str(), "timer" | "schedule"))
+            .map(|(id, data)| (id.to_string(), data.clone()))
+            .collect();
         let minute = crate::local_minute();
         let new_minute = minute != self.play.last_minute;
         self.play.last_minute = minute.clone();
@@ -2184,10 +2436,17 @@ impl Studio {
                 _ => {}
             }
         }
-        if let Some(drawn) = super::canvas::body(id, &data, |text| self.mini_for(server, text, &run), |one| {
-            let node = fields::text(one, "permission", "");
-            node.trim().is_empty() || allowed.contains(&node)
-        }, hidden, pressed) {
+        if let Some(drawn) = super::canvas::body(
+            id,
+            &data,
+            |text| self.mini_for(server, text, &run),
+            |one| {
+                let node = fields::text(one, "permission", "");
+                node.trim().is_empty() || allowed.contains(&node)
+            },
+            hidden,
+            pressed,
+        ) {
             body = vec![drawn];
         }
         let mut inputs = Vec::new();
@@ -2196,7 +2455,13 @@ impl Studio {
             let key = Some(input_key(&input, at));
             let width = input.get("width").and_then(Value::as_f64).map(|one| one.clamp(1.0, 1024.0) as u32);
             inputs.push(match fields::text(&input, "type", "text").as_str() {
-                "bool" => DialogInput::Bool(DialogInputBool { key, label, default_value: input.get("initial").and_then(Value::as_bool) == Some(true), on_true: None, on_false: None }),
+                "bool" => DialogInput::Bool(DialogInputBool {
+                    key,
+                    label,
+                    default_value: input.get("initial").and_then(Value::as_bool) == Some(true),
+                    on_true: None,
+                    on_false: None,
+                }),
                 "number" => {
                     let least = number_of(input.get("min"), 0.0) as f32;
                     let most = (number_of(input.get("max"), 10.0) as f32).max(least + 1.0);
@@ -2240,7 +2505,8 @@ impl Studio {
         let with_inputs = !inputs.is_empty();
         let mut buttons = Vec::new();
         let mut exit_button = None;
-        let mut all: Vec<(String, Data)> = listed(&data, "buttons").into_iter().enumerate().map(|(at, one)| (at.to_string(), one)).collect();
+        let mut all: Vec<(String, Data)> =
+            listed(&data, "buttons").into_iter().enumerate().map(|(at, one)| (at.to_string(), one)).collect();
         if let Some(Value::Object(exit)) = data.get("exit") {
             all.push(("exit".into(), exit.clone()));
         }
@@ -2303,7 +2569,8 @@ impl Studio {
             columns,
             button_width: None,
             exit_action,
-        }).await;
+        })
+        .await;
     }
 
     /// A dialog button was clicked: `monolab:dialog/<id>/<button>`, with the inputs' values when the dialog has
@@ -2331,7 +2598,12 @@ impl Studio {
             self.run_actions(server, element.get("actions"), &run).await;
             if pressed {
                 let seen = self.play.dialog_shown.get(&id_text(player.get_id())).copied();
-                self.play.waiting.push(Waiting { due: self.ticks + PRESSED_TICKS, steps: vec![json!({ "type": REDRAW, "dialog": id, "seen": seen })], run, waited: 0 });
+                self.play.waiting.push(Waiting {
+                    due: self.ticks + PRESSED_TICKS,
+                    steps: vec![json!({ "type": REDRAW, "dialog": id, "seen": seen })],
+                    run,
+                    waited: 0,
+                });
             } else if stays && after == "refresh" {
                 self.show_dialog(server, player, id, None).await;
             }
@@ -2366,7 +2638,8 @@ impl Studio {
         let least = fields::number(data, "rolls", 1, 0, 64);
         let most = fields::number(data, "rollsMax", least, 0, 64).max(least);
         let times = least + if most > least { (self.next_random() % (most - least + 1) as u64) as i64 } else { 0 };
-        let entries: Vec<Data> = listed(data, "entries").into_iter().filter(|one| fields::number(one, "weight", 1, 0, 1_000_000) > 0).collect();
+        let entries: Vec<Data> =
+            listed(data, "entries").into_iter().filter(|one| fields::number(one, "weight", 1, 0, 1_000_000) > 0).collect();
         let total: i64 = entries.iter().map(|one| fields::number(one, "weight", 1, 0, 1_000_000)).sum();
         let mut out = Vec::new();
         for _ in 0..times {
@@ -2409,7 +2682,11 @@ impl Studio {
             .filter(|data| {
                 let drops = object(data, "drops");
                 fields::text(drops, "from", "none") == from && {
-                    let targets: Vec<String> = fields::lines(drops, "targets").into_iter().filter(|one| !one.trim().is_empty()).map(|one| clean_name(&one)).collect();
+                    let targets: Vec<String> = fields::lines(drops, "targets")
+                        .into_iter()
+                        .filter(|one| !one.trim().is_empty())
+                        .map(|one| clean_name(&one))
+                        .collect();
                     targets.is_empty() || targets.iter().any(|one| one == name)
                 }
             })
@@ -2454,7 +2731,11 @@ impl Studio {
             .filter(|data| {
                 let drops = object(data, "drops");
                 fields::text(drops, "from", "none") == "block" && {
-                    let targets: Vec<String> = fields::lines(drops, "targets").into_iter().filter(|one| !one.trim().is_empty()).map(|one| clean_name(&one)).collect();
+                    let targets: Vec<String> = fields::lines(drops, "targets")
+                        .into_iter()
+                        .filter(|one| !one.trim().is_empty())
+                        .map(|one| clean_name(&one))
+                        .collect();
                     targets.is_empty() || targets.contains(&block)
                 }
             })
@@ -2462,9 +2743,10 @@ impl Studio {
         let run = player.map(|one| Run::of(one, Vec::new())).unwrap_or_default();
         for data in tables {
             if let Some(player) = player
-                && !shows(&data, player, &crate::who_of(player).world) {
-                    continue;
-                }
+                && !shows(&data, player, &crate::who_of(player).world)
+            {
+                continue;
+            }
             if object(&data, "drops").get("replace").and_then(Value::as_bool) == Some(true) {
                 items.clear();
             }
@@ -2497,7 +2779,8 @@ impl Studio {
                 Err(error) => tracing::warn!("Could not turn off the old studio advancement pack: {error}"),
             }
         }
-        let rows: Vec<(String, Data)> = self.active_rows("advancement").into_iter().map(|(id, data)| (id.to_string(), data.clone())).collect();
+        let rows: Vec<(String, Data)> =
+            self.active_rows("advancement").into_iter().map(|(id, data)| (id.to_string(), data.clone())).collect();
         let ordered = studio_format::advancement::order(&rows);
         let spots = studio_format::advancement::layout(&ordered);
         let wanted: HashSet<String> = ordered.iter().map(|(id, _)| advancement_key(id)).collect();
@@ -2577,14 +2860,22 @@ impl Studio {
             // The main world's generator was offered when the add-on loaded (`main_world_generators`).
             if is_main_world(&data) {
                 if is_vanilla(&data) {
-                    self.problem("world", &id, "Pumpkin can't give the main world the server's own ground with these settings: it keeps its own generator.");
+                    self.problem(
+                        "world",
+                        &id,
+                        "Pumpkin can't give the main world the server's own ground with these settings: it keeps its own generator.",
+                    );
                 }
                 continue;
             }
             let name = fields::text(&data, "name", &id).trim().to_string();
             let name = if name.is_empty() { id.clone() } else { name };
             if DEFAULT_WORLDS.contains(&name.as_str()) {
-                self.problem("world", &id, "This is the name of one of the server's own worlds. To use this generator there, turn on \"Use for the main world\".");
+                self.problem(
+                    "world",
+                    &id,
+                    "This is the name of one of the server's own worlds. To use this generator there, turn on \"Use for the main world\".",
+                );
                 continue;
             }
             if !name.chars().all(|one| one.is_ascii_alphanumeric() || one == '_' || one == '-') || name.len() > 48 {
@@ -2609,7 +2900,9 @@ impl Studio {
                     tracing::info!("Studio world: making {name}");
                     // The generator isn't saved with the world, so it is chosen again on every start.
                     match fields::text(&data, "type", "normal").as_str() {
-                        "flat" => server.create_world_with_generator(name.clone(), dimension, WorldGenerator::Flat(flat_settings(&data))).await,
+                        "flat" => {
+                            server.create_world_with_generator(name.clone(), dimension, WorldGenerator::Flat(flat_settings(&data))).await
+                        }
                         "void" => {
                             let world = server.create_world_with_generator(name.clone(), dimension, WorldGenerator::Void).await;
                             void_floor(&world).await;
@@ -2630,9 +2923,10 @@ impl Studio {
                 }
             };
             if let Some(Value::Bool(pvp)) = data.get("pvp")
-                && let Some(rule) = names::game_rule("pvp") {
-                    world.set_game_rule(rule, GameRuleValue::Bool(*pvp));
-                }
+                && let Some(rule) = names::game_rule("pvp")
+            {
+                world.set_game_rule(rule, GameRuleValue::Bool(*pvp));
+            }
             for (key, value) in object(&data, "gamerules") {
                 let Some(rule) = game_rule(key) else {
                     self.problem("world", &id, &format!("There is no game rule called {key}."));
@@ -2659,7 +2953,9 @@ impl Studio {
             if path.extension().and_then(|one| one.to_str()) != Some("json") || !studio_format::valid_id(&id) {
                 continue;
             }
-            let Some(data) = std::fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()) else { continue };
+            let Some(data) = std::fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()) else {
+                continue;
+            };
             let Some(data) = data.as_object() else { continue };
             if !is_main_world(data) || is_vanilla(data) || !studio_format::enabled(data) {
                 continue;
@@ -2668,7 +2964,9 @@ impl Studio {
             let name = if name.is_empty() { id.clone() } else { name };
             let settings = match self.custom_generator(&id, &name, data) {
                 (_, WorldGenerator::PluginWithVanilla(settings)) => settings,
-                (generator_id, _) => PluginGeneratorSettings { generator_id, keep_carvers: false, keep_structures: false, keep_vanilla_features: false },
+                (generator_id, _) => {
+                    PluginGeneratorSettings { generator_id, keep_carvers: false, keep_structures: false, keep_vanilla_features: false }
+                }
             };
             context.register_world_generator(&id, settings);
             tracing::info!("Studio world: {id} is offered for the main world as monolab:{id}");
@@ -2683,11 +2981,19 @@ impl Studio {
         for problem in studio_format::worldgen::problems(&spec) {
             self.problem("world", id, &problem);
         }
-        let mut made = studio_format::worldgen::Generator::new(&spec, studio_format::worldgen::seed_of(&fields::text(data, "seed", ""), name));
+        let mut made =
+            studio_format::worldgen::Generator::new(&spec, studio_format::worldgen::seed_of(&fields::text(data, "seed", ""), name));
         for structure in made.structure_ids() {
             match self.structure(&structure) {
                 Some(built) if !made.add_structure(&structure, &built) => {
-                    self.problem("world", id, &format!("The structure {structure} is over {} blocks across, too big for a world feature.", studio_format::structure::MOST_FEATURE_SIZE));
+                    self.problem(
+                        "world",
+                        id,
+                        &format!(
+                            "The structure {structure} is over {} blocks across, too big for a world feature.",
+                            studio_format::structure::MOST_FEATURE_SIZE
+                        ),
+                    );
                 }
                 Some(_) => {}
                 None => self.problem("world", id, &format!("There is no structure {structure} (or its file wasn't brought in yet).")),
@@ -2696,10 +3002,21 @@ impl Studio {
         let keep = made.keep;
         // Our biomes: registered by name, but the fork's chunk buffer wrapper can't place them by name yet, so the
         // generator puts each one's `like` there (fork request in docs/pumpkin-fork-requests.md).
-        let likes: HashMap<String, String> = self.active_rows("biome").into_iter().map(|(biome, data)| (format!("studio:{biome}"), studio_format::biome::like(data))).collect();
+        let likes: HashMap<String, String> = self
+            .active_rows("biome")
+            .into_iter()
+            .map(|(biome, data)| (format!("studio:{biome}"), studio_format::biome::like(data)))
+            .collect();
         let ours: Vec<String> = made.biome_names().into_iter().filter(|one| one.starts_with("studio:")).collect();
         if !ours.is_empty() {
-            self.problem("world", id, &format!("Pumpkin's generator can't place your own biomes yet, so their \"like\" biome is shown instead ({}).", ours.join(", ")));
+            self.problem(
+                "world",
+                id,
+                &format!(
+                    "Pumpkin's generator can't place your own biomes yet, so their \"like\" biome is shown instead ({}).",
+                    ours.join(", ")
+                ),
+            );
         }
         let blocks = self.blocks.as_ref();
         let (generator, unknown) = super::worldgen::StudioGenerator::new(made, likes, |block| blocks.and_then(|one| one.state_of(block)));
@@ -2731,7 +3048,11 @@ impl Studio {
         }
         let made = studio_format::worldgen::Generator::new(&spec, studio_format::worldgen::seed_of(&fields::text(data, "seed", ""), id));
         if !objects_in(&spec, "biomes").is_empty() {
-            self.problem("world", id, "Pumpkin can't put your biome rules on the server's own ground yet: its own biomes stay (Paper only).");
+            self.problem(
+                "world",
+                id,
+                "Pumpkin can't put your biome rules on the server's own ground yet: its own biomes stay (Paper only).",
+            );
         }
         let terrain = made.vanilla().unwrap_or("normal").to_string();
         if let Some((strength, center_x, center_z)) = made.spiral() {
@@ -2849,7 +3170,8 @@ pub fn rule_matches(event: &str, when: &Data, extra: &[(String, String)]) -> boo
             contains.trim().is_empty() || value("message").to_lowercase().contains(&contains.to_lowercase())
         }
         "break" | "place" => {
-            let wanted: Vec<String> = fields::lines(when, "blocks").iter().filter(|one| !one.trim().is_empty()).map(|one| clean_name(one)).collect();
+            let wanted: Vec<String> =
+                fields::lines(when, "blocks").iter().filter(|one| !one.trim().is_empty()).map(|one| clean_name(one)).collect();
             wanted.is_empty() || wanted.contains(&clean_name(&value("block")))
         }
         "world_change" => {
@@ -2999,7 +3321,11 @@ async fn item_parts(stack: &ItemStack, id: &str, data: &Data) {
         set(Part::UseCooldown, bytes).await;
     }
     if let Some(tool) = item::part(data, "tool") {
-        let kinds: Vec<String> = fields::lines(tool, "mines").into_iter().map(|one| one.trim().to_string()).filter(|one| item::TOOL_KINDS.contains(&one.as_str())).collect();
+        let kinds: Vec<String> = fields::lines(tool, "mines")
+            .into_iter()
+            .map(|one| one.trim().to_string())
+            .filter(|one| item::TOOL_KINDS.contains(&one.as_str()))
+            .collect();
         let mut bytes = Vec::new();
         var_int(&mut bytes, kinds.len() as i32);
         for kind in &kinds {
@@ -3030,12 +3356,15 @@ async fn item_parts(stack: &ItemStack, id: &str, data: &Data) {
     let equip = item::part(data, "equip");
     if let Some(equip) = equip {
         let mut bytes = Vec::new();
-        var_int(&mut bytes, match fields::text(equip, "slot", "head").as_str() {
-            "feet" => 1,
-            "legs" => 2,
-            "chest" => 3,
-            _ => 4,
-        });
+        var_int(
+            &mut bytes,
+            match fields::text(equip, "slot", "head").as_str() {
+                "feet" => 1,
+                "legs" => 2,
+                "chest" => 3,
+                _ => 4,
+            },
+        );
         net_sound(&mut bytes, "minecraft:item.armor.equip_generic");
         let worn = !fields::text(equip, "texture", "").trim().is_empty() || !fields::text(equip, "legsTexture", "").trim().is_empty();
         bytes.push(u8::from(worn));
@@ -3099,11 +3428,17 @@ async fn item_parts(stack: &ItemStack, id: &str, data: &Data) {
         }
     }
     for (attribute, name, amount, slot) in modifiers {
-        stack.add_attribute_modifier(ItemAttributeModifier {
-            attribute,
-            modifier: AttributeModifier { id: format!("monolab:{}_{name}", id.replace('-', "_")), amount, operation: ModifierOperation::Add },
-            slot,
-        }).await;
+        stack
+            .add_attribute_modifier(ItemAttributeModifier {
+                attribute,
+                modifier: AttributeModifier {
+                    id: format!("monolab:{}_{name}", id.replace('-', "_")),
+                    amount,
+                    operation: ModifierOperation::Add,
+                },
+                slot,
+            })
+            .await;
     }
 }
 
@@ -3128,7 +3463,11 @@ fn studio_refs(value: &Value) -> Vec<String> {
 
 /// An input's key: the file's `key` made safe (letters, digits, `_`), else `input_<at>` like the game.
 fn input_key(input: &Data, at: usize) -> String {
-    let key: String = fields::text(input, "key", "").trim().chars().map(|one| if one.is_ascii_alphanumeric() || one == '_' { one } else { '_' }).collect();
+    let key: String = fields::text(input, "key", "")
+        .trim()
+        .chars()
+        .map(|one| if one.is_ascii_alphanumeric() || one == '_' { one } else { '_' })
+        .collect();
     if key.is_empty() { format!("input_{at}") } else { key }
 }
 
@@ -3164,17 +3503,24 @@ fn tool_tree(tool: &Data, kinds: &[String], rules: &[studio_format::item::ToolRu
         let blocks = push(tags, blocks);
         let speed = push(tags, NbtTag::Float(speed));
         let drops = push(tags, NbtTag::Byte(i8::from(drops)));
-        push(tags, NbtTag::Compound(vec![
-            NbtEntry { key: "blocks".into(), value: blocks },
-            NbtEntry { key: "speed".into(), value: speed },
-            NbtEntry { key: "correct_for_drops".into(), value: drops },
-        ]))
+        push(
+            tags,
+            NbtTag::Compound(vec![
+                NbtEntry { key: "blocks".into(), value: blocks },
+                NbtEntry { key: "speed".into(), value: speed },
+                NbtEntry { key: "correct_for_drops".into(), value: drops },
+            ]),
+        )
     };
     for one in rules {
-        let names: Vec<String> = one.blocks.iter().filter_map(|name| match name.strip_prefix("studio:") {
-            Some(id) => ours.then(|| format!("{TAG}:{id}")),
-            None => Some(if name.contains(':') { name.clone() } else { format!("minecraft:{name}") }),
-        }).collect();
+        let names: Vec<String> = one
+            .blocks
+            .iter()
+            .filter_map(|name| match name.strip_prefix("studio:") {
+                Some(id) => ours.then(|| format!("{TAG}:{id}")),
+                None => Some(if name.contains(':') { name.clone() } else { format!("minecraft:{name}") }),
+            })
+            .collect();
         if names.is_empty() {
             continue;
         }
@@ -3244,7 +3590,13 @@ async fn void_floor(world: &pumpkin_plugin_api::world::World) {
     let under = pumpkin_plugin_api::common::BlockPos { x: spawn.x, y: spawn.y - 1, z: spawn.z };
     let name = pumpkin_plugin_api::world::block_state_to_info(world.get_block_state_id(under)).map(|info| info.name).unwrap_or_default();
     if name.ends_with("air") {
-        world.set_block_by_name(under, "minecraft:bedrock".into(), pumpkin_plugin_api::wit::pumpkin::plugin::world::BlockFlags::NOTIFY_LISTENERS).await;
+        world
+            .set_block_by_name(
+                under,
+                "minecraft:bedrock".into(),
+                pumpkin_plugin_api::wit::pumpkin::plugin::world::BlockFlags::NOTIFY_LISTENERS,
+            )
+            .await;
     }
 }
 
@@ -3264,10 +3616,13 @@ async fn holding(player: &Player, wanted: &str) -> bool {
 
 /// Whether a file's action or condition lists use a step of this type.
 fn uses_step(value: &Value, wanted: &str) -> bool {
-    let steps = |key: &str| key.ends_with("Actions") || matches!(key, "actions" | "then" | "else" | "if" | "deny" | "rewards" | "conditions");
+    let steps =
+        |key: &str| key.ends_with("Actions") || matches!(key, "actions" | "then" | "else" | "if" | "deny" | "rewards" | "conditions");
     match value {
         Value::Object(map) => map.iter().any(|(key, inner)| {
-            (steps(key) && inner.as_array().is_some_and(|list| list.iter().any(|one| one.get("type").and_then(Value::as_str) == Some(wanted)))) || uses_step(inner, wanted)
+            (steps(key)
+                && inner.as_array().is_some_and(|list| list.iter().any(|one| one.get("type").and_then(Value::as_str) == Some(wanted))))
+                || uses_step(inner, wanted)
         }),
         Value::Array(list) => list.iter().any(|one| uses_step(one, wanted)),
         _ => false,
@@ -3276,10 +3631,14 @@ fn uses_step(value: &Value, wanted: &str) -> bool {
 
 /// M6: whether a file's action or condition lists use one another plugin adds (`"type": "plugin:name"`).
 fn uses_expansion(value: &Value) -> bool {
-    let steps = |key: &str| key.ends_with("Actions") || matches!(key, "actions" | "then" | "else" | "if" | "deny" | "rewards" | "conditions");
+    let steps =
+        |key: &str| key.ends_with("Actions") || matches!(key, "actions" | "then" | "else" | "if" | "deny" | "rewards" | "conditions");
     match value {
         Value::Object(map) => map.iter().any(|(key, inner)| {
-            (steps(key) && inner.as_array().is_some_and(|list| list.iter().any(|one| one.get("type").and_then(Value::as_str).is_some_and(|kind| kind.contains(':')))))
+            (steps(key)
+                && inner.as_array().is_some_and(|list| {
+                    list.iter().any(|one| one.get("type").and_then(Value::as_str).is_some_and(|kind| kind.contains(':')))
+                }))
                 || uses_expansion(inner)
         }),
         Value::Array(list) => list.iter().any(uses_expansion),
@@ -3288,7 +3647,9 @@ fn uses_expansion(value: &Value) -> bool {
 }
 
 fn valid_command(name: &str) -> bool {
-    !name.is_empty() && name.len() <= 32 && name.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == b'-' || one == b'_')
+    !name.is_empty()
+        && name.len() <= 32
+        && name.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == b'-' || one == b'_')
 }
 
 fn advancement_key(id: &str) -> String {
@@ -3310,7 +3671,11 @@ pub(super) async fn give(player: &Player, stack: ItemStack) {
         }
         let Some(there) = player.get_inventory_item(slot) else { continue };
         let count = there.get_count().await;
-        if count < max && there.get_registry_key().await == key && there.get_string(TAG, "item").await == tag && there.get_custom_name().await.is_some() == named {
+        if count < max
+            && there.get_registry_key().await == key
+            && there.get_string(TAG, "item").await == tag
+            && there.get_custom_name().await.is_some() == named
+        {
             let moved = left.min(max - count);
             there.set_count(count + moved).await;
             player.set_inventory_item(slot, Some(there)).await;
@@ -3418,31 +3783,49 @@ fn refused(reason: String) -> String {
 }
 
 /// What a studio command runs: the name Pumpkin matched, who typed it, and whatever followed the name.
-pub type CommandRun = std::sync::Arc<dyn Fn(String, pumpkin_plugin_api::command::CommandSender, Server, Option<String>) -> pumpkin_plugin_api::BoxFuture<'static, ()> + Send + Sync>;
+pub type CommandRun = std::sync::Arc<
+    dyn Fn(String, pumpkin_plugin_api::command::CommandSender, Server, Option<String>) -> pumpkin_plugin_api::BoxFuture<'static, ()>
+        + Send
+        + Sync,
+>;
 
 /// Commands: a handler per registered name. Pumpkin calls it with whatever followed the name.
 pub fn command(names: Vec<String>, description: &str, handler: CommandRun) -> Command {
     let main = names[0].clone();
     let plain = std::sync::Arc::clone(&handler);
     let name = main.clone();
-    let command = Command::new(&names, description).execute(Handler(move |sender, server, _args| plain(name.clone(), sender, server, None)));
+    let command =
+        Command::new(&names, description).execute(Handler(move |sender, server, _args| plain(name.clone(), sender, server, None)));
     let name = main;
-    command.then(CommandNode::argument("args", &ArgumentType::String(StringType::Greedy)).execute(Handler(move |sender, server, args: pumpkin_plugin_api::command::ConsumedArgs| {
-        let text = match args.get_value("args") {
-            pumpkin_plugin_api::command::Arg::Simple(text) | pumpkin_plugin_api::command::Arg::Msg(text) => text,
-            _ => String::new(),
-        };
-        handler(name.clone(), sender, server, Some(text))
-    })))
+    command.then(CommandNode::argument("args", &ArgumentType::String(StringType::Greedy)).execute(Handler(
+        move |sender, server, args: pumpkin_plugin_api::command::ConsumedArgs| {
+            let text = match args.get_value("args") {
+                pumpkin_plugin_api::command::Arg::Simple(text) | pumpkin_plugin_api::command::Arg::Msg(text) => text,
+                _ => String::new(),
+            };
+            handler(name.clone(), sender, server, Some(text))
+        },
+    )))
 }
 
 struct Handler<F>(F);
 
 impl<F> pumpkin_plugin_api::commands::CommandHandler for Handler<F>
 where
-    F: Fn(pumpkin_plugin_api::command::CommandSender, Server, pumpkin_plugin_api::command::ConsumedArgs) -> pumpkin_plugin_api::BoxFuture<'static, ()> + Send + Sync,
+    F: Fn(
+            pumpkin_plugin_api::command::CommandSender,
+            Server,
+            pumpkin_plugin_api::command::ConsumedArgs,
+        ) -> pumpkin_plugin_api::BoxFuture<'static, ()>
+        + Send
+        + Sync,
 {
-    async fn handle(&self, sender: pumpkin_plugin_api::command::CommandSender, server: Server, args: pumpkin_plugin_api::command::ConsumedArgs) -> pumpkin_plugin_api::Result<i32, pumpkin_plugin_api::command::CommandError> {
+    async fn handle(
+        &self,
+        sender: pumpkin_plugin_api::command::CommandSender,
+        server: Server,
+        args: pumpkin_plugin_api::command::ConsumedArgs,
+    ) -> pumpkin_plugin_api::Result<i32, pumpkin_plugin_api::command::CommandError> {
         (self.0)(sender, server, args).await;
         Ok(1)
     }

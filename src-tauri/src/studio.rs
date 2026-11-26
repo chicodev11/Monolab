@@ -114,7 +114,11 @@ pub fn overlaps(jars: &[(String, Option<String>)]) -> Vec<StudioOverlap> {
         let best = by_yml().or(by_file);
         if let Some((plugin, kinds)) = best {
             if !found.iter().any(|one| one.plugin == *plugin) {
-                found.push(StudioOverlap { plugin: plugin.to_string(), file: name.clone(), kinds: kinds.iter().map(|one| one.to_string()).collect() });
+                found.push(StudioOverlap {
+                    plugin: plugin.to_string(),
+                    file: name.clone(),
+                    kinds: kinds.iter().map(|one| one.to_string()).collect(),
+                });
             }
         }
     }
@@ -633,7 +637,8 @@ pub fn overview(root: Option<&str>, kinds: &[&str], status: Option<&str>, files:
             }
         })
         .collect();
-    resources.sort_by(|a, b| (KINDS.iter().position(|one| *one == a.kind), &a.id).cmp(&(KINDS.iter().position(|one| *one == b.kind), &b.id)));
+    resources
+        .sort_by(|a, b| (KINDS.iter().position(|one| *one == a.kind), &a.id).cmp(&(KINDS.iter().position(|one| *one == b.kind), &b.id)));
     StudioOverview {
         supported: root.is_some(),
         root: root.unwrap_or_default().to_string(),
@@ -692,7 +697,18 @@ pub fn worldgen_preview(generator: &str, seed: &str, world: &str, x: i32, z: i32
         tops.push(index_of(&mut blocks, top));
         biomes.push(index_of(&mut biome_names, biome));
     }
-    Ok(WorldgenPreview { size, step, sea: made.sea, heights, tops, blocks, biomes, biome_names, vanilla: made.vanilla().is_some(), problems: studio_format::worldgen::problems(&data) })
+    Ok(WorldgenPreview {
+        size,
+        step,
+        sea: made.sea,
+        heights,
+        tops,
+        blocks,
+        biomes,
+        biome_names,
+        vanilla: made.vanilla().is_some(),
+        problems: studio_format::worldgen::problems(&data),
+    })
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq, specta::Type)]
@@ -732,8 +748,16 @@ pub async fn local_line(port: u16) -> Result<tokio::net::TcpStream, String> {
 
 async fn send<W: tokio::io::AsyncWrite + Unpin>(writer: &mut W, message: Value) -> Result<(), String> {
     use tokio::io::AsyncWriteExt;
-    writer.write_all(format!("{message}
-").as_bytes()).await.map_err(|error| error.to_string())?;
+    writer
+        .write_all(
+            format!(
+                "{message}
+"
+            )
+            .as_bytes(),
+        )
+        .await
+        .map_err(|error| error.to_string())?;
     writer.flush().await.map_err(|error| error.to_string())
 }
 
@@ -787,7 +811,9 @@ where
             Ok(Ok(Some(line))) => {
                 let message: Value = serde_json::from_str(line.trim()).unwrap_or(Value::Null);
                 match message.get("type").and_then(Value::as_str) {
-                    Some("error") => return Err(message.get("message").and_then(Value::as_str).unwrap_or("The add-on said no.").to_string()),
+                    Some("error") => {
+                        return Err(message.get("message").and_then(Value::as_str).unwrap_or("The add-on said no.").to_string())
+                    }
                     Some("player") | Some("trace") => heard(message),
                     _ => {}
                 }
@@ -832,11 +858,21 @@ mod tests {
                 let (reader, mut writer) = tokio::io::split(far);
                 let mut lines = tokio::io::BufReader::new(reader).lines();
                 assert!(lines.next_line().await.unwrap().unwrap().contains("\"token\":\"t\""));
-                writer.write_all(b"{\"type\":\"welcome\"}
-").await.unwrap();
+                writer
+                    .write_all(
+                        b"{\"type\":\"welcome\"}
+",
+                    )
+                    .await
+                    .unwrap();
                 assert_eq!(lines.next_line().await.unwrap().unwrap(), r#"{"type":"reload"}"#);
-                writer.write_all(b"{\"type\":\"status\",\"status\":{\"on\":true}}
-").await.unwrap();
+                writer
+                    .write_all(
+                        b"{\"type\":\"status\",\"status\":{\"on\":true}}
+",
+                    )
+                    .await
+                    .unwrap();
             });
             assert_eq!(reload_on(near, "t").await.unwrap(), r#"{"on":true}"#);
             addon.await.unwrap();
@@ -900,7 +936,8 @@ mod tests {
             assert_eq!(hello["token"], "t");
             writeln!(out, r#"{{"type":"welcome","addon":"39"}}"#).unwrap();
             writeln!(out, r#"{{"type":"player","event":"join","name":"Steve","online":1}}"#).unwrap();
-            writeln!(out, r#"{{"type":"trace","rule":"hi","event":"join","player":"Steve","passed":true,"ran":["message"],"at":1}}"#).unwrap();
+            writeln!(out, r#"{{"type":"trace","rule":"hi","event":"join","player":"Steve","passed":true,"ran":["message"],"at":1}}"#)
+                .unwrap();
         });
         let heard = std::sync::Mutex::new(Vec::new());
         let stop = std::sync::atomic::AtomicBool::new(false);
@@ -1026,7 +1063,10 @@ mod main_world_tests {
         assert_eq!(bukkit_generator(&set, "world", None), format!("{base}worlds:\n  world:\n"));
         let other = "worlds:\n  world:\n    generator: Terra:DEFAULT\n  lobby:\n    generator: VoidGen\nticks-per:\n  autosave: 6000\n";
         assert_eq!(bukkit_generator(other, "world", None), other);
-        assert_eq!(bukkit_generator(other, "lobby", Some("a")), "worlds:\n  world:\n    generator: Terra:DEFAULT\n  lobby:\n    generator: Monolab:a\nticks-per:\n  autosave: 6000\n");
+        assert_eq!(
+            bukkit_generator(other, "lobby", Some("a")),
+            "worlds:\n  world:\n    generator: Terra:DEFAULT\n  lobby:\n    generator: Monolab:a\nticks-per:\n  autosave: 6000\n"
+        );
         assert_eq!(bukkit_generator(other, "survival", Some("a")), "worlds:\n  survival:\n    generator: Monolab:a\n  world:\n    generator: Terra:DEFAULT\n  lobby:\n    generator: VoidGen\nticks-per:\n  autosave: 6000\n");
         assert_eq!(bukkit_generator("worlds:\n  world:\n    generator: 'Monolab:x'\n", "world", None), "worlds:\n  world:\n");
         assert_eq!(bukkit_generator(base, "world", None), base);

@@ -26,12 +26,21 @@ const SIGN_IN_WAIT: Duration = Duration::from_secs(10 * 60);
 
 /// The account server. `MONOLAB_ACCOUNTS_URL` points a test build at a local one.
 pub fn server() -> String {
-    std::env::var("MONOLAB_ACCOUNTS_URL").ok().filter(|one| !one.trim().is_empty()).unwrap_or_else(|| DEFAULT_SERVER.into()).trim_end_matches('/').to_string()
+    std::env::var("MONOLAB_ACCOUNTS_URL")
+        .ok()
+        .filter(|one| !one.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_SERVER.into())
+        .trim_end_matches('/')
+        .to_string()
 }
 
 /// `fake` only for a local test server started with `--fake-sign-in`.
 fn provider() -> &'static str {
-    if std::env::var("MONOLAB_FAKE_SIGN_IN").is_ok_and(|one| one == "1") { "fake" } else { "discord" }
+    if std::env::var("MONOLAB_FAKE_SIGN_IN").is_ok_and(|one| one == "1") {
+        "fake"
+    } else {
+        "discord"
+    }
 }
 
 #[derive(Default)]
@@ -83,7 +92,9 @@ fn save_token(app: &AppHandle, token: &str) -> Result<(), String> {
         std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
     }
     let temp = path.with_extension("tmp");
-    std::fs::write(&temp, &sealed).and_then(|()| std::fs::rename(&temp, &path)).map_err(|error| format!("Could not save the Monolink session: {error}"))?;
+    std::fs::write(&temp, &sealed)
+        .and_then(|()| std::fs::rename(&temp, &path))
+        .map_err(|error| format!("Could not save the Monolink session: {error}"))?;
     state().lock().expect("account poisoned").token = Some(token.to_string());
     Ok(())
 }
@@ -162,7 +173,10 @@ pub struct HandleCheck {
 
 /// The `error` code from a server answer, or the whole text when it isn't one.
 fn error_code(text: &str) -> String {
-    serde_json::from_str::<Value>(text).ok().and_then(|value| value["error"].as_str().map(str::to_string)).unwrap_or_else(|| text.trim().to_string())
+    serde_json::from_str::<Value>(text)
+        .ok()
+        .and_then(|value| value["error"].as_str().map(str::to_string))
+        .unwrap_or_else(|| text.trim().to_string())
 }
 
 fn unreachable(error: reqwest::Error) -> String {
@@ -227,7 +241,8 @@ pub async fn account_sign_in(app: AppHandle) -> Result<SignInResult, String> {
         return Err(error_code(&text));
     }
     let begin: Value = serde_json::from_str(&text).map_err(|error| error.to_string())?;
-    let (Some(login_id), Some(poll_secret), Some(url)) = (begin["login_id"].as_str(), begin["poll_secret"].as_str(), begin["url"].as_str()) else {
+    let (Some(login_id), Some(poll_secret), Some(url)) = (begin["login_id"].as_str(), begin["poll_secret"].as_str(), begin["url"].as_str())
+    else {
         return Err("bad_answer".into());
     };
     let cancelled = Arc::new(AtomicBool::new(false));
@@ -272,9 +287,15 @@ pub async fn account_sign_in(app: AppHandle) -> Result<SignInResult, String> {
             }
             Some("needs_handle") => {
                 state().lock().expect("account poisoned").ticket = answer["ticket"].as_str().map(str::to_string);
-                break SignInResult { state: "needs_handle".into(), suggested: answer["suggested"].as_str().map(str::to_string), reason: None };
+                break SignInResult {
+                    state: "needs_handle".into(),
+                    suggested: answer["suggested"].as_str().map(str::to_string),
+                    reason: None,
+                };
             }
-            Some(_) => break SignInResult { state: "failed".into(), suggested: None, reason: answer["reason"].as_str().map(str::to_string) },
+            Some(_) => {
+                break SignInResult { state: "failed".into(), suggested: None, reason: answer["reason"].as_str().map(str::to_string) }
+            }
         }
     };
     catcher.abort();
@@ -294,7 +315,8 @@ async fn catch_proof(listener: tokio::net::TcpListener, login_id: String, proof:
             _ => continue,
         };
         let request = String::from_utf8_lossy(&buffer[..read]);
-        let target = request.lines().next().and_then(|line| line.strip_prefix("GET ")).and_then(|rest| rest.split(' ').next()).unwrap_or_default();
+        let target =
+            request.lines().next().and_then(|line| line.strip_prefix("GET ")).and_then(|rest| rest.split(' ').next()).unwrap_or_default();
         let found = target.strip_prefix("/monolab-login?").and_then(|query| {
             let pairs: Vec<(String, String)> = tauri::Url::parse(&format!("http://x/?{query}")).ok()?.query_pairs().into_owned().collect();
             let get = |key: &str| pairs.iter().find(|(name, _)| name == key).map(|(_, value)| value.clone());
@@ -350,7 +372,12 @@ pub async fn account_check_handle(handle: String) -> Result<HandleCheck, String>
 #[specta::specta]
 pub async fn account_finish(app: AppHandle, handle: String) -> Result<AccountView, String> {
     let ticket = state().lock().expect("account poisoned").ticket.clone().ok_or("expired")?;
-    let response = http().post(format!("{}/v2/auth/finish", server())).json(&json!({ "ticket": ticket, "handle": handle })).send().await.map_err(unreachable)?;
+    let response = http()
+        .post(format!("{}/v2/auth/finish", server()))
+        .json(&json!({ "ticket": ticket, "handle": handle }))
+        .send()
+        .await
+        .map_err(unreachable)?;
     let ok = response.status().is_success();
     let text = response.text().await.unwrap_or_default();
     if !ok {
@@ -523,7 +550,12 @@ fn on_team_message(app: &AppHandle, value: &Value) {
         tauri::async_runtime::spawn(async move {
             match api(&app, "GET", &format!("/v2/teams/{team}"), None).await {
                 Ok(answer) => {
-                    let ids: Vec<String> = answer["servers"].as_array().into_iter().flatten().filter_map(|one| one["id"].as_str().map(str::to_string)).collect();
+                    let ids: Vec<String> = answer["servers"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|one| one["id"].as_str().map(str::to_string))
+                        .collect();
                     crate::monolink_team::prune(&app, &team, Some(&ids));
                 }
                 Err(error) if error.contains("not_found") => crate::monolink_team::prune(&app, &team, None),
@@ -614,7 +646,11 @@ pub fn start_live(app: &AppHandle) {
 async fn live_session(app: &AppHandle) -> Result<(), String> {
     let token = load_token(app).ok_or("signed_out")?;
     let base = server();
-    let url = if let Some(rest) = base.strip_prefix("https://") { format!("wss://{rest}/v2/ws") } else { format!("ws://{}/v2/ws", base.trim_start_matches("http://")) };
+    let url = if let Some(rest) = base.strip_prefix("https://") {
+        format!("wss://{rest}/v2/ws")
+    } else {
+        format!("ws://{}/v2/ws", base.trim_start_matches("http://"))
+    };
     let connector = if url.starts_with("wss://") {
         use rustls_platform_verifier::BuilderVerifierExt;
         let config = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::aws_lc_rs::default_provider()))
@@ -627,10 +663,11 @@ async fn live_session(app: &AppHandle) -> Result<(), String> {
     } else {
         tokio_tungstenite::Connector::Plain
     };
-    let (socket, _) = tokio::time::timeout(Duration::from_secs(15), tokio_tungstenite::connect_async_tls_with_config(url, None, false, Some(connector)))
-        .await
-        .map_err(|_| "timeout".to_string())?
-        .map_err(|error| error.to_string())?;
+    let (socket, _) =
+        tokio::time::timeout(Duration::from_secs(15), tokio_tungstenite::connect_async_tls_with_config(url, None, false, Some(connector)))
+            .await
+            .map_err(|_| "timeout".to_string())?
+            .map_err(|error| error.to_string())?;
     let (mut sink, mut source) = socket.split();
     sink.send(Message::Text(json!({ "type": "auth", "token": token }).to_string().into())).await.map_err(|error| error.to_string())?;
     let mut ping = tokio::time::interval(Duration::from_secs(30));

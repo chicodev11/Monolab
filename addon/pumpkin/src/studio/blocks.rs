@@ -34,12 +34,15 @@ use pumpkin_plugin_api::common::Hand;
 use pumpkin_plugin_api::particles::Particle;
 use pumpkin_plugin_api::persistent_data::PersistentDataHolder;
 use pumpkin_plugin_api::text::TextComponent;
+use pumpkin_plugin_api::uuid::Uuid;
 use pumpkin_plugin_api::wit::pumpkin::plugin::data_components::DataComponent;
 use pumpkin_plugin_api::wit::pumpkin::plugin::sounds::SoundCategory;
 use pumpkin_plugin_api::wit::pumpkin::plugin::world::{BlockDirection, BlockFlags, BlockPos};
 use pumpkin_plugin_api::world::{Entity, World};
-use pumpkin_plugin_api::{Attribute, AttributeModifier, DisplayEntityExt, EntityDisplayExt, EntityType, ItemDisplayEntityExt, ItemDisplayMode, ItemStack, ModifierOperation, Player, Server};
-use pumpkin_plugin_api::uuid::Uuid;
+use pumpkin_plugin_api::{
+    Attribute, AttributeModifier, DisplayEntityExt, EntityDisplayExt, EntityType, ItemDisplayEntityExt, ItemDisplayMode, ItemStack,
+    ModifierOperation, Player, Server,
+};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -124,7 +127,8 @@ fn stage_states(given: &serde_json::Map<String, Value>, id: &str, data: &Data) -
     let Some(growth) = block::growth(data) else { return Vec::new() };
     let mut out = Vec::new();
     for stage in 1..=growth.last() {
-        let number = given.get(block::IDS_PLANT).and_then(|kind| kind.get(block::stage_key(id, stage))).and_then(Value::as_u64).unwrap_or(0) as u32;
+        let number =
+            given.get(block::IDS_PLANT).and_then(|kind| kind.get(block::stage_key(id, stage))).and_then(Value::as_u64).unwrap_or(0) as u32;
         match borrowed_state("plant", number) {
             Ok(state) if number > 0 => out.push(state),
             _ => break,
@@ -139,12 +143,15 @@ fn borrowed_state(shape: &str, number: u32) -> Result<u16, String> {
         return Err(format!("No free block state is left for this block ({} at most).", block::most(shape)));
     };
     let properties: Vec<(String, String)> = state.properties.iter().map(|(name, value)| ((*name).to_string(), value.clone())).collect();
-    pumpkin_plugin_api::world::resolve_block_state(&format!("minecraft:{}", state.block), &properties).ok_or_else(|| format!("Pumpkin doesn't know the block state {}.", state.text()))
+    pumpkin_plugin_api::world::resolve_block_state(&format!("minecraft:{}", state.block), &properties)
+        .ok_or_else(|| format!("Pumpkin doesn't know the block state {}.", state.text()))
 }
 
 /// The fork's definition of a studio block: one state shown as `client`.
 fn definition(id: &str, data: &Data, shape: &str, client: u16, stages: &[u16]) -> pumpkin_plugin_api::custom_block::BlockDefinition {
-    use pumpkin_plugin_api::custom_block::{BlockCallbacks, BlockDefinition, BlockProperty, BlockShape, BlockStateDefinition, PistonReaction, ShapeBox, SoundGroup};
+    use pumpkin_plugin_api::custom_block::{
+        BlockCallbacks, BlockDefinition, BlockProperty, BlockShape, BlockStateDefinition, PistonReaction, ShapeBox, SoundGroup,
+    };
     let plant = shape == "plant";
     let group = sound_group(&block::sounds(data));
     let sound = |what: &str| format!("minecraft:block.{group}.{what}");
@@ -156,10 +163,20 @@ fn definition(id: &str, data: &Data, shape: &str, client: u16, stages: &[u16]) -
         luminance: block::light(data),
         opacity: plant.then_some(0),
         collision: if plant { BlockShape::Empty } else { BlockShape::FullCube },
-        outline: plant.then(|| BlockShape::Boxes(vec![ShapeBox { min_x: 0.125, min_y: 0.0, min_z: 0.125, max_x: 0.875, max_y: 0.8125, max_z: 0.875 }])),
+        outline: plant.then(|| {
+            BlockShape::Boxes(vec![ShapeBox { min_x: 0.125, min_y: 0.0, min_z: 0.125, max_x: 0.875, max_y: 0.8125, max_z: 0.875 }])
+        }),
         piston: if plant { PistonReaction::Destroy } else { PistonReaction::Block },
         sound_group: if plant { "GRASS".into() } else { "STONE".into() },
-        custom_sounds: Some(SoundGroup { volume: 1.0, pitch: 0.8, break_sound: sound("break"), step_sound: sound("step"), place_sound: sound("place"), hit_sound: sound("hit"), fall_sound: sound("fall") }),
+        custom_sounds: Some(SoundGroup {
+            volume: 1.0,
+            pitch: 0.8,
+            break_sound: sound("break"),
+            step_sound: sound("step"),
+            place_sound: sound("place"),
+            hit_sound: sound("hit"),
+            fall_sound: sound("fall"),
+        }),
         instrument: None,
         map_color: if plant { 7 } else { 11 },
         loot_table: None,
@@ -176,8 +193,16 @@ fn definition(id: &str, data: &Data, shape: &str, client: u16, stages: &[u16]) -
     for (at, stage_client) in stages.iter().enumerate() {
         states.push(BlockStateDefinition { client_state: *stage_client, random_ticks: at + 1 < stages.len(), ..state.clone() });
     }
-    let properties = if crop { vec![BlockProperty { name: "age".into(), values: (0..=stages.len()).map(|age| age.to_string()).collect() }] } else { Vec::new() };
-    let callbacks = if crop { BlockCallbacks::DROPS | BlockCallbacks::ON_RANDOM_TICK | BlockCallbacks::CAN_BONEMEAL | BlockCallbacks::ON_BONEMEAL } else { BlockCallbacks::DROPS };
+    let properties = if crop {
+        vec![BlockProperty { name: "age".into(), values: (0..=stages.len()).map(|age| age.to_string()).collect() }]
+    } else {
+        Vec::new()
+    };
+    let callbacks = if crop {
+        BlockCallbacks::DROPS | BlockCallbacks::ON_RANDOM_TICK | BlockCallbacks::CAN_BONEMEAL | BlockCallbacks::ON_BONEMEAL
+    } else {
+        BlockCallbacks::DROPS
+    };
     BlockDefinition {
         id: format!("{TAG}:{id}"),
         properties,
@@ -279,7 +304,11 @@ async fn with_model(material: &str, path: &str) -> ItemStack {
 }
 
 fn ids_given(file: &Path) -> serde_json::Map<String, Value> {
-    fs::read_to_string(file).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()).and_then(|all| all.get("given").and_then(Value::as_object).cloned()).unwrap_or_default()
+    fs::read_to_string(file)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|all| all.get("given").and_then(Value::as_object).cloned())
+        .unwrap_or_default()
 }
 
 fn pos(at: (i32, i32, i32)) -> BlockPos {
@@ -319,7 +348,21 @@ fn name_at(world: &World, at: (i32, i32, i32)) -> String {
 
 fn is_air(name: &str) -> bool {
     let bare = name.trim_start_matches("minecraft:");
-    matches!(bare, "air" | "cave_air" | "void_air" | "short_grass" | "tall_grass" | "fern" | "snow" | "water" | "lava" | "light" | "dead_bush" | "vine")
+    matches!(
+        bare,
+        "air"
+            | "cave_air"
+            | "void_air"
+            | "short_grass"
+            | "tall_grass"
+            | "fern"
+            | "snow"
+            | "water"
+            | "lava"
+            | "light"
+            | "dead_bush"
+            | "vine"
+    )
 }
 
 fn step(at: (i32, i32, i32), face: BlockDirection) -> (i32, i32, i32) {
@@ -341,7 +384,11 @@ impl Blocks {
 
     /// While plugins load: makes every enabled block a block of the fork's own, its drops answered by `handler`. A
     /// block the fork turns down is remembered for its status.
-    pub fn register<H: pumpkin_plugin_api::custom_block::CustomBlockHandler + Clone + 'static>(&mut self, rows: &[(String, Data)], handler: &H) {
+    pub fn register<H: pumpkin_plugin_api::custom_block::CustomBlockHandler + Clone + 'static>(
+        &mut self,
+        rows: &[(String, Data)],
+        handler: &H,
+    ) {
         if !pumpkin_plugin_api::custom_block::is_registration_open() {
             return;
         }
@@ -356,10 +403,21 @@ impl Blocks {
             let stages = stage_states(&given, id, data);
             match pumpkin_plugin_api::custom_block::register_block(definition(id, data, &shape, client, &stages), handler.clone()) {
                 Ok(done) => {
-                    self.registered.insert(id.clone(), Registered { state: done.first_state, count: done.state_count, client, print: print(data, &shape, client, &stages) });
+                    self.registered.insert(
+                        id.clone(),
+                        Registered {
+                            state: done.first_state,
+                            count: done.state_count,
+                            client,
+                            print: print(data, &shape, client, &stages),
+                        },
+                    );
                 }
                 Err(error) => {
-                    self.refused.insert(id.clone(), format!("Pumpkin didn't take it as a block of its own ({error}); it borrows a state like on Paper."));
+                    self.refused.insert(
+                        id.clone(),
+                        format!("Pumpkin didn't take it as a block of its own ({error}); it borrows a state like on Paper."),
+                    );
                 }
             }
         }
@@ -400,13 +458,21 @@ impl Blocks {
     }
 
     /// Takes the enabled block and furniture files after a reload. Returns what was wrong: (kind, id, text).
-    pub fn load(&mut self, server: &Server, blocks: &[(String, Data)], furniture_files: &[(String, Data)]) -> Vec<(&'static str, String, String)> {
+    pub fn load(
+        &mut self,
+        server: &Server,
+        blocks: &[(String, Data)],
+        furniture_files: &[(String, Data)],
+    ) -> Vec<(&'static str, String, String)> {
         let mut problems = Vec::new();
         let given = ids_given(&self.ids_file);
         self.blocks.clear();
         self.by_state.clear();
         self.by_item.clear();
-        self.plain_note = pumpkin_plugin_api::world::resolve_block_state("minecraft:note_block", &[("instrument".into(), "harp".into()), ("note".into(), "0".into()), ("powered".into(), "false".into())]);
+        self.plain_note = pumpkin_plugin_api::world::resolve_block_state(
+            "minecraft:note_block",
+            &[("instrument".into(), "harp".into()), ("note".into(), "0".into()), ("powered".into(), "false".into())],
+        );
         for (id, data) in blocks {
             if let Some(wrong) = block::problems(data).into_iter().next() {
                 problems.push(("block", id.clone(), wrong));
@@ -415,7 +481,11 @@ impl Blocks {
             let shape = block::shape(data);
             let number = given.get(block::ids_kind(&shape)).and_then(|kind| kind.get(id)).and_then(Value::as_u64).unwrap_or(0) as u32;
             if number == 0 {
-                problems.push(("block", id.clone(), "This block has no state yet: save it in the app so the resource pack is built.".into()));
+                problems.push((
+                    "block",
+                    id.clone(),
+                    "This block has no state yet: save it in the app so the resource pack is built.".into(),
+                ));
                 continue;
             }
             let state_id = match borrowed_state(&shape, number) {
@@ -429,7 +499,11 @@ impl Blocks {
             if let Some(growth) = block::growth(data)
                 && stages.len() < growth.stages.len()
             {
-                problems.push(("block", id.clone(), format!("Stage {} has no plant state yet: save it in the app so the resource pack is built.", stages.len() + 1)));
+                problems.push((
+                    "block",
+                    id.clone(),
+                    format!("Stage {} has no plant state yet: save it in the app so the resource pack is built.", stages.len() + 1),
+                ));
                 continue;
             }
             let mut ages = 1;
@@ -502,7 +576,13 @@ impl Blocks {
             }
         }
         self.plain_quiet = !self.blocks.is_empty() && self.plain_note.is_some_and(|plain| server.is_block_state_frozen(plain));
-        let hard: HashMap<u16, f32> = self.blocks.values().flat_map(|one| std::iter::once(one.state).chain(one.stages.iter().copied()).map(|state| (state, block::hardness(&one.data) as f32))).collect();
+        let hard: HashMap<u16, f32> = self
+            .blocks
+            .values()
+            .flat_map(|one| {
+                std::iter::once(one.state).chain(one.stages.iter().copied()).map(|state| (state, block::hardness(&one.data) as f32))
+            })
+            .collect();
         for state in self.hardened.iter().copied().filter(|state| !hard.contains_key(state)).collect::<Vec<_>>() {
             server.set_block_state_hardness(state, None);
             self.hardened.remove(&state);
@@ -692,14 +772,28 @@ impl Blocks {
         world.set_block_state(pos(target), one.custom.unwrap_or(one.state), flags()).await;
         Self::take_one(player, held).await;
         let group = sound_group(&block::sounds(&one.data));
-        world.play_custom_sound(&format!("minecraft:block.{group}.place"), SoundCategory::Blocks, (f64::from(target.0) + 0.5, f64::from(target.1) + 0.5, f64::from(target.2) + 0.5), 1.0, 0.8);
+        world.play_custom_sound(
+            &format!("minecraft:block.{group}.place"),
+            SoundCategory::Blocks,
+            (f64::from(target.0) + 0.5, f64::from(target.1) + 0.5, f64::from(target.2) + 0.5),
+            1.0,
+            0.8,
+        );
         if let Some(list) = one.data.get("placeActions").filter(|list| list.as_array().is_some_and(|list| !list.is_empty())) {
             out.actions = Some(list.clone());
             out.extra = vec![("block".into(), id.to_string())];
         }
     }
 
-    async fn place_furniture(&self, player: &Player, world: &World, id: &str, base: (i32, i32, i32), held: &ItemStack, name: &dyn Fn(&str) -> TextComponent) {
+    async fn place_furniture(
+        &self,
+        player: &Player,
+        world: &World,
+        id: &str,
+        base: (i32, i32, i32),
+        held: &ItemStack,
+        name: &dyn Fn(&str) -> TextComponent,
+    ) {
         let Some(data) = self.furniture.get(id) else { return };
         let yaw = furniture::snap_yaw(f64::from(player.get_yaw()), furniture::turns(data));
         let mut taken = Vec::new();
@@ -744,7 +838,14 @@ impl Blocks {
         hitbox.set_string(TAG, "furniture_display", &entity.get_uuid().to_string()).await;
         entity.set_string(TAG, "furniture_hitbox", &hitbox.get_uuid().to_string()).await;
         let light = furniture::light(data);
-        let lit = (light > 0).then(|| pumpkin_plugin_api::world::resolve_block_state("minecraft:light", &[("level".into(), light.to_string()), ("waterlogged".into(), "false".into())])).flatten();
+        let lit = (light > 0)
+            .then(|| {
+                pumpkin_plugin_api::world::resolve_block_state(
+                    "minecraft:light",
+                    &[("level".into(), light.to_string()), ("waterlogged".into(), "false".into())],
+                )
+            })
+            .flatten();
         for spot in &taken {
             if furniture::solid(data) {
                 world.set_block_by_name(pos(*spot), "minecraft:barrier".into(), flags()).await;
@@ -838,7 +939,13 @@ impl Blocks {
         let note = Self::stored_note(world, at).await;
         let instrument = block::instrument_under(&name_at(world, (at.0, at.1 - 1, at.2)));
         let center = (f64::from(at.0) + 0.5, f64::from(at.1) + 0.5, f64::from(at.2) + 0.5);
-        world.play_custom_sound(&format!("minecraft:block.note_block.{instrument}"), SoundCategory::Records, center, 3.0, block::note_pitch(note));
+        world.play_custom_sound(
+            &format!("minecraft:block.note_block.{instrument}"),
+            SoundCategory::Records,
+            center,
+            3.0,
+            block::note_pitch(note),
+        );
         world.spawn_particle(Particle::Note, (center.0, center.1 + 0.7, center.2), (f64::from(note) / 24.0, 0.0, 0.0), 1.0, 0);
     }
 
@@ -866,7 +973,10 @@ impl Blocks {
             return;
         }
         if let Some(living) = body.as_living() {
-            living.add_attribute_modifier(Attribute::BlockBreakSpeed, &AttributeModifier { id: DIG_MODIFIER.into(), amount: -1.0, operation: ModifierOperation::MultiplyTotal });
+            living.add_attribute_modifier(
+                Attribute::BlockBreakSpeed,
+                &AttributeModifier { id: DIG_MODIFIER.into(), amount: -1.0, operation: ModifierOperation::MultiplyTotal },
+            );
         }
         self.digging.insert(key(player.get_id()), Digging { world, at, needed, done: 0 });
     }
@@ -939,7 +1049,9 @@ impl Blocks {
         let source = crack_source(at);
         for player in &self.viewers {
             let (px, py, pz) = player.get_position();
-            if player.get_world().get_id() == here && (px - x).powi(2) + (py - y).powi(2) + (pz - z).powi(2) <= CRACK_DISTANCE * CRACK_DISTANCE {
+            if player.get_world().get_id() == here
+                && (px - x).powi(2) + (py - y).powi(2) + (pz - z).powi(2) <= CRACK_DISTANCE * CRACK_DISTANCE
+            {
                 player.send_block_damage(pos(at), progress, Some(source));
             }
         }
@@ -985,7 +1097,13 @@ impl Blocks {
         }
         // A registered block makes its own break sound.
         if !self.custom_at(world, at) {
-            world.play_custom_sound(&format!("minecraft:block.{group}.break"), SoundCategory::Blocks, (f64::from(at.0) + 0.5, f64::from(at.1) + 0.5, f64::from(at.2) + 0.5), 1.0, 0.8);
+            world.play_custom_sound(
+                &format!("minecraft:block.{group}.break"),
+                SoundCategory::Blocks,
+                (f64::from(at.0) + 0.5, f64::from(at.1) + 0.5, f64::from(at.2) + 0.5),
+                1.0,
+                0.8,
+            );
         }
         out
     }
@@ -1114,7 +1232,10 @@ impl Blocks {
             let mut taken = false;
             for one in body.get_nearby_entities(8.0, 8.0, 8.0) {
                 let (sx, sy, sz) = one.get_position();
-                if !one.get_passengers().is_empty() && (sx - x).powi(2) + (sy - y - height).powi(2) + (sz - z).powi(2) < 0.09 && one.get_string(TAG, "furniture_seat").await.is_some() {
+                if !one.get_passengers().is_empty()
+                    && (sx - x).powi(2) + (sy - y - height).powi(2) + (sz - z).powi(2) < 0.09
+                    && one.get_string(TAG, "furniture_seat").await.is_some()
+                {
                     taken = true;
                     break;
                 }
@@ -1236,4 +1357,3 @@ impl Blocks {
 fn key(id: Uuid) -> (u64, u64) {
     (id.high, id.low)
 }
-

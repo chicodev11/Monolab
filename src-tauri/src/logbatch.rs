@@ -82,7 +82,9 @@ mod tests {
         batcher.push(7);
         let batch = got.recv_timeout(Duration::from_secs(1)).expect("batch");
         assert_eq!(batch, vec![7]);
-        assert!(at.elapsed() < WINDOW + Duration::from_millis(60), "{:?}", at.elapsed());
+        // Generous: a busy machine (the first, cold `cargo test`) starts threads late. The point is that a lone
+        // line doesn't wait for more lines, not the exact millisecond.
+        assert!(at.elapsed() < WINDOW + Duration::from_millis(500), "{:?}", at.elapsed());
     }
 
     #[test]

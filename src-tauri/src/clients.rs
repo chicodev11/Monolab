@@ -4,11 +4,7 @@
 
 use crate::data_root::MonolabDirs;
 use serde::{Deserialize, Serialize};
-use std::{
-    fs,
-    path::PathBuf,
-    sync::Mutex,
-};
+use std::{fs, path::PathBuf, sync::Mutex};
 use tauri::{AppHandle, Manager};
 
 pub const LOADERS: &[&str] = &["Vanilla", "Fabric", "Quilt", "Nova", "NeoForge", "Forge"];
@@ -54,8 +50,7 @@ fn load(app: &AppHandle) -> Result<Vec<ClientInstance>, String> {
 
 fn save(app: &AppHandle, list: &[ClientInstance]) -> Result<(), String> {
     let text = serde_json::to_string_pretty(list).map_err(|error| error.to_string())?;
-    crate::store::write(&list_path(app)?, &text)
-        .map_err(|error| format!("Could not save the instance list: {error}"))
+    crate::store::write(&list_path(app)?, &text).map_err(|error| format!("Could not save the instance list: {error}"))
 }
 
 fn clean_name(name: &str) -> Result<String, String> {
@@ -113,17 +108,8 @@ pub fn create_client(app: AppHandle, name: String, version: String, loader: Stri
     let version = if loader == "Nova" { crate::forks::NOVA_VERSION.to_string() } else { version };
     let _guard = LOCK.lock().map_err(|_| "The instance list is busy.".to_string())?;
     let mut list = load(&app)?;
-    let one = ClientInstance {
-        id: new_id()?,
-        name,
-        version,
-        loader,
-        group: String::new(),
-        created_at: crate::unix_now(),
-        last_played: 0,
-    };
-    fs::create_dir_all(game_dir(&app, &one.id)?)
-        .map_err(|error| format!("Could not create the instance folder: {error}"))?;
+    let one = ClientInstance { id: new_id()?, name, version, loader, group: String::new(), created_at: crate::unix_now(), last_played: 0 };
+    fs::create_dir_all(game_dir(&app, &one.id)?).map_err(|error| format!("Could not create the instance folder: {error}"))?;
     list.push(one.clone());
     save(&app, &list)?;
     Ok(one)
@@ -169,10 +155,7 @@ pub fn open_client_folder(app: AppHandle, id: String) -> Result<(), String> {
     let program = "open";
     #[cfg(all(not(windows), not(target_os = "macos")))]
     let program = "xdg-open";
-    crate::hidden_command(program)
-        .arg(&dir)
-        .spawn()
-        .map_err(|error| format!("Could not open the folder: {error}"))?;
+    crate::hidden_command(program).arg(&dir).spawn().map_err(|error| format!("Could not open the folder: {error}"))?;
     Ok(())
 }
 
@@ -196,10 +179,8 @@ mod tests {
 
     #[test]
     fn old_files_without_new_fields_still_load() {
-        let one: ClientInstance = serde_json::from_str(
-            r#"{"id":"c-1","name":"A","version":"1.21.5","loader":"Fabric","createdAt":5}"#,
-        )
-        .unwrap();
+        let one: ClientInstance =
+            serde_json::from_str(r#"{"id":"c-1","name":"A","version":"1.21.5","loader":"Fabric","createdAt":5}"#).unwrap();
         assert_eq!(one.last_played, 0);
         assert!(one.group.is_empty());
     }

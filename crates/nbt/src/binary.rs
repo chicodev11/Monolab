@@ -70,11 +70,7 @@ pub struct NbtFile {
 
 impl NbtFile {
     pub fn new(root: Compound) -> NbtFile {
-        NbtFile {
-            name: String::new(),
-            root,
-            compression: Compression::Gzip,
-        }
+        NbtFile { name: String::new(), root, compression: Compression::Gzip }
     }
 
     /// Reads a file's bytes, compressed or not.
@@ -82,11 +78,7 @@ impl NbtFile {
         let compression = Compression::sniff(bytes);
         let raw = decompress(bytes, compression)?;
         let (name, root) = read_root(&raw)?;
-        Ok(NbtFile {
-            name,
-            root,
-            compression,
-        })
+        Ok(NbtFile { name, root, compression })
     }
 
     pub fn write(&self) -> Vec<u8> {
@@ -99,11 +91,7 @@ pub fn read_root(raw: &[u8]) -> Result<(String, Compound), String> {
     let mut reader = Reader { bytes: raw, at: 0 };
     let kind = reader.u8()?;
     if kind != Kind::Compound.id() {
-        return Err(if kind == 0 {
-            "The file is empty.".into()
-        } else {
-            "This is not an NBT file (the root is not a compound).".into()
-        });
+        return Err(if kind == 0 { "The file is empty.".into() } else { "This is not an NBT file (the root is not a compound).".into() });
     }
     let name = reader.string()?;
     let root = reader.compound(0)?;
@@ -125,10 +113,7 @@ struct Reader<'a> {
 
 impl<'a> Reader<'a> {
     fn take(&mut self, count: usize) -> Result<&'a [u8], String> {
-        let end = self
-            .at
-            .checked_add(count)
-            .filter(|end| *end <= self.bytes.len());
+        let end = self.at.checked_add(count).filter(|end| *end <= self.bytes.len());
         let end = end.ok_or("The file ends too early; it may be damaged.")?;
         let out = &self.bytes[self.at..end];
         self.at = end;
@@ -205,20 +190,12 @@ impl<'a> Reader<'a> {
             Kind::IntArray => {
                 let n = self.len()?;
                 let raw = self.take(n.checked_mul(4).ok_or("Array too large.")?)?;
-                Tag::IntArray(
-                    raw.chunks_exact(4)
-                        .map(|c| i32::from_be_bytes(c.try_into().expect("4")))
-                        .collect(),
-                )
+                Tag::IntArray(raw.as_chunks::<4>().0.iter().map(|c| i32::from_be_bytes(*c)).collect())
             }
             Kind::LongArray => {
                 let n = self.len()?;
                 let raw = self.take(n.checked_mul(8).ok_or("Array too large.")?)?;
-                Tag::LongArray(
-                    raw.chunks_exact(8)
-                        .map(|c| i64::from_be_bytes(c.try_into().expect("8")))
-                        .collect(),
-                )
+                Tag::LongArray(raw.as_chunks::<8>().0.iter().map(|c| i64::from_be_bytes(*c)).collect())
             }
         })
     }
@@ -255,11 +232,7 @@ fn put_payload(out: &mut Vec<u8>, tag: &Tag) {
         }
         Tag::String(text) => put_string(out, text),
         Tag::List(list) => {
-            let kind = if list.items.is_empty() {
-                list.kind
-            } else {
-                list.items[0].kind()
-            };
+            let kind = if list.items.is_empty() { list.kind } else { list.items[0].kind() };
             out.push(kind.id());
             out.extend_from_slice(&(list.items.len() as i32).to_be_bytes());
             for item in &list.items {
@@ -333,8 +306,7 @@ pub fn decode_mutf8(bytes: &[u8]) -> Result<String, String> {
             at += 3;
         } else if a & 0xf8 == 0xf0 {
             // Plain UTF-8 four-byte form: some tools write it, so accept it.
-            let s =
-                std::str::from_utf8(bytes.get(at..at + 4).ok_or_else(bad)?).map_err(|_| bad())?;
+            let s = std::str::from_utf8(bytes.get(at..at + 4).ok_or_else(bad)?).map_err(|_| bad())?;
             units.extend(s.encode_utf16());
             at += 4;
         } else {

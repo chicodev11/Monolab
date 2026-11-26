@@ -61,7 +61,11 @@ fn walk(dir: &Path, prefix: &str, depth: u8, seen: &mut dyn FnMut(String, u64, b
         let named = depth < 2;
         let path = if named {
             let name = entry.file_name().to_string_lossy().to_string();
-            if prefix.is_empty() { name } else { format!("{prefix}/{name}") }
+            if prefix.is_empty() {
+                name
+            } else {
+                format!("{prefix}/{name}")
+            }
         } else {
             String::new()
         };
@@ -108,11 +112,9 @@ pub fn cleanable_files(root: &Path, kind: &str) -> Vec<PathBuf> {
     match kind {
         "old-logs" => files_in(&root.join("logs")).into_iter().filter(|one| name_of(one).ends_with(".log.gz") && is_old(one)).collect(),
         "old-crash-reports" => files_in(&root.join("crash-reports")).into_iter().filter(|one| is_old(one)).collect(),
-        "heap-dumps" => files_in(root)
-            .into_iter()
-            .chain(files_in(&root.join("logs")))
-            .filter(|one| name_of(one).ends_with(".hprof"))
-            .collect(),
+        "heap-dumps" => {
+            files_in(root).into_iter().chain(files_in(&root.join("logs"))).filter(|one| name_of(one).ends_with(".hprof")).collect()
+        }
         _ => Vec::new(),
     }
 }
@@ -212,10 +214,7 @@ pub fn parse_remote(text: &str) -> DiskReport {
             _ => {}
         }
     }
-    report.entries = sizes
-        .into_iter()
-        .map(|(path, bytes)| DiskEntry { directory: dirs.contains(&path), path, bytes })
-        .collect();
+    report.entries = sizes.into_iter().map(|(path, bytes)| DiskEntry { directory: dirs.contains(&path), path, bytes }).collect();
     report.cleanable = KINDS
         .iter()
         .map(|kind| {

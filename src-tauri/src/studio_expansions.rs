@@ -95,7 +95,11 @@ pub struct StudioExpansion {
 
 /// "plugin:name": lower-case a-z, 0-9, `_` and `-`, one colon (the add-on's MonolabApi rule).
 pub fn studio_name(name: &str) -> bool {
-    let good = |part: &str, most: usize| !part.is_empty() && part.len() <= most && part.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == b'_' || one == b'-');
+    let good = |part: &str, most: usize| {
+        !part.is_empty()
+            && part.len() <= most
+            && part.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || one == b'_' || one == b'-')
+    };
     match name.split_once(':') {
         Some((plugin, rest)) => good(plugin, 32) && good(rest, 64),
         None => false,
@@ -185,7 +189,13 @@ fn fields(step: &str, data: &Map<String, Value>, problems: &mut Vec<String>) -> 
             kind = "text".into();
         }
         let label = text(one, "label");
-        out.push(StudioExpansionField { label: if label.is_empty() { key.clone() } else { label }, key, kind, default: scalar(one.get("default")), choices });
+        out.push(StudioExpansionField {
+            label: if label.is_empty() { key.clone() } else { label },
+            key,
+            kind,
+            default: scalar(one.get("default")),
+            choices,
+        });
     }
     problems.extend(local.into_iter().map(|problem| format!("{step}: {problem}")));
     out
@@ -247,13 +257,22 @@ pub fn parse(folder: &str, json: &str) -> StudioExpansion {
                 .iter()
                 .filter_map(Value::as_str)
                 .map(cut)
-                .filter(|var| !var.is_empty() && var.len() <= 64 && var.bytes().all(|one| one.is_ascii_alphanumeric() || matches!(one, b'_' | b'.' | b'-')))
+                .filter(|var| {
+                    !var.is_empty()
+                        && var.len() <= 64
+                        && var.bytes().all(|one| one.is_ascii_alphanumeric() || matches!(one, b'_' | b'.' | b'-'))
+                })
                 .take(MOST_FIELDS)
                 .collect(),
             _ => Vec::new(),
         };
         let label = text(one, "label");
-        out.triggers.push(StudioExpansionTrigger { label: if label.is_empty() { event.clone() } else { label }, event, vars, registered: false });
+        out.triggers.push(StudioExpansionTrigger {
+            label: if label.is_empty() { event.clone() } else { label },
+            event,
+            vars,
+            registered: false,
+        });
     }
     for one in objects(&root, "placeholders", &mut problems) {
         let key = text(one, "key");
@@ -266,7 +285,11 @@ pub fn parse(folder: &str, json: &str) -> StudioExpansion {
             continue;
         }
         let label = text(one, "label");
-        out.placeholders.push(StudioExpansionPlaceholder { label: if label.is_empty() { key.clone() } else { label }, key, registered: false });
+        out.placeholders.push(StudioExpansionPlaceholder {
+            label: if label.is_empty() { key.clone() } else { label },
+            key,
+            registered: false,
+        });
     }
     problems.dedup();
     out.problems = problems;
@@ -290,9 +313,18 @@ pub fn registered(integrations_json: &str, now_ms: u64) -> Option<Registered> {
     }
     let studio = root.get("studio");
     let list = |key: &str| -> Vec<String> {
-        studio.and_then(|one| one.get(key)).and_then(Value::as_array).map(|list| list.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
+        studio
+            .and_then(|one| one.get(key))
+            .and_then(Value::as_array)
+            .map(|list| list.iter().filter_map(Value::as_str).map(str::to_string).collect())
+            .unwrap_or_default()
     };
-    Some(Registered { actions: list("actions"), conditions: list("conditions"), placeholders: list("placeholders"), triggers: list("triggers") })
+    Some(Registered {
+        actions: list("actions"),
+        conditions: list("conditions"),
+        placeholders: list("placeholders"),
+        triggers: list("triggers"),
+    })
 }
 
 /// Marks what is registered, and names that two plugins both describe.
@@ -345,7 +377,11 @@ async fn folders(app: &AppHandle, instance: &crate::ServerInstance) -> Vec<Strin
         let mut names: Vec<String> = crate::server_names(app, instance, base)
             .await
             .into_iter()
-            .filter(|(name, dir, _)| *dir && !name.eq_ignore_ascii_case("monolab") && !name.starts_with('.') && !(base == "plugins" && name == "data" && crate::pumpkin::is_pumpkin(&instance.core)))
+            .filter(|(name, dir, _)| {
+                *dir && !name.eq_ignore_ascii_case("monolab")
+                    && !name.starts_with('.')
+                    && !(base == "plugins" && name == "data" && crate::pumpkin::is_pumpkin(&instance.core))
+            })
             .map(|(name, _, _)| name)
             .collect();
         names.sort();

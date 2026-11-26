@@ -63,7 +63,11 @@ fn definition(id: &str, look: &Look) -> Value {
     if look.pulling.is_empty() {
         return json!({ "model": model_ref(id) });
     }
-    let entries: Vec<Value> = PULL_AT.iter().zip(1..look.pulling.len()).map(|(threshold, at)| json!({ "threshold": threshold, "model": model_ref(&format!("{id}_pulling_{at}")) })).collect();
+    let entries: Vec<Value> = PULL_AT
+        .iter()
+        .zip(1..look.pulling.len())
+        .map(|(threshold, at)| json!({ "threshold": threshold, "model": model_ref(&format!("{id}_pulling_{at}")) }))
+        .collect();
     json!({
         "model": {
             "type": "minecraft:condition",
@@ -123,7 +127,11 @@ pub fn item_files(version: &str, items: &[(String, Data)], ids: &mut Ids) -> Vec
             for (layer, _) in &layers {
                 model.insert((*layer).to_string(), json!([{ "texture": format!("{NAMESPACE}:{id}") }]));
             }
-            let path = if format >= DEFINITIONS_FROM { format!("assets/{NAMESPACE}/equipment/{id}.json") } else { format!("assets/{NAMESPACE}/models/equipment/{id}.json") };
+            let path = if format >= DEFINITIONS_FROM {
+                format!("assets/{NAMESPACE}/equipment/{id}.json")
+            } else {
+                format!("assets/{NAMESPACE}/models/equipment/{id}.json")
+            };
             files.insert(path, bytes(&json!({ "layers": model })));
         }
     }
@@ -173,7 +181,10 @@ mod tests {
     }
 
     fn read(files: &[(String, Vec<u8>)], path: &str) -> Value {
-        let (_, bytes) = files.iter().find(|(one, _)| one == path).unwrap_or_else(|| panic!("no {path} in {:?}", files.iter().map(|one| &one.0).collect::<Vec<_>>()));
+        let (_, bytes) = files
+            .iter()
+            .find(|(one, _)| one == path)
+            .unwrap_or_else(|| panic!("no {path} in {:?}", files.iter().map(|one| &one.0).collect::<Vec<_>>()));
         serde_json::from_slice(bytes).unwrap()
     }
 
@@ -201,7 +212,9 @@ mod tests {
 
     #[test]
     fn pulling_frames() {
-        let list = items(json!({ "bow": { "material": "bow", "look": { "texture": "bow", "handheld": false, "pulling": ["bow_0", "bow_1", "bow_2"] } } }));
+        let list = items(
+            json!({ "bow": { "material": "bow", "look": { "texture": "bow", "handheld": false, "pulling": ["bow_0", "bow_1", "bow_2"] } } }),
+        );
         let files = item_files("1.21.8", &list, &mut Ids::default());
         let model = read(&files, "assets/monolab/items/bow.json")["model"].clone();
         assert_eq!(model["type"], "minecraft:condition");
@@ -232,7 +245,9 @@ mod tests {
         assert_eq!(paper["overrides"][1]["model"], "monolab:item/b");
         assert_eq!(read(&files, "assets/minecraft/models/item/stick.json")["parent"], "minecraft:item/handheld");
         // Removing one never moves the others or hands its number on.
-        let fewer = items(json!({ "b": { "material": "paper", "look": { "texture": "b" } }, "d": { "material": "paper", "look": { "texture": "d" } } }));
+        let fewer = items(
+            json!({ "b": { "material": "paper", "look": { "texture": "b" } }, "d": { "material": "paper", "look": { "texture": "d" } } }),
+        );
         let files = item_files("1.21.1", &fewer, &mut ids);
         let paper = read(&files, "assets/minecraft/models/item/paper.json");
         assert_eq!(paper["overrides"][0]["predicate"]["custom_model_data"], 10001);
@@ -241,12 +256,16 @@ mod tests {
 
     #[test]
     fn armor() {
-        let list = items(json!({ "ruby_helmet": { "material": "leather_helmet", "equip": { "slot": "head", "texture": "ruby_armor", "legsTexture": "ruby_legs" } } }));
+        let list = items(
+            json!({ "ruby_helmet": { "material": "leather_helmet", "equip": { "slot": "head", "texture": "ruby_armor", "legsTexture": "ruby_legs" } } }),
+        );
         let files = item_files("1.21.4", &list, &mut Ids::default());
         let model = read(&files, "assets/monolab/equipment/ruby_helmet.json");
         assert_eq!(model["layers"]["humanoid"][0]["texture"], "monolab:ruby_helmet");
         assert_eq!(model["layers"]["humanoid_leggings"][0]["texture"], "monolab:ruby_helmet");
-        assert!(item_files("1.21.3", &list, &mut Ids::default()).iter().any(|(path, _)| path == "assets/monolab/models/equipment/ruby_helmet.json"));
+        assert!(item_files("1.21.3", &list, &mut Ids::default())
+            .iter()
+            .any(|(path, _)| path == "assets/monolab/models/equipment/ruby_helmet.json"));
         assert!(item_files("1.21.1", &list, &mut Ids::default()).is_empty());
         assert_eq!(
             item_copies("1.21.4", &list),

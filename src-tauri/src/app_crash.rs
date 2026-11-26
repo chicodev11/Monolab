@@ -101,8 +101,14 @@ pub async fn send(server: &str) -> Result<(), String> {
         "message": if report.message.is_empty() { "(no message)".to_string() } else { report.message.clone() },
         "detail": report.detail,
     });
-    let client = reqwest::Client::builder().timeout(Duration::from_secs(20)).user_agent("Monolab").build().map_err(|error| error.to_string())?;
-    let answer = client.post(format!("{server}/v2/crash")).json(&body).send().await.map_err(|error| format!("Could not send the report: {error}"))?;
+    let client =
+        reqwest::Client::builder().timeout(Duration::from_secs(20)).user_agent("Monolab").build().map_err(|error| error.to_string())?;
+    let answer = client
+        .post(format!("{server}/v2/crash"))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|error| format!("Could not send the report: {error}"))?;
     if answer.status().as_u16() == 429 {
         return Err("Too many reports from this network right now. Try again later.".into());
     }

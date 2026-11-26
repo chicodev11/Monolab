@@ -33,8 +33,7 @@ struct Session {
 
 impl Session {
     fn dirty(&self) -> bool {
-        self.region.as_ref().is_some_and(|one| one.changed)
-            || self.editor.as_ref().is_some_and(Editor::dirty)
+        self.region.as_ref().is_some_and(|one| one.changed) || self.editor.as_ref().is_some_and(Editor::dirty)
     }
 
     /// Folds the open chunk's edits back into the region in memory.
@@ -46,10 +45,7 @@ impl Session {
             return Ok(());
         }
         let index = region.current.ok_or("No chunk is open.")?;
-        let stamp = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map(|d| d.as_secs() as u32)
-            .unwrap_or(0);
+        let stamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs() as u32).unwrap_or(0);
         region.region.store(index, &editor.file(), stamp)?;
         region.changed = true;
         editor.mark_saved();
@@ -64,9 +60,7 @@ fn sessions() -> &'static Mutex<HashMap<String, Session>> {
 
 fn with<T>(session: &str, work: impl FnOnce(&mut Session) -> Result<T, String>) -> Result<T, String> {
     let mut all = sessions().lock().map_err(|_| "The NBT editor is busy.".to_string())?;
-    let one = all
-        .get_mut(session)
-        .ok_or("This file is no longer open. Open it again.")?;
+    let one = all.get_mut(session).ok_or("This file is no longer open. Open it again.")?;
     work(one)
 }
 
@@ -194,17 +188,11 @@ fn view(id: &str, one: &Session, search: &str, chunks: bool) -> NbtView {
         dirty: one.dirty(),
         can_undo: one.editor.as_ref().is_some_and(Editor::can_undo),
         can_redo: one.editor.as_ref().is_some_and(Editor::can_redo),
-        compression: one
-            .editor
-            .as_ref()
-            .map(|editor| editor.compression.name().to_string())
-            .unwrap_or_default(),
+        compression: one.editor.as_ref().map(|editor| editor.compression.name().to_string()).unwrap_or_default(),
         is_region: one.region.is_some(),
         region_at: region_coords(name).map(|(x, z)| [x, z]),
         chunk: one.region.as_ref().and_then(|r| r.current).map(|c| c as u32),
-        chunks: chunks
-            .then(|| one.region.as_ref().map(|r| r.region.chunks().into_iter().map(NbtChunk::from).collect()))
-            .flatten(),
+        chunks: chunks.then(|| one.region.as_ref().map(|r| r.region.chunks().into_iter().map(NbtChunk::from).collect())).flatten(),
         focus: None,
     }
 }
@@ -232,19 +220,10 @@ pub fn nbt_open(app: AppHandle, id: String, path: String) -> Result<NbtView, Str
         return Err("This file is too large to open in the app.".into());
     }
     let bytes = fs::read(&at).map_err(|error| format!("Could not read the file: {error}"))?;
-    let mut session = Session {
-        stamp: stamp_of(&at),
-        path: at,
-        region: None,
-        editor: None,
-    };
+    let mut session = Session { stamp: stamp_of(&at), path: at, region: None, editor: None };
     match kind {
         FileKind::Region => {
-            session.region = Some(RegionDoc {
-                region: Region::read(&bytes)?,
-                current: None,
-                changed: false,
-            });
+            session.region = Some(RegionDoc { region: Region::read(&bytes)?, current: None, changed: false });
         }
         FileKind::Document => {
             session.editor = Some(Editor::new(NbtFile::read(&bytes)?));
@@ -255,10 +234,7 @@ pub fn nbt_open(app: AppHandle, id: String, path: String) -> Result<NbtView, Str
     getrandom::fill(&mut bytes).map_err(|error| error.to_string())?;
     let key = format!("nbt-{}", bytes.iter().map(|b| format!("{b:02x}")).collect::<String>());
     let out = view(&key, &session, "", true);
-    sessions()
-        .lock()
-        .map_err(|_| "The NBT editor is busy.".to_string())?
-        .insert(key, session);
+    sessions().lock().map_err(|_| "The NBT editor is busy.".to_string())?.insert(key, session);
     Ok(out)
 }
 
@@ -279,11 +255,7 @@ pub fn nbt_open_chunk(session: String, index: u32) -> Result<NbtView, String> {
                 .and_then(region_coords)
                 .ok_or("The region file name does not say where it is.")?;
             let info = info.ok_or("No such chunk.")?;
-            let external = path.with_file_name(format!(
-                "c.{}.{}.mcc",
-                rx * 32 + info.x as i32,
-                rz * 32 + info.z as i32
-            ));
+            let external = path.with_file_name(format!("c.{}.{}.mcc", rx * 32 + info.x as i32, rz * 32 + info.z as i32));
             fs::read(&external).map_err(|error| format!("Could not read {}: {error}", external.display()))
         })?;
         region.current = Some(index);
@@ -297,19 +269,42 @@ pub fn nbt_open_chunk(session: String, index: u32) -> Result<NbtView, String> {
 pub enum NbtAction {
     /// List the rows again, chunks included (on mount or a search change).
     Refresh,
-    Toggle { path: Vec<NbtStep> },
-    ExpandAll { path: Vec<NbtStep> },
+    Toggle {
+        path: Vec<NbtStep>,
+    },
+    ExpandAll {
+        path: Vec<NbtStep>,
+    },
     CollapseAll,
     /// Replace a value with typed text, read as the value's own type.
-    Set { path: Vec<NbtStep>, text: String },
+    Set {
+        path: Vec<NbtStep>,
+        text: String,
+    },
     /// Replace a value with SNBT of any type, e.g. a pasted compound.
-    SetSnbt { path: Vec<NbtStep>, snbt: String },
-    Rename { path: Vec<NbtStep>, name: String },
-    Remove { path: Vec<NbtStep> },
+    SetSnbt {
+        path: Vec<NbtStep>,
+        snbt: String,
+    },
+    Rename {
+        path: Vec<NbtStep>,
+        name: String,
+    },
+    Remove {
+        path: Vec<NbtStep>,
+    },
     /// Add a new value inside `path` (a container) or after it.
-    Add { path: Vec<NbtStep>, kind: u8, name: String },
+    Add {
+        path: Vec<NbtStep>,
+        kind: u8,
+        name: String,
+    },
     /// Insert pasted SNBT inside or after `path`.
-    Paste { path: Vec<NbtStep>, snbt: String, name: String },
+    Paste {
+        path: Vec<NbtStep>,
+        snbt: String,
+        name: String,
+    },
     Undo,
     Redo,
 }
@@ -330,9 +325,7 @@ pub fn nbt_act(session: String, action: NbtAction, search: String) -> Result<Nbt
             NbtAction::ExpandAll { path } => editor.expand_all(&to_steps(&path)),
             NbtAction::CollapseAll => editor.collapse_all(),
             NbtAction::Set { path, text } => editor.set_text(&to_steps(&path), &text)?,
-            NbtAction::SetSnbt { path, snbt } => {
-                editor.set(&to_steps(&path), monolab_nbt::snbt::parse(&snbt)?)?
-            }
+            NbtAction::SetSnbt { path, snbt } => editor.set(&to_steps(&path), monolab_nbt::snbt::parse(&snbt)?)?,
             NbtAction::Rename { path, name } => {
                 let name = name.trim();
                 if name.is_empty() {
@@ -342,9 +335,7 @@ pub fn nbt_act(session: String, action: NbtAction, search: String) -> Result<Nbt
             }
             NbtAction::Remove { path } => editor.remove(&to_steps(&path))?,
             NbtAction::Add { path, kind, name } => {
-                let kind = Kind::from_id(kind)
-                    .filter(|kind| *kind != Kind::End)
-                    .ok_or("Unknown NBT type.")?;
+                let kind = Kind::from_id(kind).filter(|kind| *kind != Kind::End).ok_or("Unknown NBT type.")?;
                 let added = editor.add(&to_steps(&path), kind.default_tag(), name.trim())?;
                 focus = Some(from_steps(&added));
             }
@@ -391,12 +382,10 @@ pub fn nbt_save(app: AppHandle, id: String, session: String, force: bool) -> Res
         };
         // Write beside the file, then swap, so a crash never leaves half a file.
         let temp = one.path.with_extension("monolab-tmp");
-        fs::write(&temp, &bytes)
-            .and_then(|_| fs::rename(&temp, &one.path))
-            .map_err(|error| {
-                let _ = fs::remove_file(&temp);
-                format!("Could not save: {error}")
-            })?;
+        fs::write(&temp, &bytes).and_then(|_| fs::rename(&temp, &one.path)).map_err(|error| {
+            let _ = fs::remove_file(&temp);
+            format!("Could not save: {error}")
+        })?;
         one.stamp = stamp_of(&one.path);
         if let Some(region) = one.region.as_mut() {
             region.changed = false;
@@ -424,12 +413,7 @@ mod tests {
     use monolab_nbt::Compound;
 
     fn session_with(root: Compound) -> Session {
-        Session {
-            path: PathBuf::from("level.dat"),
-            stamp: None,
-            region: None,
-            editor: Some(Editor::new(NbtFile::new(root))),
-        }
+        Session { path: PathBuf::from("level.dat"), stamp: None, region: None, editor: Some(Editor::new(NbtFile::new(root))) }
     }
 
     #[test]
@@ -459,8 +443,7 @@ mod tests {
 
     #[test]
     fn actions_parse_from_page_json() {
-        let action: NbtAction =
-            serde_json::from_str(r#"{"type":"set","path":["Health"],"text":"5"}"#).unwrap();
+        let action: NbtAction = serde_json::from_str(r#"{"type":"set","path":["Health"],"text":"5"}"#).unwrap();
         assert!(matches!(action, NbtAction::Set { .. }));
         let action: NbtAction = serde_json::from_str(r#"{"type":"collapseAll"}"#).unwrap();
         assert!(matches!(action, NbtAction::CollapseAll));

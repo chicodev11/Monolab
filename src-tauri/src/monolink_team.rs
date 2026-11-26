@@ -102,7 +102,8 @@ fn links(app: &AppHandle) -> Vec<TeamLink> {
 
 /// The servers a grant may reach here: in the grant, attached to that team by this host, and still on this PC.
 pub fn reach(app: &AppHandle, grant: &Grant) -> Vec<String> {
-    let attached: Vec<String> = links(app).into_iter().filter(|one| one.team == grant.team).flat_map(|one| one.servers).map(|one| one.instance).collect();
+    let attached: Vec<String> =
+        links(app).into_iter().filter(|one| one.team == grant.team).flat_map(|one| one.servers).map(|one| one.instance).collect();
     let present: Vec<String> = crate::load_instances(app).unwrap_or_default().into_iter().map(|one| one.id).collect();
     grant.servers.iter().filter(|id| attached.contains(id) && present.contains(id)).cloned().collect()
 }
@@ -231,14 +232,27 @@ pub fn serve(app: &AppHandle, peer: &relay_proto::DeviceId, grant: &Grant, comma
     };
     // The account already noted `@handle` for the files this wrote; an agent's writes say so (F2, Rewind "who").
     if agent && result.is_ok() {
-        crate::note_writes(app, body.get("id").and_then(Value::as_str).unwrap_or_default(), command, &body, &crate::authorship::teammate(&grant.handle, true));
+        crate::note_writes(
+            app,
+            body.get("id").and_then(Value::as_str).unwrap_or_default(),
+            command,
+            &body,
+            &crate::authorship::teammate(&grant.handle, true),
+        );
     }
     let via = if agent { format!("team · {} · agent", grant.role.as_str()) } else { format!("team · {}", grant.role.as_str()) };
     crate::teamlog::record(app, &format!("@{}", grant.handle), &via, &peer.text(), command, &body, &result);
     result
 }
 
-fn serve_one(app: &AppHandle, peer: &relay_proto::DeviceId, grant: &Grant, command: &str, body: &Value, agent: bool) -> Result<Value, String> {
+fn serve_one(
+    app: &AppHandle,
+    peer: &relay_proto::DeviceId,
+    grant: &Grant,
+    command: &str,
+    body: &Value,
+    agent: bool,
+) -> Result<Value, String> {
     let servers = reach(app, grant);
     if servers.is_empty() {
         return Err("No server here is shared with this team any more.".into());
@@ -262,7 +276,9 @@ fn serve_one(app: &AppHandle, peer: &relay_proto::DeviceId, grant: &Grant, comma
         return Ok(json!({ "proposed": proposal.id }));
     }
     match command {
-        "__whoami" => Ok(json!({ "name": account.name, "role": account.role, "roleName": crate::role_name(&account.role, &custom), "teamRole": grant.role.as_str() })),
+        "__whoami" => Ok(
+            json!({ "name": account.name, "role": account.role, "roleName": crate::role_name(&account.role, &custom), "teamRole": grant.role.as_str() }),
+        ),
         "__events" => {
             let after = body.get("after").and_then(Value::as_u64).unwrap_or(0);
             let text = web::api::wait_for_events(app, after, std::time::Duration::from_secs(20));
@@ -291,7 +307,11 @@ fn serve_one(app: &AppHandle, peer: &relay_proto::DeviceId, grant: &Grant, comma
             }
             let mine = format!("@{}", grant.handle);
             let all = crate::proposals_of(app, id)?;
-            let shown: Vec<_> = if grant.role >= Role::Admin { all } else { all.into_iter().filter(|one| one.by == mine || one.by == format!("{mine}'s AI")).collect() };
+            let shown: Vec<_> = if grant.role >= Role::Admin {
+                all
+            } else {
+                all.into_iter().filter(|one| one.by == mine || one.by == format!("{mine}'s AI")).collect()
+            };
             serde_json::to_value(shown).map_err(|error| error.to_string())
         }
         "__proposal_merge" | "__proposal_reject" => {
@@ -303,9 +323,11 @@ fn serve_one(app: &AppHandle, peer: &relay_proto::DeviceId, grant: &Grant, comma
             }
             let proposal = body.get("proposal").and_then(Value::as_str).unwrap_or_default();
             if command == "__proposal_merge" {
-                tauri::async_runtime::block_on(crate::merge_proposal(app, id, proposal, &format!("@{}", grant.handle))).map(|()| Value::Null)
+                tauri::async_runtime::block_on(crate::merge_proposal(app, id, proposal, &format!("@{}", grant.handle)))
+                    .map(|()| Value::Null)
             } else {
-                crate::reject_proposal(app, id, proposal, body.get("reason").and_then(Value::as_str).unwrap_or_default()).map(|()| Value::Null)
+                crate::reject_proposal(app, id, proposal, body.get("reason").and_then(Value::as_str).unwrap_or_default())
+                    .map(|()| Value::Null)
             }
         }
         "__proposal_texts" => {
@@ -313,7 +335,8 @@ fn serve_one(app: &AppHandle, peer: &relay_proto::DeviceId, grant: &Grant, comma
                 return Err("You don't have permission for this server.".into());
             }
             let proposal = body.get("proposal").and_then(Value::as_str).unwrap_or_default();
-            serde_json::to_value(tauri::async_runtime::block_on(crate::proposal_texts_of(app, id, proposal))?).map_err(|error| error.to_string())
+            serde_json::to_value(tauri::async_runtime::block_on(crate::proposal_texts_of(app, id, proposal))?)
+                .map_err(|error| error.to_string())
         }
         // F3: who a to-do on this server can be given to.
         "__team_people" => {
@@ -337,7 +360,9 @@ fn serve_one(app: &AppHandle, peer: &relay_proto::DeviceId, grant: &Grant, comma
         "send_console_command" => with_console_by(&grant.handle, || web::api::run(app, command, body, Some(&account))),
         // Admin-only for web panel accounts; a team Admin or Owner (checked above) on a team server.
         "save_server_agents_md" => web::api::run_server_admin(app, command, body, &account),
-        _ if web::api::SERVER_OWNER.contains(&command) || web::api::SERVER_ADMINS.contains(&command) => web::api::run_server_admin(app, command, body, &account),
+        _ if web::api::SERVER_OWNER.contains(&command) || web::api::SERVER_ADMINS.contains(&command) => {
+            web::api::run_server_admin(app, command, body, &account)
+        }
         _ => web::api::run(app, command, body, Some(&account)),
     }
 }
@@ -357,7 +382,13 @@ pub fn monolink_team_links(app: AppHandle) -> Vec<TeamLink> {
 pub async fn monolink_team_attach(app: AppHandle, team: String, instance: String) -> Result<Vec<TeamLink>, String> {
     let found = crate::instance_by_id(&app, &instance)?;
     let name = if found.name.trim().is_empty() { instance.clone() } else { found.name.clone() };
-    let answer = crate::monolink_account::api(&app, "POST", &format!("/v2/teams/{team}/servers"), Some(json!({ "instance_id": instance, "name": name }))).await?;
+    let answer = crate::monolink_account::api(
+        &app,
+        "POST",
+        &format!("/v2/teams/{team}/servers"),
+        Some(json!({ "instance_id": instance, "name": name })),
+    )
+    .await?;
     let id = answer["servers"]
         .as_array()
         .and_then(|list| list.iter().find(|one| one["instance_id"] == instance.as_str() && one["mine"] == true))
@@ -370,7 +401,11 @@ pub async fn monolink_team_attach(app: AppHandle, team: String, instance: String
             link.servers.retain(|one| one.instance != instance);
             link.servers.push(TeamServerLink { instance: instance.clone(), id, ..Default::default() });
         }
-        None => settings.monolink_teams.push(TeamLink { team: team.clone(), servers: vec![TeamServerLink { instance: instance.clone(), id, ..Default::default() }], people: Vec::new() }),
+        None => settings.monolink_teams.push(TeamLink {
+            team: team.clone(),
+            servers: vec![TeamServerLink { instance: instance.clone(), id, ..Default::default() }],
+            people: Vec::new(),
+        }),
     }
     crate::write_app_settings(&app, &settings)?;
     crate::record_audit(&app, &instance, "Server", "Monolink: attached to a team", &team);
@@ -425,7 +460,13 @@ pub fn monolink_team_admin_only(app: AppHandle, team: String, instance: String, 
 /// `people` (handles) lets just those in while it is off. Stored on this PC only.
 #[tauri::command]
 #[specta::specta]
-pub fn monolink_team_agents(app: AppHandle, team: String, instance: String, on: bool, people: Vec<String>) -> Result<Vec<TeamLink>, String> {
+pub fn monolink_team_agents(
+    app: AppHandle,
+    team: String,
+    instance: String,
+    on: bool,
+    people: Vec<String>,
+) -> Result<Vec<TeamLink>, String> {
     let mut settings = crate::read_app_settings(&app);
     let server = settings
         .monolink_teams
@@ -434,7 +475,8 @@ pub fn monolink_team_agents(app: AppHandle, team: String, instance: String, on: 
         .flat_map(|one| one.servers.iter_mut())
         .find(|one| one.instance == instance)
         .ok_or("That server isn't attached to this team.")?;
-    let mut people: Vec<String> = people.into_iter().map(|one| one.trim().trim_start_matches('@').to_string()).filter(|one| !one.is_empty()).collect();
+    let mut people: Vec<String> =
+        people.into_iter().map(|one| one.trim().trim_start_matches('@').to_string()).filter(|one| !one.is_empty()).collect();
     people.sort();
     people.dedup();
     let narrowed = (server.agents && !on) || server.agent_people.iter().any(|one| !people.contains(one));
@@ -519,8 +561,15 @@ fn storage_request(app: &AppHandle, grant: &Grant, servers: &[String], command: 
     let role = grant.role.as_str();
     let text = |key: &str| body.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
     let number = |key: &str| body.get(key).and_then(Value::as_u64).unwrap_or(0) as u32;
-    let need = |action: &str| if crate::team_storage::may(role, action) { Ok(()) } else { Err("Your role in this team can't do that in Storage.".to_string()) };
-    let server_ok = |id: &str| if servers.iter().any(|one| one == id) { Ok(()) } else { Err("You don't have permission for this server.".to_string()) };
+    let need = |action: &str| {
+        if crate::team_storage::may(role, action) {
+            Ok(())
+        } else {
+            Err("Your role in this team can't do that in Storage.".to_string())
+        }
+    };
+    let server_ok =
+        |id: &str| if servers.iter().any(|one| one == id) { Ok(()) } else { Err("You don't have permission for this server.".to_string()) };
     let storage = crate::team_storage_of(app, &grant.team)?;
     let by = format!("@{}", grant.handle);
     let json = |value: Result<Value, String>| value;
@@ -529,7 +578,8 @@ fn storage_request(app: &AppHandle, grant: &Grant, servers: &[String], command: 
         "__storage_put" => {
             need("put")?;
             let path = crate::remote_upload_path(app, &text("upload"))?;
-            let tags: Vec<String> = body.get("tags").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
+            let tags: Vec<String> =
+                body.get("tags").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect();
             let item = storage.put(std::path::Path::new(&path), &text("name"), &text("note"), &tags, &by);
             crate::unstash(std::path::Path::new(&path));
             let item = item?;
@@ -554,7 +604,14 @@ fn storage_request(app: &AppHandle, grant: &Grant, servers: &[String], command: 
             need("use")?;
             let server = text("id");
             server_ok(&server)?;
-            let path = tauri::async_runtime::block_on(crate::storage_into_server(app, &grant.team, &text("item"), number("version"), &server, &text("folder")))?;
+            let path = tauri::async_runtime::block_on(crate::storage_into_server(
+                app,
+                &grant.team,
+                &text("item"),
+                number("version"),
+                &server,
+                &text("folder"),
+            ))?;
             crate::note_writes(app, &server, "save_editable_file", &json!({ "path": path }), &by);
             Ok(json!(path))
         }
@@ -590,7 +647,13 @@ fn download_begin(app: &AppHandle, grant: &Grant, servers: &[String], body: &Val
         "storage" => {
             let storage = crate::team_storage_of(app, &grant.team)?;
             let item = text("item");
-            let name = storage.index().items.into_iter().find(|one| one.id == item).map(|one| one.name).ok_or("There is no such file in Storage.")?;
+            let name = storage
+                .index()
+                .items
+                .into_iter()
+                .find(|one| one.id == item)
+                .map(|one| one.name)
+                .ok_or("There is no such file in Storage.")?;
             (storage.file(&item, body.get("version").and_then(Value::as_u64).unwrap_or(0) as u32)?, name, false)
         }
         "bundle" => {
@@ -598,11 +661,20 @@ fn download_begin(app: &AppHandle, grant: &Grant, servers: &[String], body: &Val
             if !servers.contains(&server) {
                 return Err("You don't have permission for this server.".into());
             }
-            let resources: Vec<crate::studio_bundle::StudioRef> = serde_json::from_value(body.get("resources").cloned().unwrap_or(Value::Null)).map_err(|_| "Pick the files to share.".to_string())?;
+            let resources: Vec<crate::studio_bundle::StudioRef> =
+                serde_json::from_value(body.get("resources").cloned().unwrap_or(Value::Null))
+                    .map_err(|_| "Pick the files to share.".to_string())?;
             let name = text("name");
             let path = std::env::temp_dir().join(format!("monolab-bundle-{}-{}.monolab", grant.handle, crate::unix_now()));
             let include = body.get("includeAssets").and_then(Value::as_bool).unwrap_or(true);
-            tauri::async_runtime::block_on(crate::studio_bundle::studio_bundle_export(app.clone(), server, name.clone(), resources, include, path.to_string_lossy().to_string()))?;
+            tauri::async_runtime::block_on(crate::studio_bundle::studio_bundle_export(
+                app.clone(),
+                server,
+                name.clone(),
+                resources,
+                include,
+                path.to_string_lossy().to_string(),
+            ))?;
             let file = if name.trim().is_empty() { "studio.monolab".to_string() } else { format!("{}.monolab", name.trim()) };
             (path, file, true)
         }
@@ -630,7 +702,8 @@ fn download_part(grant: &Grant, body: &Value) -> Result<Value, String> {
     let at = body.get("at").and_then(Value::as_u64).unwrap_or(0);
     let (path, size, temp) = {
         let held = downloads().lock().unwrap_or_else(|poison| poison.into_inner());
-        let (team, path, size, _, temp) = held.get(id).filter(|one| one.0 == grant.team).ok_or("This download has ended. Start it again.")?;
+        let (team, path, size, _, temp) =
+            held.get(id).filter(|one| one.0 == grant.team).ok_or("This download has ended. Start it again.")?;
         let _ = team;
         (path.clone(), *size, *temp)
     };
@@ -656,16 +729,33 @@ pub async fn team_people(app: &AppHandle, instance: &str) -> Vec<String> {
     /// Team id → when it was read, and its members.
     type People = Mutex<HashMap<String, (Instant, Vec<String>)>>;
     static CACHE: OnceLock<People> = OnceLock::new();
-    let teams: Vec<String> = links(app).into_iter().filter(|one| one.servers.iter().any(|server| server.instance == instance)).map(|one| one.team).collect();
+    let teams: Vec<String> =
+        links(app).into_iter().filter(|one| one.servers.iter().any(|server| server.instance == instance)).map(|one| one.team).collect();
     let mut out = Vec::new();
     for team in teams {
-        let cached = CACHE.get_or_init(Default::default).lock().unwrap_or_else(|poison| poison.into_inner()).get(&team).filter(|(at, _)| at.elapsed() < Duration::from_secs(60)).map(|(_, list)| list.clone());
+        let cached = CACHE
+            .get_or_init(Default::default)
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .get(&team)
+            .filter(|(at, _)| at.elapsed() < Duration::from_secs(60))
+            .map(|(_, list)| list.clone());
         let list = match cached {
             Some(list) => list,
             None => {
                 let Ok(answer) = crate::monolink_account::api(app, "GET", &format!("/v2/teams/{team}"), None).await else { continue };
-                let list: Vec<String> = answer["members"].as_array().into_iter().flatten().filter_map(|one| one["handle"].as_str()).map(|handle| format!("@{handle}")).collect();
-                CACHE.get_or_init(Default::default).lock().unwrap_or_else(|poison| poison.into_inner()).insert(team.clone(), (Instant::now(), list.clone()));
+                let list: Vec<String> = answer["members"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|one| one["handle"].as_str())
+                    .map(|handle| format!("@{handle}"))
+                    .collect();
+                CACHE
+                    .get_or_init(Default::default)
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner())
+                    .insert(team.clone(), (Instant::now(), list.clone()));
                 list
             }
         };
@@ -722,7 +812,12 @@ fn host_page() -> &'static Mutex<Option<(String, Instant)>> {
 
 /// The server the host is looking at in this app right now, if any.
 fn host_viewing() -> Option<String> {
-    host_page().lock().unwrap_or_else(|poison| poison.into_inner()).as_ref().filter(|(_, at)| at.elapsed() < PRESENT_FOR).map(|(id, _)| id.clone())
+    host_page()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .as_ref()
+        .filter(|(_, at)| at.elapsed() < PRESENT_FOR)
+        .map(|(id, _)| id.clone())
 }
 
 /// Teammates looking at one of this PC's servers right now, for the host's own server page (which also tells
@@ -743,7 +838,13 @@ pub fn report(app: &AppHandle, instance: &str, kind: &'static str, data: Value) 
         let app = app.clone();
         let data = data.clone();
         tauri::async_runtime::spawn(async move {
-            let _ = crate::monolink_account::api(&app, "POST", &format!("/v2/teams/{team}/activity"), Some(json!({ "server": id, "kind": kind, "data": data }))).await;
+            let _ = crate::monolink_account::api(
+                &app,
+                "POST",
+                &format!("/v2/teams/{team}/activity"),
+                Some(json!({ "server": id, "kind": kind, "data": data })),
+            )
+            .await;
         });
     }
 }
@@ -804,15 +905,27 @@ mod tests {
 
     #[test]
     fn the_host_can_give_a_teammate_its_own_role() {
-        let custom = vec![web::auth::CustomRole { id: "role:x".into(), name: "Builder".into(), perms: vec!["studio.read".into(), "studio.write".into()] }];
+        let custom = vec![web::auth::CustomRole {
+            id: "role:x".into(),
+            name: "Builder".into(),
+            perms: vec!["studio.read".into(), "studio.write".into()],
+        }];
         let account = account_of(&grant(Role::Developer), vec!["a".into()], Some("role:x"), &custom);
         assert_eq!(account.role, "role:x");
         let perms = web::auth::perms_of(&account.role, &custom);
         assert!(web::api::permits(&perms, "studio_save"));
         assert!(!web::api::permits(&perms, "send_console_command"));
-        assert_eq!(account_of(&grant(Role::Viewer), vec![], Some("Manager"), &custom).role, web::auth::MANAGER, "the host may widen on its own servers");
+        assert_eq!(
+            account_of(&grant(Role::Viewer), vec![], Some("Manager"), &custom).role,
+            web::auth::MANAGER,
+            "the host may widen on its own servers"
+        );
         assert_eq!(account_of(&grant(Role::Owner), vec![], Some("Admin"), &custom).role, web::auth::MANAGER, "never Admin");
-        assert_eq!(account_of(&grant(Role::Viewer), vec![], Some("role:gone"), &custom).role, web::auth::VIEWER, "a deleted role falls back");
+        assert_eq!(
+            account_of(&grant(Role::Viewer), vec![], Some("role:gone"), &custom).role,
+            web::auth::VIEWER,
+            "a deleted role falls back"
+        );
         // Team-level refusals still apply whatever the role here.
         assert!(role_refusal(Role::Developer, "restore_backup", &json!({}), false).is_some());
     }

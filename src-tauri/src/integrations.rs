@@ -226,20 +226,12 @@ pub fn warp(file_stem: &str, text: &str) -> Option<Spot> {
 
 pub fn user(uuid: &str, text: &str) -> EssUser {
     let node = parse(text);
-    let homes = node
-        .get("homes")
-        .map(|homes| homes.entries().iter().filter_map(|(name, one)| spot(name, one)).collect())
-        .unwrap_or_default();
-    let last_seen = node
-        .get("timestamps")
-        .and_then(|times| times.number("logout").or_else(|| times.number("login")))
-        .unwrap_or(0.0);
+    let homes =
+        node.get("homes").map(|homes| homes.entries().iter().filter_map(|(name, one)| spot(name, one)).collect()).unwrap_or_default();
+    let last_seen = node.get("timestamps").and_then(|times| times.number("logout").or_else(|| times.number("login"))).unwrap_or(0.0);
     EssUser {
         uuid: uuid.to_string(),
-        name: node
-            .text("last-account-name")
-            .or_else(|| node.text("lastAccountName"))
-            .unwrap_or_else(|| uuid.to_string()),
+        name: node.text("last-account-name").or_else(|| node.text("lastAccountName")).unwrap_or_else(|| uuid.to_string()),
         money: node.text("money").unwrap_or_default(),
         homes,
         last_seen,
@@ -267,10 +259,7 @@ pub fn kits(text: &str) -> Vec<EssKit> {
 
 pub fn settings(config: &str) -> Vec<EssSetting> {
     let node = parse(config);
-    ESS_SETTINGS
-        .iter()
-        .filter_map(|key| node.text(key).map(|value| EssSetting { key: key.to_string(), value }))
-        .collect()
+    ESS_SETTINGS.iter().filter_map(|key| node.text(key).map(|value| EssSetting { key: key.to_string(), value })).collect()
 }
 
 #[derive(serde::Serialize, specta::Type, Debug, PartialEq)]
@@ -327,7 +316,9 @@ fn context_text(value: Option<&serde_json::Value>) -> String {
         Some(serde_json::Value::Object(map)) => {
             for (key, value) in map {
                 match value {
-                    serde_json::Value::Array(all) => pairs.extend(all.iter().filter_map(|one| one.as_str()).map(|one| format!("{key}={one}"))),
+                    serde_json::Value::Array(all) => {
+                        pairs.extend(all.iter().filter_map(|one| one.as_str()).map(|one| format!("{key}={one}")))
+                    }
                     other => pairs.push(format!("{key}={}", other.as_str().unwrap_or(&other.to_string()))),
                 }
             }
@@ -394,7 +385,13 @@ pub fn luckperms(json: &str, command: &str) -> Result<LuckPermsData, String> {
             all.iter()
                 .map(|(name, group)| {
                     let read = nodes(group.get("nodes"));
-                    LpGroup { name: name.clone(), weight: read.weight, prefix: read.prefix.1, parents: read.parents, permissions: read.permissions }
+                    LpGroup {
+                        name: name.clone(),
+                        weight: read.weight,
+                        prefix: read.prefix.1,
+                        parents: read.parents,
+                        permissions: read.permissions,
+                    }
                 })
                 .collect()
         })
@@ -465,16 +462,22 @@ mod tests {
     fn reads_kits_and_settings() {
         let kits_text = "# comment\nkits:\n  tools:\n    delay: 10\n    items:\n    - stone_pickaxe 1\n    - stone_shovel 1\n  food:\n    delay: 0\n    items: []\n";
         let read = kits(kits_text);
-        assert_eq!(read, vec![
-            EssKit { name: "tools".into(), delay: "10".into(), items: 2 },
-            EssKit { name: "food".into(), delay: "0".into(), items: 0 },
-        ]);
+        assert_eq!(
+            read,
+            vec![
+                EssKit { name: "tools".into(), delay: "10".into(), items: 2 },
+                EssKit { name: "food".into(), delay: "0".into(), items: 0 },
+            ]
+        );
         let config = "teleport-cooldown: 0 # seconds\nteleport-delay: 3\ncurrency-symbol: '$'\nnested:\n  teleport-delay: 9\n";
-        assert_eq!(settings(config), vec![
-            EssSetting { key: "teleport-cooldown".into(), value: "0".into() },
-            EssSetting { key: "teleport-delay".into(), value: "3".into() },
-            EssSetting { key: "currency-symbol".into(), value: "$".into() },
-        ]);
+        assert_eq!(
+            settings(config),
+            vec![
+                EssSetting { key: "teleport-cooldown".into(), value: "0".into() },
+                EssSetting { key: "teleport-delay".into(), value: "3".into() },
+                EssSetting { key: "currency-symbol".into(), value: "$".into() },
+            ]
+        );
         let changed = set_top_level("a: 1\r\nteleport-delay: 3\r\nnested:\r\n  teleport-delay: 9\r\n", "teleport-delay", "5").unwrap();
         assert_eq!(changed, "a: 1\r\nteleport-delay: 5\r\nnested:\r\n  teleport-delay: 9\r\n");
     }
@@ -487,7 +490,10 @@ mod tests {
         assert_eq!(read.groups[0].weight, Some(100));
         assert_eq!(read.groups[0].prefix, "&c[Admin] ");
         assert_eq!(read.groups[0].parents, vec!["default"]);
-        assert_eq!(read.groups[0].permissions[1], LpPermission { node: "essentials.fly".into(), value: false, context: "world=world_nether".into(), temporary: true });
+        assert_eq!(
+            read.groups[0].permissions[1],
+            LpPermission { node: "essentials.fly".into(), value: false, context: "world=world_nether".into(), temporary: true }
+        );
         assert_eq!(read.users[0].groups, vec!["admin"]);
         assert_eq!(read.tracks[0].groups, vec!["default", "admin"]);
     }

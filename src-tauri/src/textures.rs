@@ -1,4 +1,3 @@
-
 use crate::data_root::MonolabDirs;
 use std::collections::HashMap;
 use std::fs;
@@ -40,12 +39,7 @@ pub(crate) fn client_jar(app: &AppHandle, version: &str) -> Result<PathBuf, Stri
     }
     let client = crate::addons::client()?;
     let get = |url: &str| -> Result<serde_json::Value, String> {
-        client
-            .get(url)
-            .send()
-            .map_err(|error| error.to_string())?
-            .json::<serde_json::Value>()
-            .map_err(|error| error.to_string())
+        client.get(url).send().map_err(|error| error.to_string())?.json::<serde_json::Value>().map_err(|error| error.to_string())
     };
     let manifest = get("https://launchermeta.mojang.com/mc/game/version_manifest_v2.json")?;
     let entry = manifest
@@ -55,23 +49,11 @@ pub(crate) fn client_jar(app: &AppHandle, version: &str) -> Result<PathBuf, Stri
         .iter()
         .find(|one| one.get("id").and_then(|value| value.as_str()) == Some(version))
         .ok_or("This version is not in Mojang's list.")?;
-    let url = entry
-        .get("url")
-        .and_then(|value| value.as_str())
-        .ok_or("The version has no URL.")?;
+    let url = entry.get("url").and_then(|value| value.as_str()).ok_or("The version has no URL.")?;
     let detail = get(url)?;
-    let download = detail
-        .pointer("/downloads/client")
-        .ok_or("This version has no client file.")?;
-    let jar_url = download
-        .get("url")
-        .and_then(|value| value.as_str())
-        .ok_or("The client has no URL.")?;
-    let want = download
-        .get("sha1")
-        .and_then(|value| value.as_str())
-        .unwrap_or_default()
-        .to_string();
+    let download = detail.pointer("/downloads/client").ok_or("This version has no client file.")?;
+    let jar_url = download.get("url").and_then(|value| value.as_str()).ok_or("The client has no URL.")?;
+    let want = download.get("sha1").and_then(|value| value.as_str()).unwrap_or_default().to_string();
 
     let staging = dir.join(format!(".client-{version}.part"));
     crate::download_file(&client, jar_url, &staging)?;
@@ -121,7 +103,8 @@ fn releases(app: &AppHandle) -> Result<(Vec<String>, String), String> {
         .and_then(|value| value.as_array())
         .map(|all| all.iter().filter_map(|one| one.get("id").and_then(|id| id.as_str()).map(str::to_string)).collect())
         .unwrap_or_default();
-    let latest = manifest.pointer("/latest/release").and_then(|value| value.as_str()).ok_or("Could not read the version list.")?.to_string();
+    let latest =
+        manifest.pointer("/latest/release").and_then(|value| value.as_str()).ok_or("Could not read the version list.")?.to_string();
     *held = Some((now, ids.clone(), latest.clone()));
     Ok((ids, latest))
 }
@@ -176,10 +159,7 @@ fn read<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>, name: &str) -
     Some(out)
 }
 
-fn model_textures<R: std::io::Read + std::io::Seek>(
-    zip: &mut ZipArchive<R>,
-    start: &str,
-) -> HashMap<String, String> {
+fn model_textures<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>, start: &str) -> HashMap<String, String> {
     let mut found: HashMap<String, String> = HashMap::new();
     let mut next = Some(start.to_string());
     for _ in 0..5 {
@@ -191,15 +171,10 @@ fn model_textures<R: std::io::Read + std::io::Seek>(
         };
         if let Some(map) = model.get("textures").and_then(|one| one.as_object()) {
             for (key, value) in map {
-                found.entry(key.clone()).or_insert_with(|| {
-                    value.as_str().unwrap_or_default().to_string()
-                });
+                found.entry(key.clone()).or_insert_with(|| value.as_str().unwrap_or_default().to_string());
             }
         }
-        next = model
-            .get("parent")
-            .and_then(|one| one.as_str())
-            .map(|one| one.trim_start_matches("minecraft:").to_string());
+        next = model.get("parent").and_then(|one| one.as_str()).map(|one| one.trim_start_matches("minecraft:").to_string());
     }
     found
 }
@@ -215,10 +190,7 @@ fn resolve(map: &HashMap<String, String>, key: &str) -> Option<String> {
     None
 }
 
-fn face<R: std::io::Read + std::io::Seek>(
-    zip: &mut ZipArchive<R>,
-    name: &str,
-) -> Option<RgbaImage> {
+fn face<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>, name: &str) -> Option<RgbaImage> {
     let raw = read(zip, &format!("assets/minecraft/textures/{name}.png"))?;
     let full = image::load_from_memory(&raw).ok()?.to_rgba8();
     let width = full.width();
@@ -278,21 +250,13 @@ fn cube(top: &RgbaImage, left: &RgbaImage, right: &RgbaImage) -> RgbaImage {
 }
 
 fn flat(texture: &RgbaImage) -> RgbaImage {
-    image::imageops::resize(
-        texture,
-        SIZE,
-        SIZE,
-        image::imageops::FilterType::Nearest,
-    )
+    image::imageops::resize(texture, SIZE, SIZE, image::imageops::FilterType::Nearest)
 }
 
 fn to_data_url(image: &RgbaImage) -> Option<String> {
     let mut out = std::io::Cursor::new(Vec::new());
     image.write_to(&mut out, ImageFormat::Png).ok()?;
-    Some(format!(
-        "data:image/png;base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(out.into_inner())
-    ))
+    Some(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(out.into_inner())))
 }
 
 /// The model an item shows in the inventory (`items/<id>.json` since 1.21.4), and the special renderer if it has one.
@@ -301,7 +265,8 @@ fn item_model<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>, id: &st
         match value {
             serde_json::Value::Object(map) => {
                 let kind = map.get("type").and_then(|one| one.as_str()).unwrap_or_default();
-                let named = |key: &str| map.get(key).and_then(|one| one.as_str()).map(|one| one.trim_start_matches("minecraft:").to_string());
+                let named =
+                    |key: &str| map.get(key).and_then(|one| one.as_str()).map(|one| one.trim_start_matches("minecraft:").to_string());
                 if kind == "minecraft:model" || kind == "model" {
                     if let Some(model) = named("model") {
                         return Some((Some(model), None));
@@ -346,10 +311,7 @@ fn shield<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>) -> Option<R
     Some(flat(&square))
 }
 
-fn draw<R: std::io::Read + std::io::Seek>(
-    zip: &mut ZipArchive<R>,
-    id: &str,
-) -> Option<RgbaImage> {
+fn draw<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>, id: &str) -> Option<RgbaImage> {
     if let Some(texture) = face(zip, &format!("item/{id}")) {
         return Some(flat(&texture));
     }
@@ -360,9 +322,7 @@ fn draw<R: std::io::Read + std::io::Seek>(
         }
     }
     let map = model_textures(zip, &model);
-    let pick = |keys: &[&str]| -> Option<String> {
-        keys.iter().find_map(|key| resolve(&map, key))
-    };
+    let pick = |keys: &[&str]| -> Option<String> { keys.iter().find_map(|key| resolve(&map, key)) };
     if let Some(texture) = pick(&["layer0"]).and_then(|name| face(zip, &name)) {
         return Some(flat(&texture));
     }
@@ -388,22 +348,15 @@ fn draw<R: std::io::Read + std::io::Seek>(
     Some(cube(&top_image, &side_image, &side_image))
 }
 
-pub fn icons(
-    app: &AppHandle,
-    version: &str,
-    ids: &[String],
-) -> Result<HashMap<String, String>, String> {
+pub fn icons(app: &AppHandle, version: &str, ids: &[String]) -> Result<HashMap<String, String>, String> {
     let mut held = DRAWN.lock().unwrap_or_else(|one| one.into_inner());
     if held.as_ref().map(|(at, _)| at.as_str()) != Some(version) {
         *held = Some((version.to_string(), HashMap::new()));
     }
     let (_, cache) = held.as_mut().expect("Just added");
 
-    let missing: Vec<String> = ids
-        .iter()
-        .map(|one| one.trim_start_matches("minecraft:").to_string())
-        .filter(|one| !cache.contains_key(one))
-        .collect();
+    let missing: Vec<String> =
+        ids.iter().map(|one| one.trim_start_matches("minecraft:").to_string()).filter(|one| !cache.contains_key(one)).collect();
     if !missing.is_empty() {
         let path = client_jar(app, version)?;
         let file = fs::File::open(&path).map_err(|error| error.to_string())?;
@@ -455,7 +408,9 @@ fn ids_from(names: &[&str]) -> Vec<String> {
     if ids.is_empty() {
         ids = under("assets/minecraft/models/item/")
             .into_iter()
-            .filter(|id| !matches!(id.as_str(), "generated" | "handheld" | "handheld_rod" | "handheld_mace") && !id.starts_with("template_"))
+            .filter(|id| {
+                !matches!(id.as_str(), "generated" | "handheld" | "handheld_rod" | "handheld_mace") && !id.starts_with("template_")
+            })
             .collect();
     }
     ids.sort();
@@ -502,9 +457,7 @@ fn map_model<R: std::io::Read + std::io::Seek>(
         }
     }
     if let Some(elements) = model.get("elements").and_then(|one| one.as_array()) {
-        *tinted = elements
-            .iter()
-            .any(|element| element.pointer("/faces/up/tintindex").is_some_and(|one| !one.is_null()));
+        *tinted = elements.iter().any(|element| element.pointer("/faces/up/tintindex").is_some_and(|one| !one.is_null()));
     }
 }
 
@@ -675,9 +628,18 @@ mod tests {
 
     #[test]
     fn item_ids_from_the_items_folder_or_old_models() {
-        let new = ["assets/minecraft/items/stone.json", "assets/minecraft/items/diamond.json", "assets/minecraft/models/item/generated.json", "assets/minecraft/items/x/y.json"];
+        let new = [
+            "assets/minecraft/items/stone.json",
+            "assets/minecraft/items/diamond.json",
+            "assets/minecraft/models/item/generated.json",
+            "assets/minecraft/items/x/y.json",
+        ];
         assert_eq!(ids_from(&new), ["diamond", "stone"]);
-        let old = ["assets/minecraft/models/item/generated.json", "assets/minecraft/models/item/template_spawn_egg.json", "assets/minecraft/models/item/apple.json"];
+        let old = [
+            "assets/minecraft/models/item/generated.json",
+            "assets/minecraft/models/item/template_spawn_egg.json",
+            "assets/minecraft/models/item/apple.json",
+        ];
         assert_eq!(ids_from(&old), ["apple"]);
     }
 
@@ -706,11 +668,7 @@ mod tests {
         let want = (SIZE * SIZE) as usize * 3 / 4;
         assert_eq!(filled, want, "there is a gap at the seam");
 
-        let mut shades: Vec<u8> = drawn
-            .pixels()
-            .filter(|one| one[3] != 0)
-            .map(|one| one[0])
-            .collect();
+        let mut shades: Vec<u8> = drawn.pixels().filter(|one| one[3] != 0).map(|one| one[0]).collect();
         shades.sort_unstable();
         shades.dedup();
         assert_eq!(shades.len(), 3, "expected three shades: {shades:?}");
@@ -729,7 +687,10 @@ mod tests {
         let palette = map_palette(std::path::Path::new(&path)).unwrap();
         let value: serde_json::Value = serde_json::from_str(&palette.json).unwrap();
         println!("{} blocks, {} biomes", value["blocks"].as_object().unwrap().len(), value["biomes"].as_object().unwrap().len());
-        println!("grass_block {} stone {} plains {}", value["blocks"]["minecraft:grass_block"], value["blocks"]["minecraft:stone"], value["biomes"]["minecraft:plains"]);
+        println!(
+            "grass_block {} stone {} plains {}",
+            value["blocks"]["minecraft:grass_block"], value["blocks"]["minecraft:stone"], value["biomes"]["minecraft:plains"]
+        );
         assert_eq!(value["blocks"]["minecraft:grass_block"][1], "grass");
         assert!(palette.grass.is_some());
         if let Ok(out) = std::env::var("SE_PALETTE_OUT") {
@@ -744,23 +705,14 @@ mod tests {
     #[ignore]
     fn draws_real_minecraft_items() {
         let dir = std::env::var("APPDATA").expect("APPDATA");
-        let path = PathBuf::from(dir)
-            .join("com.monolab.desktop/client-jars/client-1.21.4.jar");
+        let path = PathBuf::from(dir).join("com.monolab.desktop/client-jars/client-1.21.4.jar");
         if !path.is_file() {
             println!("no downloaded client jar: {}", path.display());
             return;
         }
         let file = fs::File::open(&path).unwrap();
         let mut zip = ZipArchive::new(file).unwrap();
-        for id in [
-            "diamond_sword",
-            "stone",
-            "grass_block",
-            "oak_log",
-            "gray_stained_glass_pane",
-            "glass_pane",
-            "some_mod_thing",
-        ] {
+        for id in ["diamond_sword", "stone", "grass_block", "oak_log", "gray_stained_glass_pane", "glass_pane", "some_mod_thing"] {
             let drawn = draw(&mut zip, id);
             println!(
                 "{id}: {}",

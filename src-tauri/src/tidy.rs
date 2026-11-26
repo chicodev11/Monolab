@@ -15,7 +15,11 @@ pub fn mcp_name(server: &str) -> String {
 }
 
 fn leftover(name: &str) -> bool {
-    name.ends_with(".maptest-backup") || name.ends_with(".before-roles") || name == "stdout-sync.rb" || name.contains(".broken-") || name.ends_with(".tmp")
+    name.ends_with(".maptest-backup")
+        || name.ends_with(".before-roles")
+        || name == "stdout-sync.rb"
+        || name.contains(".broken-")
+        || name.ends_with(".tmp")
 }
 
 fn move_into(file: &Path, folder: &Path) {
@@ -56,7 +60,10 @@ pub fn tidy(root: &Path, servers: &[String]) {
         }
     }
     if root.join("old").is_dir() {
-        let _ = fs::write(root.join("old").join("README.txt"), "Files Monolab no longer uses, kept in case you want them. You can delete this folder.\n");
+        let _ = fs::write(
+            root.join("old").join("README.txt"),
+            "Files Monolab no longer uses, kept in case you want them. You can delete this folder.\n",
+        );
     }
     let _ = fs::write(root.join(DONE), "");
 }
@@ -70,7 +77,15 @@ mod tests {
         let root = std::env::temp_dir().join(format!("monolab-tidy-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
-        for name in ["instances.json", "instances.json.bak", "claude-mcp-a1.json", "claude-mcp-gone.json", "crash-log.txt", "settings.json.before-roles", "stdout-sync.rb"] {
+        for name in [
+            "instances.json",
+            "instances.json.bak",
+            "claude-mcp-a1.json",
+            "claude-mcp-gone.json",
+            "crash-log.txt",
+            "settings.json.before-roles",
+            "stdout-sync.rb",
+        ] {
             fs::write(root.join(name), "x").unwrap();
         }
         tidy(&root, &["a1".to_string()]);

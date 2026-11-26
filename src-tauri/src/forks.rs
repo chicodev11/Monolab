@@ -48,10 +48,7 @@ pub fn find(program: &str) -> Option<PathBuf> {
 /// Nova's folder: `horizon-client`, `horizon-prepare` and `research-lock.json` together.
 pub fn nova_dir() -> Option<PathBuf> {
     let file = exe("horizon-client");
-    DIRS.get()?
-        .iter()
-        .map(|dir| dir.join("nova"))
-        .find(|dir| dir.join(&file).is_file() && dir.join("research-lock.json").is_file())
+    DIRS.get()?.iter().map(|dir| dir.join("nova")).find(|dir| dir.join(&file).is_file() && dir.join("research-lock.json").is_file())
 }
 
 pub fn nova_program(dir: &Path, name: &str) -> PathBuf {
@@ -69,8 +66,5 @@ pub struct Forks {
 #[tauri::command]
 #[specta::specta]
 pub fn bundled_forks() -> Forks {
-    Forks {
-        pumpkin: find("pumpkin").is_some(),
-        nova: nova_dir().is_some(),
-    }
+    Forks { pumpkin: find("pumpkin").is_some(), nova: nova_dir().is_some() }
 }

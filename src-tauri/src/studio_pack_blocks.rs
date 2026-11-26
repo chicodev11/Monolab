@@ -65,7 +65,11 @@ fn vanilla_states(block: &str) -> Vec<(String, String, u32)> {
             for instrument in block::INSTRUMENTS.iter().chain(MORE_INSTRUMENTS.iter()) {
                 for note in 0..block::NOTES {
                     for powered in [false, true] {
-                        out.push((format!("instrument={instrument},note={note},powered={powered}"), "minecraft:block/note_block".to_string(), 0));
+                        out.push((
+                            format!("instrument={instrument},note={note},powered={powered}"),
+                            "minecraft:block/note_block".to_string(),
+                            0,
+                        ));
                     }
                 }
             }
@@ -82,7 +86,12 @@ fn vanilla_states(block: &str) -> Vec<(String, String, u32)> {
             .collect(),
         mushroom => (0..64u32)
             .map(|bits| {
-                let key = block::FACES.iter().enumerate().map(|(at, name)| format!("{name}={}", bits >> at & 1 == 1)).collect::<Vec<_>>().join(",");
+                let key = block::FACES
+                    .iter()
+                    .enumerate()
+                    .map(|(at, name)| format!("{name}={}", bits >> at & 1 == 1))
+                    .collect::<Vec<_>>()
+                    .join(",");
                 (key, format!("{NAMESPACE}:block/vanilla/{mushroom}_{bits}"), 0)
             })
             .collect(),
@@ -114,7 +123,8 @@ fn wire_model(north: bool, east: bool, south: bool, west: bool) -> (&'static str
 fn mushroom_model(mushroom: &str, bits: u32) -> Value {
     let mut textures = Map::new();
     for (at, face) in block::FACES.iter().enumerate() {
-        let texture = if bits >> at & 1 == 1 { format!("minecraft:block/{mushroom}") } else { "minecraft:block/mushroom_block_inside".to_string() };
+        let texture =
+            if bits >> at & 1 == 1 { format!("minecraft:block/{mushroom}") } else { "minecraft:block/mushroom_block_inside".to_string() };
         textures.insert((*face).to_string(), json!(texture));
     }
     textures.insert("particle".into(), json!(format!("minecraft:block/{mushroom}")));
@@ -150,7 +160,8 @@ type Overrides = BTreeMap<&'static str, Vec<(u32, String)>>;
 fn write_overrides(files: &mut Files, overrides: Overrides) {
     for (base, mut list) in overrides {
         list.sort();
-        let entries: Vec<Value> = list.iter().map(|(number, model)| json!({ "predicate": { "custom_model_data": number }, "model": model })).collect();
+        let entries: Vec<Value> =
+            list.iter().map(|(number, model)| json!({ "predicate": { "custom_model_data": number }, "model": model })).collect();
         let model = json!({ "parent": "minecraft:item/generated", "textures": { "layer0": format!("minecraft:item/{base}") }, "overrides": entries });
         files.insert(format!("assets/minecraft/models/item/{base}.json"), bytes(&model));
     }
@@ -181,7 +192,11 @@ pub fn block_files(version: &str, blocks: &[(String, Data)], furniture_list: &[(
         if let Some(growth) = block::growth(data) {
             for (at, name) in growth.stages.iter().enumerate() {
                 let stage = at as u32 + 1;
-                let stage_look = if look.model.is_empty() { Look { texture: name.clone(), ..Look::default() } } else { Look { model: name.clone(), ..Look::default() } };
+                let stage_look = if look.model.is_empty() {
+                    Look { texture: name.clone(), ..Look::default() }
+                } else {
+                    Look { model: name.clone(), ..Look::default() }
+                };
                 files.insert(format!("assets/{NAMESPACE}/models/block/stage/{id}/{stage}.json"), bytes(&block_model(&shape, &stage_look)));
                 let number = ids.number(block::IDS_PLANT, &block::stage_key(id, stage), block::FIRST);
                 if let Some(State { block, properties }) = block::state(&shape, number) {
@@ -196,7 +211,10 @@ pub fn block_files(version: &str, blocks: &[(String, Data)], furniture_list: &[(
         // Its own item: the block itself in the hand, or for a plant its picture.
         let item_model = if shape == "plant" && look.model.is_empty() {
             let flat = format!("{NAMESPACE}:item/block/{id}");
-            files.insert(format!("assets/{NAMESPACE}/models/item/block/{id}.json"), bytes(&json!({ "parent": "minecraft:item/generated", "textures": { "layer0": asset(&look.texture) } })));
+            files.insert(
+                format!("assets/{NAMESPACE}/models/item/block/{id}.json"),
+                bytes(&json!({ "parent": "minecraft:item/generated", "textures": { "layer0": asset(&look.texture) } })),
+            );
             flat
         } else {
             model
@@ -221,14 +239,21 @@ pub fn block_files(version: &str, blocks: &[(String, Data)], furniture_list: &[(
             continue;
         }
         let Some(look) = item::look(data) else { continue };
-        let model = if look.is_model() { json!({ "parent": asset(&look.model) }) } else { json!({ "parent": "minecraft:item/generated", "textures": { "layer0": asset(&look.texture) } }) };
+        let model = if look.is_model() {
+            json!({ "parent": asset(&look.model) })
+        } else {
+            json!({ "parent": "minecraft:item/generated", "textures": { "layer0": asset(&look.texture) } })
+        };
         let name = format!("{NAMESPACE}:furniture/{id}");
         files.insert(format!("assets/{NAMESPACE}/models/furniture/{id}.json"), bytes(&model));
         if format >= DEFINITIONS_FROM {
             files.insert(format!("assets/{NAMESPACE}/items/furniture/{id}.json"), bytes(&model_ref(&name)));
         } else {
             // The display shows this number even when the piece is placed with a linked studio item.
-            overrides.entry(furniture::ITEM).or_default().push((ids.number("cmd", &format!("{}{id}", furniture::CMD_PREFIX), FIRST_CMD), name));
+            overrides
+                .entry(furniture::ITEM)
+                .or_default()
+                .push((ids.number("cmd", &format!("{}{id}", furniture::CMD_PREFIX), FIRST_CMD), name));
         }
     }
     write_overrides(&mut files, overrides);
@@ -248,8 +273,14 @@ pub fn merge(files: &mut Vec<(String, Vec<u8>)>, more: Vec<(String, Vec<u8>)>) {
             files.push((path, extra));
             continue;
         };
-        let (Ok(mut was), Ok(add)) = (serde_json::from_slice::<Value>(&files[at].1), serde_json::from_slice::<Value>(&extra)) else { continue };
-        let (Some(list), Some(add_list)) = (was.get("overrides").and_then(Value::as_array).cloned(), add.get("overrides").and_then(Value::as_array)) else { continue };
+        let (Ok(mut was), Ok(add)) = (serde_json::from_slice::<Value>(&files[at].1), serde_json::from_slice::<Value>(&extra)) else {
+            continue;
+        };
+        let (Some(list), Some(add_list)) =
+            (was.get("overrides").and_then(Value::as_array).cloned(), add.get("overrides").and_then(Value::as_array))
+        else {
+            continue;
+        };
         let mut joined: Vec<Value> = list.into_iter().chain(add_list.iter().cloned()).collect();
         joined.sort_by_key(|one| one["predicate"]["custom_model_data"].as_u64().unwrap_or(0));
         was["overrides"] = Value::Array(joined);
@@ -267,7 +298,10 @@ mod tests {
     }
 
     fn read(files: &[(String, Vec<u8>)], path: &str) -> Value {
-        let (_, bytes) = files.iter().find(|(one, _)| one == path).unwrap_or_else(|| panic!("no {path} in {:?}", files.iter().map(|one| &one.0).collect::<Vec<_>>()));
+        let (_, bytes) = files
+            .iter()
+            .find(|(one, _)| one == path)
+            .unwrap_or_else(|| panic!("no {path} in {:?}", files.iter().map(|one| &one.0).collect::<Vec<_>>()));
         serde_json::from_slice(bytes).unwrap()
     }
 
@@ -295,8 +329,14 @@ mod tests {
         let wire = read(&files, "assets/minecraft/blockstates/tripwire.json");
         let wires = wire["variants"].as_object().unwrap();
         assert_eq!(wires.len(), 128);
-        assert_eq!(wires["attached=true,disarmed=false,east=false,north=false,powered=false,south=false,west=false"]["model"], "monolab:block/fern");
-        assert_eq!(wires["attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=false"], json!({ "model": "minecraft:block/tripwire_n", "y": 90 }));
+        assert_eq!(
+            wires["attached=true,disarmed=false,east=false,north=false,powered=false,south=false,west=false"]["model"],
+            "monolab:block/fern"
+        );
+        assert_eq!(
+            wires["attached=false,disarmed=false,east=true,north=false,powered=false,south=false,west=false"],
+            json!({ "model": "minecraft:block/tripwire_n", "y": 90 })
+        );
         assert_eq!(read(&files, "assets/monolab/models/block/log.json")["parent"], "minecraft:block/cube_bottom_top");
         assert_eq!(read(&files, "assets/monolab/models/block/log.json")["textures"]["bottom"], "monolab:studio/rings");
         assert_eq!(read(&files, "assets/monolab/models/block/fern.json")["parent"], "minecraft:block/cross");
@@ -322,7 +362,10 @@ mod tests {
         assert_eq!(ids.given["plant"]["wheat/2"], 3);
         assert_eq!(read(&files, "assets/monolab/models/block/stage/wheat/2.json")["textures"]["cross"], "monolab:studio/w2");
         let wires = read(&files, "assets/minecraft/blockstates/tripwire.json");
-        assert_eq!(wires["variants"]["attached=false,disarmed=true,east=false,north=false,powered=false,south=false,west=false"]["model"], "monolab:block/stage/wheat/1");
+        assert_eq!(
+            wires["variants"]["attached=false,disarmed=true,east=false,north=false,powered=false,south=false,west=false"]["model"],
+            "monolab:block/stage/wheat/1"
+        );
     }
 
     #[test]
@@ -333,7 +376,10 @@ mod tests {
         let state = read(&files, "assets/minecraft/blockstates/brown_mushroom_block.json");
         assert_eq!(state["variants"].as_object().unwrap().len(), 64);
         assert_eq!(state["variants"]["down=false,east=false,north=false,south=false,up=false,west=false"]["model"], "monolab:block/cap");
-        assert_eq!(state["variants"]["down=true,east=true,north=true,south=true,up=true,west=true"]["model"], "monolab:block/vanilla/brown_mushroom_block_63");
+        assert_eq!(
+            state["variants"]["down=true,east=true,north=true,south=true,up=true,west=true"]["model"],
+            "monolab:block/vanilla/brown_mushroom_block_63"
+        );
         let skin = read(&files, "assets/monolab/models/block/vanilla/brown_mushroom_block_1.json");
         assert_eq!(skin["textures"]["down"], "minecraft:block/brown_mushroom_block");
         assert_eq!(skin["textures"]["up"], "minecraft:block/mushroom_block_inside");
@@ -342,7 +388,9 @@ mod tests {
     #[test]
     fn furniture_and_old_versions() {
         let blocks = list(json!({ "ruby_ore": { "look": { "texture": "ruby_ore" } } }));
-        let chairs = list(json!({ "chair": { "look": { "model": "chair" } }, "lamp": { "look": { "texture": "lamp" }, "item": "lamp_item" }, "bad": {} }));
+        let chairs = list(
+            json!({ "chair": { "look": { "model": "chair" } }, "lamp": { "look": { "texture": "lamp" }, "item": "lamp_item" }, "bad": {} }),
+        );
         let files = block_files("1.21.4", &blocks, &chairs, &mut Ids::default());
         assert_eq!(read(&files, "assets/monolab/items/furniture/chair.json")["model"]["model"], "monolab:furniture/chair");
         assert_eq!(read(&files, "assets/monolab/models/furniture/chair.json")["parent"], "monolab:studio/chair");
@@ -362,9 +410,17 @@ mod tests {
 
     #[test]
     fn merges_overrides() {
-        let mut files = vec![("assets/minecraft/models/item/flint.json".to_string(), bytes(&json!({ "parent": "minecraft:item/generated", "overrides": [{ "predicate": { "custom_model_data": 10002 }, "model": "a" }] })))];
+        let mut files = vec![(
+            "assets/minecraft/models/item/flint.json".to_string(),
+            bytes(
+                &json!({ "parent": "minecraft:item/generated", "overrides": [{ "predicate": { "custom_model_data": 10002 }, "model": "a" }] }),
+            ),
+        )];
         let more = vec![
-            ("assets/minecraft/models/item/flint.json".to_string(), bytes(&json!({ "overrides": [{ "predicate": { "custom_model_data": 10000 }, "model": "b" }] }))),
+            (
+                "assets/minecraft/models/item/flint.json".to_string(),
+                bytes(&json!({ "overrides": [{ "predicate": { "custom_model_data": 10000 }, "model": "b" }] })),
+            ),
             ("assets/monolab/models/block/x.json".to_string(), b"{}".to_vec()),
         ];
         merge(&mut files, more);

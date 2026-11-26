@@ -18,7 +18,8 @@ fn after<'a>(line: &'a str, key: &str) -> Option<&'a str> {
 }
 
 fn number(text: &str) -> Option<f64> {
-    let digits: String = text.chars().take_while(|one| one.is_ascii_digit() || *one == '.' || *one == ',').filter(|one| *one != ',').collect();
+    let digits: String =
+        text.chars().take_while(|one| one.is_ascii_digit() || *one == '.' || *one == ',').filter(|one| *one != ',').collect();
     digits.parse().ok()
 }
 
@@ -107,7 +108,8 @@ mod tests {
         assert!((one.percent - 14.4).abs() < 0.001);
         assert_eq!(one.eta, "0:00:59");
         assert!((one.rate - 214.8).abs() < 0.001);
-        let done = read_line("[Chunky] Task finished for minecraft:the_nether. Processed: 16000 chunks (100.00%), Total time: 0:01:14", 6).unwrap();
+        let done = read_line("[Chunky] Task finished for minecraft:the_nether. Processed: 16000 chunks (100.00%), Total time: 0:01:14", 6)
+            .unwrap();
         assert_eq!(done.world, "minecraft:the_nether");
         assert_eq!(done.state, "finished");
         assert_eq!(done.percent, 100.0);

@@ -58,7 +58,12 @@ fn font_of(args: &[&str]) -> Option<String> {
         _ => return None,
     };
     let (space, name) = joined.split_once(':')?;
-    let fine = |part: &str, slash: bool| !part.is_empty() && part.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || matches!(one, b'_' | b'-' | b'.') || (slash && one == b'/'));
+    let fine = |part: &str, slash: bool| {
+        !part.is_empty()
+            && part
+                .bytes()
+                .all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || matches!(one, b'_' | b'-' | b'.') || (slash && one == b'/'))
+    };
     (fine(space, false) && fine(name, true)).then_some(joined)
 }
 
@@ -88,7 +93,10 @@ pub fn fill(text: &str, values: &[(&str, String)]) -> String {
         out.push_str(&rest[..open]);
         let after = &rest[open + 1..];
         let close = after.find('>');
-        let name = close.map(|end| &after[..end]).filter(|name| !name.is_empty() && name.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || matches!(one, b'_' | b':' | b'-')));
+        let name = close.map(|end| &after[..end]).filter(|name| {
+            !name.is_empty()
+                && name.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || matches!(one, b'_' | b':' | b'-'))
+        });
         match name.and_then(|name| values.iter().find(|(key, _)| *key == name)) {
             Some((name, value)) => {
                 out.push_str(&escape(value));
@@ -224,7 +232,11 @@ fn parse(input: &str) -> Vec<Item> {
                 close(&mut items, &mut stack, 1);
                 return true;
             }
-            let color = if matches!(name.as_str(), "color" | "colour" | "c") { args.first().and_then(|one| color_of(one)) } else { color_of(&name) };
+            let color = if matches!(name.as_str(), "color" | "colour" | "c") {
+                args.first().and_then(|one| color_of(one))
+            } else {
+                color_of(&name)
+            };
             let decoration = DECORATIONS.iter().find(|(one, _)| *one == name).map(|(_, slot)| *slot);
             let font = if name == "font" { font_of(&args) } else { None };
             if color.is_none() && decoration.is_none() && font.is_none() && name != "gradient" && name != "rainbow" {

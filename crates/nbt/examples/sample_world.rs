@@ -4,11 +4,7 @@ use monolab_nbt::*;
 use std::path::PathBuf;
 
 fn main() {
-    let out = PathBuf::from(
-        std::env::args()
-            .nth(1)
-            .expect("usage: sample_world <folder>"),
-    );
+    let out = PathBuf::from(std::env::args().nth(1).expect("usage: sample_world <folder>"));
     let world = out.join("world");
     std::fs::create_dir_all(world.join("playerdata")).unwrap();
     std::fs::create_dir_all(world.join("region")).unwrap();
@@ -30,11 +26,7 @@ fn main() {
         EnderItems:[],abilities:{flying:0b,mayfly:0b,walkSpeed:0.1f}}"#,
     )
     .unwrap();
-    std::fs::write(
-        world.join("playerdata/069a79f4-44e9-4726-a5be-fca90e38aaf5.dat"),
-        NbtFile::new(player).write(),
-    )
-    .unwrap();
+    std::fs::write(world.join("playerdata/069a79f4-44e9-4726-a5be-fca90e38aaf5.dat"), NbtFile::new(player).write()).unwrap();
     let mut region = Region::empty();
     for z in 0..4 {
         for x in 0..6 {
@@ -45,11 +37,7 @@ fn main() {
                 {{Y:4b,block_states:{{palette:[{{Name:"minecraft:air"}}]}}}}],block_entities:[]}}"#
             ))
             .unwrap();
-            let file = NbtFile {
-                name: String::new(),
-                root: chunk,
-                compression: Compression::Zlib,
-            };
+            let file = NbtFile { name: String::new(), root: chunk, compression: Compression::Zlib };
             region.store(x + z * 32, &file, 1_700_000_000).unwrap();
         }
     }

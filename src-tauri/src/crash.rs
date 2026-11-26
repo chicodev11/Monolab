@@ -1,4 +1,3 @@
-
 use serde::Serialize;
 use std::{collections::HashMap, fs, path::Path};
 
@@ -25,11 +24,7 @@ fn package_hint(line: &str) -> Option<String> {
     if matches!(root, "java" | "javax" | "jdk" | "sun" | "kotlin" | "scala") {
         return None;
     }
-    let candidate = if matches!(root, "net" | "com" | "org" | "io" | "me" | "dev" | "xyz") {
-        parts.get(1)?
-    } else {
-        parts.first()?
-    };
+    let candidate = if matches!(root, "net" | "com" | "org" | "io" | "me" | "dev" | "xyz") { parts.get(1)? } else { parts.first()? };
     if matches!(*candidate, "minecraft" | "minecraftforge" | "neoforged" | "fabricmc" | "bukkit" | "spigotmc" | "papermc") {
         return None;
     }
@@ -72,18 +67,14 @@ fn match_suspects(hints: &[String], addons: &[String]) -> Vec<String> {
 }
 
 pub fn parse_report(path: &Path, instance_path: &Path) -> Result<CrashReport, String> {
-    let text = fs::read_to_string(path)
-        .map_err(|error| format!("Could not read the crash report: {error}"))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("Could not read the crash report: {error}"))?;
     let created_at = fs::metadata(path)
         .ok()
         .and_then(|metadata| metadata.modified().ok())
         .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|value| value.as_secs())
         .unwrap_or(0);
-    let file_name = path
-        .file_name()
-        .map(|value| value.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let file_name = path.file_name().map(|value| value.to_string_lossy().to_string()).unwrap_or_default();
     Ok(parse_text(&text, file_name, created_at, &installed_addons(instance_path)))
 }
 
@@ -105,11 +96,7 @@ pub fn parse_text(text: &str, file_name: String, created_at: u64, addons: &[Stri
         .map(|line| line.trim().to_string())
         .unwrap_or_default();
 
-    let hints = text
-        .lines()
-        .take(400)
-        .filter_map(package_hint)
-        .collect::<Vec<_>>();
+    let hints = text.lines().take(400).filter_map(package_hint).collect::<Vec<_>>();
     let mut unique = Vec::new();
     for hint in hints {
         if !unique.contains(&hint) {
@@ -118,14 +105,7 @@ pub fn parse_text(text: &str, file_name: String, created_at: u64, addons: &[Stri
     }
     let suspects = match_suspects(&unique, addons);
 
-    CrashReport {
-        file_name,
-        created_at,
-        description,
-        exception,
-        suspects,
-        excerpt: text.lines().take(60).collect::<Vec<_>>().join("\n"),
-    }
+    CrashReport { file_name, created_at, description, exception, suspects, excerpt: text.lines().take(60).collect::<Vec<_>>().join("\n") }
 }
 
 pub fn list_reports(instance_path: &Path) -> Vec<CrashReport> {
@@ -136,12 +116,7 @@ pub fn list_reports(instance_path: &Path) -> Vec<CrashReport> {
     let mut reports = entries
         .flatten()
         .map(|entry| entry.path())
-        .filter(|path| {
-            path.is_file()
-                && path
-                    .extension()
-                    .is_some_and(|extension| extension.eq_ignore_ascii_case("txt"))
-        })
+        .filter(|path| path.is_file() && path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("txt")))
         .filter_map(|path| parse_report(&path, instance_path).ok())
         .collect::<Vec<_>>();
     reports.sort_by_key(|left| std::cmp::Reverse(left.created_at));
@@ -156,38 +131,20 @@ mod tests {
     #[test]
     fn skips_the_game_and_the_java_runtime() {
         assert_eq!(package_hint("\tat java.util.HashMap.get(HashMap.java:1)"), None);
-        assert_eq!(
-            package_hint("\tat net.minecraft.server.MinecraftServer.run(MinecraftServer.java:1)"),
-            None
-        );
-        assert_eq!(
-            package_hint("\tat net.fabricmc.loader.Loader.load(Loader.java:1)"),
-            None
-        );
+        assert_eq!(package_hint("\tat net.minecraft.server.MinecraftServer.run(MinecraftServer.java:1)"), None);
+        assert_eq!(package_hint("\tat net.fabricmc.loader.Loader.load(Loader.java:1)"), None);
     }
 
     #[test]
     fn pulls_the_project_name_out_of_a_stack_line() {
-        assert_eq!(
-            package_hint("\tat com.terraforged.mod.Main.tick(Main.java:42)"),
-            Some("terraforged".into())
-        );
-        assert_eq!(
-            package_hint("\tat journeymap.client.Core.run(Core.java:7)"),
-            Some("journeymap".into())
-        );
+        assert_eq!(package_hint("\tat com.terraforged.mod.Main.tick(Main.java:42)"), Some("terraforged".into()));
+        assert_eq!(package_hint("\tat journeymap.client.Core.run(Core.java:7)"), Some("journeymap".into()));
     }
 
     #[test]
     fn ranks_addons_that_appear_higher_in_the_stack() {
         let hints = vec!["terraforged".to_string(), "journeymap".to_string()];
-        let addons = vec![
-            "journeymap-1.21.jar".to_string(),
-            "TerraForged-1.21.jar".to_string(),
-        ];
-        assert_eq!(
-            match_suspects(&hints, &addons),
-            vec!["TerraForged-1.21.jar", "journeymap-1.21.jar"]
-        );
+        let addons = vec!["journeymap-1.21.jar".to_string(), "TerraForged-1.21.jar".to_string()];
+        assert_eq!(match_suspects(&hints, &addons), vec!["TerraForged-1.21.jar", "journeymap-1.21.jar"]);
     }
 }

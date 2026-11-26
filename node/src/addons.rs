@@ -89,7 +89,8 @@ pub fn delete(root: &Path, kind: &str, file_name: &str) -> Result<(), String> {
     let path = addon_path(root, kind, file_name)?;
     let bin = root.join(".monolab-trash").join("addons");
     fs::create_dir_all(&bin).map_err(|error| error.to_string())?;
-    crate::transfer::move_file(&path, &bin.join(format!("{}-{file_name}", crate::serve::unix_now()))).map_err(|error| format!("Could not move the file: {error}"))
+    crate::transfer::move_file(&path, &bin.join(format!("{}-{file_name}", crate::serve::unix_now())))
+        .map_err(|error| format!("Could not move the file: {error}"))
 }
 
 /// `add_addon_upload` `{id, files:[{name,data}]}`: base64 files into `plugins/` (or `mods/` on a
@@ -113,7 +114,8 @@ pub fn add(root: &Path, files: &[Value], running: bool) -> Result<Value, String>
         if running && folder.join(&name).is_file() {
             return Err(format!("Stop the server before replacing {name}."));
         }
-        let bytes = crate::transfer::decode(one.get("data").and_then(Value::as_str).unwrap_or_default()).ok_or_else(|| format!("{name} was damaged on the way."))?;
+        let bytes = crate::transfer::decode(one.get("data").and_then(Value::as_str).unwrap_or_default())
+            .ok_or_else(|| format!("{name} was damaged on the way."))?;
         decoded.push((name, bytes));
     }
     let (mut added, mut replaced) = (Vec::new(), Vec::new());
@@ -148,7 +150,10 @@ mod tests {
         assert!(toggle(&root, "plugin", "../server.properties").is_err());
         assert!(toggle(&root, "plugin", "notes.txt").is_err());
 
-        let files = [serde_json::json!({ "name": "New.jar", "data": crate::transfer::encode(b"n") }), serde_json::json!({ "name": "Old.jar", "data": crate::transfer::encode(b"o2") })];
+        let files = [
+            serde_json::json!({ "name": "New.jar", "data": crate::transfer::encode(b"n") }),
+            serde_json::json!({ "name": "Old.jar", "data": crate::transfer::encode(b"o2") }),
+        ];
         assert!(add(&root, &files, true).unwrap_err().contains("Stop the server"));
         assert!(!root.join("plugins/New.jar").exists(), "nothing is written when one is refused");
         let added = add(&root, &files, false).unwrap();

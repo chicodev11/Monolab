@@ -7,11 +7,7 @@ fn plain_char(c: char) -> bool {
 }
 
 pub fn quote(text: &str) -> String {
-    let mark = if text.contains('"') && !text.contains('\'') {
-        '\''
-    } else {
-        '"'
-    };
+    let mark = if text.contains('"') && !text.contains('\'') { '\'' } else { '"' };
     let mut out = String::with_capacity(text.len() + 2);
     out.push(mark);
     for c in text.chars() {
@@ -96,33 +92,19 @@ pub fn parse_as(kind: Kind, text: &str) -> Result<Tag, String> {
     Ok(match kind {
         Kind::Byte => Tag::Byte(match bool_byte() {
             Some(v) => v,
-            None => strip(t, 'b')
-                .parse()
-                .map_err(|_| int("Byte (-128 to 127)"))?,
+            None => strip(t, 'b').parse().map_err(|_| int("Byte (-128 to 127)"))?,
         }),
         Kind::Short => Tag::Short(strip(t, 's').parse().map_err(|_| int("Short"))?),
         Kind::Int => Tag::Int(t.parse().map_err(|_| int("Int"))?),
         Kind::Long => Tag::Long(strip(t, 'l').parse().map_err(|_| int("Long"))?),
-        Kind::Float => Tag::Float(
-            strip(t, 'f')
-                .parse()
-                .map_err(|_| format!("\"{t}\" is not a number."))?,
-        ),
-        Kind::Double => Tag::Double(
-            strip(t, 'd')
-                .parse()
-                .map_err(|_| format!("\"{t}\" is not a number."))?,
-        ),
+        Kind::Float => Tag::Float(strip(t, 'f').parse().map_err(|_| format!("\"{t}\" is not a number."))?),
+        Kind::Double => Tag::Double(strip(t, 'd').parse().map_err(|_| format!("\"{t}\" is not a number."))?),
         // Strings are taken exactly as typed, spaces included.
         Kind::String => Tag::String(text.to_string()),
         _ => {
             let tag = parse(t)?;
             if tag.kind() != kind {
-                return Err(format!(
-                    "Expected a {}, got a {}.",
-                    kind.name(),
-                    tag.kind().name()
-                ));
+                return Err(format!("Expected a {}, got a {}.", kind.name(), tag.kind().name()));
             }
             tag
         }
@@ -130,9 +112,7 @@ pub fn parse_as(kind: Kind, text: &str) -> Result<Tag, String> {
 }
 
 fn strip(text: &str, suffix: char) -> &str {
-    text.strip_suffix(suffix)
-        .or_else(|| text.strip_suffix(suffix.to_ascii_uppercase()))
-        .unwrap_or(text)
+    text.strip_suffix(suffix).or_else(|| text.strip_suffix(suffix.to_ascii_uppercase())).unwrap_or(text)
 }
 
 pub fn to_snbt(tag: &Tag, pretty: bool) -> String {
@@ -196,10 +176,7 @@ fn write(out: &mut String, tag: &Tag, pretty: bool, depth: usize) {
                 return;
             }
             // Short lists of numbers stay on one line even when pretty.
-            let flat = !pretty
-                || (list.items.len() <= 8
-                    && !list.kind.is_container()
-                    && list.kind != Kind::String);
+            let flat = !pretty || (list.items.len() <= 8 && !list.kind.is_container() && list.kind != Kind::String);
             out.push('[');
             for (i, item) in list.items.iter().enumerate() {
                 if i > 0 {
@@ -227,10 +204,7 @@ fn write(out: &mut String, tag: &Tag, pretty: bool, depth: usize) {
 
 /// Parses SNBT as written by commands, e.g. `{Count:1b,id:"minecraft:stone"}`.
 pub fn parse(text: &str) -> Result<Tag, String> {
-    let mut parser = Parser {
-        chars: text.chars().collect(),
-        at: 0,
-    };
+    let mut parser = Parser { chars: text.chars().collect(), at: 0 };
     let tag = parser.value(0)?;
     parser.space();
     if parser.at < parser.chars.len() {
@@ -242,10 +216,7 @@ pub fn parse(text: &str) -> Result<Tag, String> {
 pub fn parse_compound(text: &str) -> Result<Compound, String> {
     match parse(text)? {
         Tag::Compound(map) => Ok(map),
-        other => Err(format!(
-            "Expected a compound, got a {}.",
-            other.kind().name()
-        )),
+        other => Err(format!("Expected a compound, got a {}.", other.kind().name())),
     }
 }
 
@@ -284,9 +255,7 @@ impl Parser {
         self.at += 1;
         let mut out = String::new();
         loop {
-            let c = self
-                .peek()
-                .ok_or_else(|| self.fail("A quote is never closed"))?;
+            let c = self.peek().ok_or_else(|| self.fail("A quote is never closed"))?;
             self.at += 1;
             match c {
                 '\\' => {
@@ -431,12 +400,8 @@ impl Parser {
         }
         let range = |lo: i64, hi: i64| values.iter().all(|v| (lo..=hi).contains(v));
         Ok(match mark {
-            'B' if range(i8::MIN as i64, i8::MAX as i64) => {
-                Tag::ByteArray(values.into_iter().map(|v| v as i8).collect())
-            }
-            'I' if range(i32::MIN as i64, i32::MAX as i64) => {
-                Tag::IntArray(values.into_iter().map(|v| v as i32).collect())
-            }
+            'B' if range(i8::MIN as i64, i8::MAX as i64) => Tag::ByteArray(values.into_iter().map(|v| v as i8).collect()),
+            'I' if range(i32::MIN as i64, i32::MAX as i64) => Tag::IntArray(values.into_iter().map(|v| v as i32).collect()),
             'L' => Tag::LongArray(values),
             _ => return Err(self.fail("A number is too large for this array")),
         })
@@ -450,8 +415,7 @@ fn number(word: &str) -> Option<Tag> {
     let numeric = |s: &str| {
         !s.is_empty()
             && s.chars().any(|c| c.is_ascii_digit())
-            && s.chars()
-                .all(|c| c.is_ascii_digit() || matches!(c, '-' | '+' | '.' | 'e' | 'E'))
+            && s.chars().all(|c| c.is_ascii_digit() || matches!(c, '-' | '+' | '.' | 'e' | 'E'))
     };
     match last.to_ascii_lowercase() {
         'b' if numeric(body) => body.parse().ok().map(Tag::Byte),
@@ -459,12 +423,7 @@ fn number(word: &str) -> Option<Tag> {
         'l' if numeric(body) => body.parse().ok().map(Tag::Long),
         'f' if numeric(body) => body.parse().ok().map(Tag::Float),
         'd' if numeric(body) => body.parse().ok().map(Tag::Double),
-        _ if word
-            .chars()
-            .all(|c| c.is_ascii_digit() || c == '-' || c == '+') =>
-        {
-            word.parse().ok().map(Tag::Int)
-        }
+        _ if word.chars().all(|c| c.is_ascii_digit() || c == '-' || c == '+') => word.parse().ok().map(Tag::Int),
         _ if numeric(word) && word.contains(['.', 'e', 'E']) => word.parse().ok().map(Tag::Double),
         _ => None,
     }

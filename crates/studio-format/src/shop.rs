@@ -37,24 +37,40 @@ pub fn goods(data: &Data) -> Vec<Good> {
 
 fn price(data: &Data, key: &str) -> f64 {
     let value = data.get(key).and_then(Value::as_f64).unwrap_or(0.0);
-    if value.is_finite() { value.clamp(0.0, 1e12) } else { 0.0 }
+    if value.is_finite() {
+        value.clamp(0.0, 1e12)
+    } else {
+        0.0
+    }
 }
 
 pub fn currency(data: &Data) -> String {
     let one = fields::text(data, "currency", "variable");
-    if CURRENCIES.contains(&one.as_str()) { one } else { "variable".into() }
+    if CURRENCIES.contains(&one.as_str()) {
+        one
+    } else {
+        "variable".into()
+    }
 }
 
 /// The player variable that holds the money (`coins` when not set).
 pub fn variable(data: &Data) -> String {
     let one = fields::text(data, "variable", "coins").trim().to_string();
-    if one.is_empty() { "coins".into() } else { one }
+    if one.is_empty() {
+        "coins".into()
+    } else {
+        one
+    }
 }
 
 /// What the money is called in the screen's lines.
 pub fn money_name(data: &Data) -> String {
     let one = fields::text(data, "moneyName", "").trim().to_string();
-    if one.is_empty() { "coins".into() } else { one }
+    if one.is_empty() {
+        "coins".into()
+    } else {
+        one
+    }
 }
 
 /// Rows of the chest: as set (1-6), or just enough for the goods.
@@ -68,7 +84,11 @@ pub fn rows(data: &Data) -> u32 {
 
 /// `12` for whole amounts, `12.50` otherwise.
 pub fn money_text(amount: f64) -> String {
-    if (amount - amount.round()).abs() < 1e-9 { format!("{}", amount.round() as i64) } else { format!("{amount:.2}") }
+    if (amount - amount.round()).abs() < 1e-9 {
+        format!("{}", amount.round() as i64)
+    } else {
+        format!("{amount:.2}")
+    }
 }
 
 /// The lines under a good in the screen (MiniMessage), the same on both add-ons.
@@ -114,7 +134,10 @@ mod tests {
 
     #[test]
     fn goods_and_money_read() {
-        let data: Data = serde_json::from_str(r#"{"currency":"vault","goods":[{"item":"diamond","amount":2,"buy":100,"sell":40.5},{"item":"stone"},{"item":"","buy":1}]}"#).unwrap();
+        let data: Data = serde_json::from_str(
+            r#"{"currency":"vault","goods":[{"item":"diamond","amount":2,"buy":100,"sell":40.5},{"item":"stone"},{"item":"","buy":1}]}"#,
+        )
+        .unwrap();
         let list = goods(&data);
         assert_eq!(list[0], Good { item: "diamond".into(), amount: 2, buy: 100.0, sell: 40.5 });
         assert_eq!(currency(&data), "vault");
@@ -123,7 +146,10 @@ mod tests {
         assert_eq!(money_text(40.5), "40.50");
         assert_eq!(money_text(100.0), "100");
         assert_eq!(lore(&list[0], "coins", 7.0).len(), 4);
-        assert_eq!(problems(&data), vec!["Good 2 has no price: set \"buy\", \"sell\" or both.".to_string(), "Good 3 needs an \"item\".".to_string()]);
+        assert_eq!(
+            problems(&data),
+            vec!["Good 2 has no price: set \"buy\", \"sell\" or both.".to_string(), "Good 3 needs an \"item\".".to_string()]
+        );
         assert_eq!(problems(&Data::new()).len(), 1);
     }
 }

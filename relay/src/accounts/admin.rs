@@ -6,15 +6,15 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::extract::{ConnectInfo, Query, State};
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::Deserialize;
 
+use super::Shared;
 use super::oauth::Identity;
 use super::pages;
 use super::store::ADMIN_SESSION_SECS;
 use super::util::{self, now, sha256};
-use super::Shared;
 
 const COOKIE: &str = "mnlab_admin";
 /// Browser sign-ins that may wait for Discord at once (each also limited per address).
@@ -79,7 +79,12 @@ pub struct LoginQuery {
     subject: Option<String>,
 }
 
-pub async fn admin_login(State(shared): State<Arc<Shared>>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap, Query(query): Query<LoginQuery>) -> Response {
+pub async fn admin_login(
+    State(shared): State<Arc<Shared>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Query(query): Query<LoginQuery>,
+) -> Response {
     if !shared.limits.allow(&format!("admin:{}", super::http::client_ip(&headers, peer)), 10, 60) {
         return page(StatusCode::TOO_MANY_REQUESTS, pages::failed("slow"));
     }
@@ -156,7 +161,11 @@ pub async fn admin_logout(State(shared): State<Arc<Shared>>, headers: HeaderMap)
 
 /// `monolab-relay --notify-updates` asks here to read the release list now. Only from this machine:
 /// a call through Caddy carries `X-Forwarded-For` (and Caddy answers 404 for this path anyway).
-pub async fn notify_updates(State(shared): State<Arc<Shared>>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap) -> StatusCode {
+pub async fn notify_updates(
+    State(shared): State<Arc<Shared>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> StatusCode {
     if !peer.ip().is_loopback() || headers.contains_key("x-forwarded-for") {
         return StatusCode::NOT_FOUND;
     }

@@ -145,7 +145,12 @@ pub fn hit_of(value: &Value) -> Option<crate::catalog::CatalogHit> {
 }
 
 /// The listing the site itself uses: unlike the REST one, it carries descriptions.
-pub fn search(client: &reqwest::blocking::Client, query: &str, page: u32, category: &str) -> Result<Vec<crate::catalog::CatalogHit>, String> {
+pub fn search(
+    client: &reqwest::blocking::Client,
+    query: &str,
+    page: u32,
+    category: &str,
+) -> Result<Vec<crate::catalog::CatalogHit>, String> {
     let offset = (page * PAGE).to_string();
     let limit = PAGE.to_string();
     let mut asked = vec![("limit", limit.as_str()), ("offset", offset.as_str())];

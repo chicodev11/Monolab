@@ -1,4 +1,3 @@
-
 use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
@@ -21,24 +20,12 @@ impl RconClient {
         if password.is_empty() {
             return Err("The RCON password is empty. Check rcon.password in server.properties.".into());
         }
-        let address: SocketAddr = format!("{host}:{port}")
-            .parse()
-            .map_err(|_| format!("The RCON address is malformed: {host}:{port}"))?;
-        let stream = TcpStream::connect_timeout(&address, Duration::from_secs(5)).map_err(|_| {
-            format!(
-                "Could not connect to RCON port {port}. Make sure enable-rcon=true in server.properties."
-            )
-        })?;
-        stream
-            .set_read_timeout(Some(Duration::from_secs(10)))
-            .map_err(|error| error.to_string())?;
-        stream
-            .set_write_timeout(Some(Duration::from_secs(10)))
-            .map_err(|error| error.to_string())?;
-        let mut client = Self {
-            stream,
-            next_id: 1,
-        };
+        let address: SocketAddr = format!("{host}:{port}").parse().map_err(|_| format!("The RCON address is malformed: {host}:{port}"))?;
+        let stream = TcpStream::connect_timeout(&address, Duration::from_secs(5))
+            .map_err(|_| format!("Could not connect to RCON port {port}. Make sure enable-rcon=true in server.properties."))?;
+        stream.set_read_timeout(Some(Duration::from_secs(10))).map_err(|error| error.to_string())?;
+        stream.set_write_timeout(Some(Duration::from_secs(10))).map_err(|error| error.to_string())?;
+        let mut client = Self { stream, next_id: 1 };
         client.authenticate(password)?;
         Ok(client)
     }
@@ -85,26 +72,20 @@ impl RconClient {
         packet.extend_from_slice(&kind.to_le_bytes());
         packet.extend_from_slice(payload);
         packet.extend_from_slice(&[0, 0]);
-        self.stream
-            .write_all(&packet)
-            .map_err(|error| format!("Could not send the RCON command: {error}"))?;
+        self.stream.write_all(&packet).map_err(|error| format!("Could not send the RCON command: {error}"))?;
         self.stream.flush().map_err(|error| error.to_string())?;
         Ok(id)
     }
 
     fn receive(&mut self) -> Result<(i32, i32, String), String> {
         let mut header = [0_u8; 4];
-        self.stream
-            .read_exact(&mut header)
-            .map_err(|error| format!("Could not read the RCON response: {error}"))?;
+        self.stream.read_exact(&mut header).map_err(|error| format!("Could not read the RCON response: {error}"))?;
         let length = i32::from_le_bytes(header);
         if !(10..=MAX_PACKET).contains(&length) {
             return Err("The RCON response length is malformed.".into());
         }
         let mut rest = vec![0_u8; length as usize];
-        self.stream
-            .read_exact(&mut rest)
-            .map_err(|error| format!("Could not read the RCON response: {error}"))?;
+        self.stream.read_exact(&mut rest).map_err(|error| format!("Could not read the RCON response: {error}"))?;
         let id = i32::from_le_bytes([rest[0], rest[1], rest[2], rest[3]]);
         let kind = i32::from_le_bytes([rest[4], rest[5], rest[6], rest[7]]);
         let body = &rest[8..rest.len().saturating_sub(2)];

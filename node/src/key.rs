@@ -22,7 +22,9 @@ pub fn load_or_create(data: &Path) -> Result<[u8; 32], String> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             fs::create_dir_all(data).map_err(|error| format!("Could not make {}: {error}", data.display()))?;
             let mut key = [0u8; 32];
-            fs::File::open("/dev/urandom").and_then(|mut random| random.read_exact(&mut key)).map_err(|error| format!("No randomness: {error}"))?;
+            fs::File::open("/dev/urandom")
+                .and_then(|mut random| random.read_exact(&mut key))
+                .map_err(|error| format!("No randomness: {error}"))?;
             let mut file = OpenOptions::new()
                 .write(true)
                 .create_new(true)

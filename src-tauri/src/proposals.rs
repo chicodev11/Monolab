@@ -11,7 +11,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Requests that become proposals.
-pub const PROPOSABLE: &[&str] = &["save_editable_file", "create_server_file", "trash_server_path", "studio_save", "studio_asset_add_upload", "studio_asset_remove"];
+pub const PROPOSABLE: &[&str] =
+    &["save_editable_file", "create_server_file", "trash_server_path", "studio_save", "studio_asset_add_upload", "studio_asset_remove"];
 /// Open proposals kept per server.
 const MOST_OPEN: usize = 200;
 
@@ -69,7 +70,11 @@ impl Proposals {
     }
 
     pub fn list(&self, server: &str) -> Vec<Proposal> {
-        self.path(server).ok().and_then(|path| fs::read_to_string(path).ok()).and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+        self.path(server)
+            .ok()
+            .and_then(|path| fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
     }
 
     fn save(&self, server: &str, list: &[Proposal]) -> Result<(), String> {
@@ -89,7 +94,9 @@ impl Proposals {
         }
         if let Some(source) = upload {
             let kept = self.files_dir().join(format!("{}-upload", proposal.id));
-            fs::rename(source, &kept).or_else(|_| fs::copy(source, &kept).map(|_| ())).map_err(|error| format!("Could not keep the file: {error}"))?;
+            fs::rename(source, &kept)
+                .or_else(|_| fs::copy(source, &kept).map(|_| ()))
+                .map_err(|error| format!("Could not keep the file: {error}"))?;
             proposal.file = Some(kept.to_string_lossy().to_string());
         }
         proposal.state = "open".into();
@@ -160,7 +167,9 @@ mod tests {
         let list = store.list("srv-1");
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].state, "open");
-        assert!(PROPOSABLE.contains(&"studio_save") && !PROPOSABLE.contains(&"send_console_command") && !PROPOSABLE.contains(&"start_instance"));
+        assert!(
+            PROPOSABLE.contains(&"studio_save") && !PROPOSABLE.contains(&"send_console_command") && !PROPOSABLE.contains(&"start_instance")
+        );
     }
 
     #[test]

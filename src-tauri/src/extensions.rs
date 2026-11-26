@@ -357,8 +357,17 @@ pub fn check(setting: &ExtSetting, value: &str) -> Result<String, String> {
 }
 
 fn yaml_scalar(kind: &str, value: &str) -> String {
-    let plain = kind == "number" || kind == "bool" || (!value.is_empty() && value.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | ' ')) && !value.starts_with(' ') && !value.ends_with(' '));
-    if plain { value.to_string() } else { format!("'{}'", value.replace('\'', "''")) }
+    let plain = kind == "number"
+        || kind == "bool"
+        || (!value.is_empty()
+            && value.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | ' '))
+            && !value.starts_with(' ')
+            && !value.ends_with(' '));
+    if plain {
+        value.to_string()
+    } else {
+        format!("'{}'", value.replace('\'', "''"))
+    }
 }
 
 /// Writes a value at a dotted key, keeping the rest of the file as it was.
@@ -396,7 +405,11 @@ pub fn set_at(file: &str, text: &str, key: &str, kind: &str, value: &str) -> Res
             } else {
                 start + tail.find([',', '}', '\n', '\r', ']']).unwrap_or(tail.len())
             };
-            let literal = if kind == "number" || kind == "bool" { value.to_string() } else { serde_json::to_string(value).map_err(|error| error.to_string())? };
+            let literal = if kind == "number" || kind == "bool" {
+                value.to_string()
+            } else {
+                serde_json::to_string(value).map_err(|error| error.to_string())?
+            };
             let mut out = text.to_string();
             out.replace_range(start..end.min(text.len()), &literal);
             out
@@ -539,8 +552,14 @@ mod tests {
     #[test]
     fn changes_values_in_place() {
         let yaml = "# top\r\neconomy:\r\n  start: 100 # coins\r\n  name: shop\r\nstart: 5\r\n";
-        assert_eq!(set_at("c.yml", yaml, "economy.start", "number", "250").unwrap(), "# top\r\neconomy:\r\n  start: 250 # coins\r\n  name: shop\r\nstart: 5\r\n");
-        assert_eq!(set_at("c.yml", yaml, "economy.name", "text", "big: shop").unwrap(), "# top\r\neconomy:\r\n  start: 100 # coins\r\n  name: 'big: shop'\r\nstart: 5\r\n");
+        assert_eq!(
+            set_at("c.yml", yaml, "economy.start", "number", "250").unwrap(),
+            "# top\r\neconomy:\r\n  start: 250 # coins\r\n  name: shop\r\nstart: 5\r\n"
+        );
+        assert_eq!(
+            set_at("c.yml", yaml, "economy.name", "text", "big: shop").unwrap(),
+            "# top\r\neconomy:\r\n  start: 100 # coins\r\n  name: 'big: shop'\r\nstart: 5\r\n"
+        );
         let json = "{\n  \"a\": {\"limit\": 5, \"title\": \"Hi \\\"x\\\"\"}\n}";
         assert_eq!(set_at("c.json", json, "a.limit", "number", "7").unwrap(), "{\n  \"a\": {\"limit\": 7, \"title\": \"Hi \\\"x\\\"\"}\n}");
         assert_eq!(set_at("c.json", json, "a.title", "text", "Yo").unwrap(), "{\n  \"a\": {\"limit\": 5, \"title\": \"Yo\"}\n}");

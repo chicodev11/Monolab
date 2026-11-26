@@ -91,7 +91,14 @@ pub fn font_files(fonts: &[(String, Map<String, Value>)], sources: &[Source], id
         }
         let image = data.get("image").and_then(Value::as_str).unwrap_or_default().trim().trim_end_matches(".png").to_string();
         let Some(bytes) = textures.get(image.as_str()) else {
-            problems.insert(id.clone(), json!(if image.is_empty() { "Pick a picture from the studio's textures.".to_string() } else { format!("The picture {image} isn't in the studio's textures.") }));
+            problems.insert(
+                id.clone(),
+                json!(if image.is_empty() {
+                    "Pick a picture from the studio's textures.".to_string()
+                } else {
+                    format!("The picture {image} isn't in the studio's textures.")
+                }),
+            );
             continue;
         };
         let Ok(picture) = image::load_from_memory(bytes).map(|one| one.to_rgba8()) else {
@@ -100,7 +107,8 @@ pub fn font_files(fonts: &[(String, Map<String, Value>)], sources: &[Source], id
         };
         let (w, h) = (picture.width(), picture.height());
         if w == 0 || h == 0 || w > MOST_PICTURE || h > MOST_PICTURE {
-            problems.insert(id.clone(), json!(format!("Glyph pictures can be at most {MOST_PICTURE}×{MOST_PICTURE} ({image} is {w}×{h}).")));
+            problems
+                .insert(id.clone(), json!(format!("Glyph pictures can be at most {MOST_PICTURE}×{MOST_PICTURE} ({image} is {w}×{h}).")));
             continue;
         }
         let height = number(data, "height").unwrap_or(i64::from(h)).clamp(1, 256);
@@ -266,7 +274,10 @@ mod tests {
         assert_eq!(table["hit"]["char"], "\u{f8ff}");
 
         let glyph = get(&files, "assets/monolab/font/glyph.json");
-        assert_eq!(glyph["providers"][0], json!({ "type": "bitmap", "file": "monolab:studio/ruby.png", "height": 8, "ascent": 7, "chars": ["\u{e000}"] }));
+        assert_eq!(
+            glyph["providers"][0],
+            json!({ "type": "bitmap", "file": "monolab:studio/ruby.png", "height": 8, "ascent": 7, "chars": ["\u{e000}"] })
+        );
         let low = get(&files, "assets/monolab/font/canvas_8.json");
         assert_eq!(low["providers"][0]["ascent"], -1);
         assert_eq!(low["providers"][1]["file"], "monolab:studio/bg.png");
@@ -316,7 +327,8 @@ mod tests {
     #[test]
     fn characters_never_move() {
         let mut ids = Ids::default();
-        let both = vec![("ruby".to_string(), font(r#"{"schema":1,"image":"ruby"}"#)), ("zap".to_string(), font(r#"{"schema":1,"image":"ruby"}"#))];
+        let both =
+            vec![("ruby".to_string(), font(r#"{"schema":1,"image":"ruby"}"#)), ("zap".to_string(), font(r#"{"schema":1,"image":"ruby"}"#))];
         let first = font_files(&both, &sources(), &mut ids);
         assert_eq!(get(&first, TABLE_FILE)["glyphs"]["zap"]["char"], "\u{e001}");
         let only = vec![both[1].clone()];

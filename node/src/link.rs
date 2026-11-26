@@ -130,7 +130,8 @@ impl Server {
             return;
         };
         let hello = tokio::time::timeout(HELLO_WAIT, read_frame(&mut recv)).await.ok().flatten();
-        let text = hello.as_ref().filter(|one| one["type"] == "hello").and_then(|one| one["grant"].as_str()).unwrap_or_default().to_string();
+        let text =
+            hello.as_ref().filter(|one| one["type"] == "hello").and_then(|one| one["grant"].as_str()).unwrap_or_default().to_string();
         let grant = match self.admit(&text, &peer) {
             Ok(grant) => grant,
             Err(code) => {
@@ -153,7 +154,13 @@ impl Server {
             let mut state = locked(&self.state);
             state.next += 1;
             let id = state.next;
-            state.conns.push(TeamConn { id, team: team.clone(), grant: grant.clone(), connection: connection.clone(), control: control.clone() });
+            state.conns.push(TeamConn {
+                id,
+                team: team.clone(),
+                grant: grant.clone(),
+                connection: connection.clone(),
+                control: control.clone(),
+            });
             id
         };
 

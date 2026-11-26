@@ -54,11 +54,8 @@ pub fn write_velocity(text: &str, servers: &[(String, String)], first: &str) -> 
 
 /// A name Velocity accepts as a server key, unique among `taken`.
 pub fn server_key(name: &str, taken: &[String]) -> String {
-    let mut base: String = name
-        .to_lowercase()
-        .chars()
-        .map(|one| if one.is_ascii_alphanumeric() || one == '-' || one == '_' { one } else { '-' })
-        .collect();
+    let mut base: String =
+        name.to_lowercase().chars().map(|one| if one.is_ascii_alphanumeric() || one == '-' || one == '_' { one } else { '-' }).collect();
     base = base.trim_matches('-').to_string();
     if base.is_empty() {
         base = "server".into();
@@ -102,11 +99,8 @@ fn find_key(lines: &[String], from: usize, to: usize, depth: usize, key: &str) -
 pub fn paper_velocity(yaml: &str, on: bool, secret: &str) -> String {
     let eol = if yaml.contains("\r\n") { "\r\n" } else { "\n" };
     let mut lines: Vec<String> = yaml.lines().map(str::to_string).collect();
-    let wanted = [
-        ("enabled", on.to_string()),
-        ("online-mode", "true".to_string()),
-        ("secret", format!("'{}'", secret.replace('\'', "''"))),
-    ];
+    let wanted =
+        [("enabled", on.to_string()), ("online-mode", "true".to_string()), ("secret", format!("'{}'", secret.replace('\'', "''")))];
     let proxies = match find_key(&lines, 0, lines.len(), 0, "proxies") {
         Some(at) => at,
         None => {
@@ -229,10 +223,15 @@ compression-threshold = 256
         assert!(!read.modern);
         assert_eq!(read.servers.len(), 2);
         assert_eq!(read.first, vec!["lobby"]);
-        let out = write_velocity(VELOCITY, &[("survival".into(), "127.0.0.1:25565".into()), ("lobby".into(), "127.0.0.1:25566".into())], "lobby").unwrap();
+        let out =
+            write_velocity(VELOCITY, &[("survival".into(), "127.0.0.1:25565".into()), ("lobby".into(), "127.0.0.1:25566".into())], "lobby")
+                .unwrap();
         let again = read_velocity(&out).unwrap();
         assert!(again.modern);
-        assert_eq!(again.servers, vec![("survival".to_string(), "127.0.0.1:25565".to_string()), ("lobby".to_string(), "127.0.0.1:25566".to_string())]);
+        assert_eq!(
+            again.servers,
+            vec![("survival".to_string(), "127.0.0.1:25565".to_string()), ("lobby".to_string(), "127.0.0.1:25566".to_string())]
+        );
         assert_eq!(again.first, vec!["lobby", "survival"]);
         assert!(!out.contains("lobby.example.com"), "{out}");
         assert!(out.contains("compression-threshold = 256"));

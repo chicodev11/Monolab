@@ -54,7 +54,8 @@ impl Studio {
             return *found;
         }
         let (name, props) = structure::split_state(state);
-        let found = pumpkin_plugin_api::world::resolve_block_state(&name, &props).or_else(|| pumpkin_plugin_api::world::resolve_block_state(&name, &[]));
+        let found = pumpkin_plugin_api::world::resolve_block_state(&name, &props)
+            .or_else(|| pumpkin_plugin_api::world::resolve_block_state(&name, &[]));
         self.play.structures.states.insert(state.to_string(), found);
         found
     }
@@ -114,7 +115,9 @@ impl Studio {
         self.active_rows("structure")
             .into_iter()
             .filter(|(id, _)| !self.root.join(structure::data_path(id)).is_file())
-            .map(|(id, _)| ("structure".to_string(), id.to_string(), "Bring a .schem or .nbt file in from the app first (Import file).".to_string()))
+            .map(|(id, _)| {
+                ("structure".to_string(), id.to_string(), "Bring a .schem or .nbt file in from the app first (Import file).".to_string())
+            })
             .collect()
     }
 }

@@ -11,10 +11,7 @@ fn main() {
             let region = Region::read(&bytes).expect("region");
             let index = args.next().and_then(|n| n.parse().ok()).unwrap_or(0);
             println!("{} chunks", region.len());
-            region
-                .load(index, || Err("external".into()))
-                .expect("chunk")
-                .root
+            region.load(index, || Err("external".into())).expect("chunk").root
         }
         _ => NbtFile::read(&bytes).expect("nbt").root,
     };

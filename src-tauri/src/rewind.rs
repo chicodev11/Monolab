@@ -25,16 +25,74 @@ const MAX_DEPTH: usize = 10;
 pub const KEEP: usize = 3_000;
 
 const TEXT_EXTENSIONS: &[&str] = &[
-    "properties", "yml", "yaml", "json", "json5", "jsonc", "toml", "txt", "cfg", "conf", "config", "ini", "xml", "csv", "md",
-    "sk", "js", "mjs", "ts", "lua", "py", "mcfunction", "mcmeta", "snbt", "lang", "zs", "sh", "bat", "cmd", "ps1", "env", "hocon",
-    "secret", "list", "kts", "gradle",
+    "properties",
+    "yml",
+    "yaml",
+    "json",
+    "json5",
+    "jsonc",
+    "toml",
+    "txt",
+    "cfg",
+    "conf",
+    "config",
+    "ini",
+    "xml",
+    "csv",
+    "md",
+    "sk",
+    "js",
+    "mjs",
+    "ts",
+    "lua",
+    "py",
+    "mcfunction",
+    "mcmeta",
+    "snbt",
+    "lang",
+    "zs",
+    "sh",
+    "bat",
+    "cmd",
+    "ps1",
+    "env",
+    "hocon",
+    "secret",
+    "list",
+    "kts",
+    "gradle",
 ];
 
 /// Folder names never walked into, at any depth.
 const SKIP_DIRS: &[&str] = &[
-    ".git", ".rewind", "logs", "crash-reports", "cache", ".cache", "libraries", "versions", "backups", "node_modules", "debug",
-    ".fabric", ".mixin.out", "bluemap", "dynmap", "squaremap", "region", "entities", "poi", "playerdata", "stats",
-    "DIM-1", "DIM1", "bundler", "jre", "java", "runtime", "server-data",
+    ".git",
+    ".rewind",
+    "logs",
+    "crash-reports",
+    "cache",
+    ".cache",
+    "libraries",
+    "versions",
+    "backups",
+    "node_modules",
+    "debug",
+    ".fabric",
+    ".mixin.out",
+    "bluemap",
+    "dynmap",
+    "squaremap",
+    "region",
+    "entities",
+    "poi",
+    "playerdata",
+    "stats",
+    "DIM-1",
+    "DIM1",
+    "bundler",
+    "jre",
+    "java",
+    "runtime",
+    "server-data",
 ];
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -94,7 +152,10 @@ fn tracked_name(name: &str) -> bool {
     if lower == "eula.txt" || lower.ends_with(".lock") {
         return false;
     }
-    if matches!(lower.as_str(), "ops.json" | "whitelist.json" | "banned-players.json" | "banned-ips.json" | "usercache.json" | "usernamecache.json") {
+    if matches!(
+        lower.as_str(),
+        "ops.json" | "whitelist.json" | "banned-players.json" | "banned-ips.json" | "usercache.json" | "usernamecache.json"
+    ) {
         // The server rewrites these by itself all the time; still worth having, they're small.
         return true;
     }
@@ -102,7 +163,9 @@ fn tracked_name(name: &str) -> bool {
 }
 
 fn skip_dir(dir: &Path, name: &str) -> bool {
-    SKIP_DIRS.iter().any(|one| one.eq_ignore_ascii_case(name)) || name.starts_with('.') && name != ".minecraft" || dir.join("level.dat").is_file()
+    SKIP_DIRS.iter().any(|one| one.eq_ignore_ascii_case(name))
+        || name.starts_with('.') && name != ".minecraft"
+        || dir.join("level.dat").is_file()
 }
 
 fn looks_binary(bytes: &[u8]) -> bool {
@@ -277,7 +340,16 @@ impl Store {
             let Some(seen) = index.remove(&relative) else { continue };
             changed_index = true;
             let who = by(&relative, now_secs());
-            out.push(RewindEntry { id: stamp(), at: now_secs(), path: relative, kind: "deleted".into(), before: Some(seen.hash), after: None, size: 0, by: who });
+            out.push(RewindEntry {
+                id: stamp(),
+                at: now_secs(),
+                path: relative,
+                kind: "deleted".into(),
+                before: Some(seen.hash),
+                after: None,
+                size: 0,
+                by: who,
+            });
         }
         if changed_index {
             self.write_index(&index)?;
@@ -352,7 +424,8 @@ impl Store {
                 let target = crate::paths::resolve_new_in_server(root, &entry.path)?;
                 fs::write(&target, text.as_bytes()).map_err(|error| format!("Could not write the file: {error}"))?;
                 let meta = fs::metadata(&target).map_err(|error| error.to_string())?;
-                let mtime = meta.modified().ok().and_then(|at| at.duration_since(UNIX_EPOCH).ok()).map(|at| at.as_millis() as u64).unwrap_or(0);
+                let mtime =
+                    meta.modified().ok().and_then(|at| at.duration_since(UNIX_EPOCH).ok()).map(|at| at.as_millis() as u64).unwrap_or(0);
                 index.insert(entry.path.clone(), Seen { mtime, size: meta.len(), hash: hash.clone() });
             }
             None => {
@@ -423,7 +496,10 @@ mod tests {
         let mut seen = store.scan(&root, &|_, _| None).unwrap();
         seen.sort_by(|a, b| a.path.cmp(&b.path));
         let kinds: Vec<(&str, &str)> = seen.iter().map(|one| (one.path.as_str(), one.kind.as_str())).collect();
-        assert_eq!(kinds, vec![("plugins/Essentials/config.yml", "deleted"), ("plugins/new.yml", "added"), ("server.properties", "changed")]);
+        assert_eq!(
+            kinds,
+            vec![("plugins/Essentials/config.yml", "deleted"), ("plugins/new.yml", "added"), ("server.properties", "changed")]
+        );
 
         let changed = seen.iter().find(|one| one.path == "server.properties").unwrap();
         let versions = store.versions(&root, &changed.id).unwrap();
@@ -470,7 +546,8 @@ mod tests {
         assert_eq!(left.len(), 5);
         let last = left.last().unwrap();
         assert!(store.versions(&root, &last.id).unwrap().after.is_some());
-        let objects: usize = fs::read_dir(store.dir.join("objects")).unwrap().flatten().map(|one| fs::read_dir(one.path()).unwrap().count()).sum();
+        let objects: usize =
+            fs::read_dir(store.dir.join("objects")).unwrap().flatten().map(|one| fs::read_dir(one.path()).unwrap().count()).sum();
         assert!(objects <= 8, "old content should be dropped, found {objects}");
     }
 
@@ -489,5 +566,4 @@ mod tests {
         let named = RewindEntry { by: Some("@amy".into()), ..entry };
         assert!(serde_json::to_string(&named).unwrap().contains(r#""by":"@amy""#));
     }
-
 }

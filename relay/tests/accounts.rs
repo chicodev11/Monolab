@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use ed25519_dalek::{Signer, SigningKey};
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio_tungstenite::tungstenite::Message;
 
 struct Temp(std::path::PathBuf);
@@ -131,7 +131,8 @@ impl Server {
     async fn sign_up(&self, seed: u8, subject: &str, handle: &str) -> (String, String) {
         let result = self.sign_in(seed, subject, handle).await;
         assert_eq!(result["state"], "needs_handle", "{result}");
-        let (status, done) = self.call("POST", "/v2/auth/finish", None, Some(json!({ "ticket": result["ticket"], "handle": handle }))).await;
+        let (status, done) =
+            self.call("POST", "/v2/auth/finish", None, Some(json!({ "ticket": result["ticket"], "handle": handle }))).await;
         assert_eq!(status, 200, "{done}");
         assert_eq!(done["user"]["handle"], handle.to_lowercase());
         (done["token"].as_str().unwrap().to_string(), done["user"]["id"].as_str().unwrap().to_string())
@@ -201,12 +202,20 @@ async fn team_invite_and_roles() {
     let (status, _) = server.call("GET", &format!("/v2/teams/{team_id}"), Some(&bob), None).await;
     assert_eq!(status, 404);
 
-    let (status, bad) = server.call("POST", &format!("/v2/teams/{team_id}/invites"), Some(&alice), Some(json!({ "role": "developer", "expires_in": 31 * 86_400 }))).await;
+    let (status, bad) = server
+        .call(
+            "POST",
+            &format!("/v2/teams/{team_id}/invites"),
+            Some(&alice),
+            Some(json!({ "role": "developer", "expires_in": 31 * 86_400 })),
+        )
+        .await;
     assert_eq!((status, bad["error"].as_str()), (400, Some("bad_expiry")));
     let (status, bad) = server.call("POST", &format!("/v2/teams/{team_id}/invites"), Some(&alice), Some(json!({ "role": "owner" }))).await;
     assert_eq!((status, bad["error"].as_str()), (400, Some("bad_role")));
 
-    let (status, invite) = server.call("POST", &format!("/v2/teams/{team_id}/invites"), Some(&alice), Some(json!({ "role": "developer" }))).await;
+    let (status, invite) =
+        server.call("POST", &format!("/v2/teams/{team_id}/invites"), Some(&alice), Some(json!({ "role": "developer" }))).await;
     assert_eq!(status, 200, "{invite}");
     assert_eq!(invite["needs_approval"], true);
     let code = invite["code"].as_str().unwrap().to_string();
@@ -239,7 +248,8 @@ async fn team_invite_and_roles() {
 
     let (_, requests) = server.call("GET", &format!("/v2/teams/{team_id}/requests"), Some(&alice), None).await;
     assert_eq!(requests["requests"][0]["user"]["handle"], "bob");
-    let (status, _) = server.call("POST", &format!("/v2/teams/{team_id}/requests/{bob_id}"), Some(&alice), Some(json!({ "accept": true }))).await;
+    let (status, _) =
+        server.call("POST", &format!("/v2/teams/{team_id}/requests/{bob_id}"), Some(&alice), Some(json!({ "accept": true }))).await;
     assert_eq!(status, 204);
     let changed = alice_live.until("team_changed").await;
     assert_eq!(changed["team"], team_id.as_str());
@@ -259,13 +269,15 @@ async fn team_invite_and_roles() {
     let (status, _) = server.call("DELETE", &format!("/v2/teams/{team_id}/members/{alice_id}"), Some(&bob), None).await;
     assert_eq!(status, 403);
 
-    let (status, _) = server.call("PATCH", &format!("/v2/teams/{team_id}/members/{bob_id}"), Some(&alice), Some(json!({ "role": "viewer" }))).await;
+    let (status, _) =
+        server.call("PATCH", &format!("/v2/teams/{team_id}/members/{bob_id}"), Some(&alice), Some(json!({ "role": "viewer" }))).await;
     assert_eq!(status, 200);
     assert_eq!(bob_live.until("team_changed").await["team"], team_id.as_str());
     let notice = bob_live.until("notice").await;
     assert_eq!((notice["kind"].as_str(), notice["data"]["role"].as_str()), (Some("role_changed"), Some("viewer")));
 
-    let (status, bad) = server.call("PATCH", &format!("/v2/teams/{team_id}/members/{alice_id}"), Some(&alice), Some(json!({ "role": "admin" }))).await;
+    let (status, bad) =
+        server.call("PATCH", &format!("/v2/teams/{team_id}/members/{alice_id}"), Some(&alice), Some(json!({ "role": "admin" }))).await;
     assert_eq!((status, bad["error"].as_str()), (403, Some("self")));
     let (status, bad) = server.call("POST", &format!("/v2/teams/{team_id}/transfer"), Some(&alice), Some(json!({ "user": bob_id }))).await;
     assert_eq!((status, bad["error"].as_str()), (409, Some("not_admin")));
@@ -300,7 +312,12 @@ async fn invites_handles_and_devices() {
     let (_, team) = server.call("POST", "/v2/teams", Some(&alice), Some(json!({ "name": "Open" }))).await;
     let team_id = team["id"].as_str().unwrap();
     let (_, invite) = server
-        .call("POST", &format!("/v2/teams/{team_id}/invites"), Some(&alice), Some(json!({ "role": "viewer", "max_uses": 1, "needs_approval": false })))
+        .call(
+            "POST",
+            &format!("/v2/teams/{team_id}/invites"),
+            Some(&alice),
+            Some(json!({ "role": "viewer", "max_uses": 1, "needs_approval": false })),
+        )
         .await;
     let code = invite["code"].as_str().unwrap();
     let (_, joined) = server.call("POST", &format!("/v2/invites/{code}/accept"), Some(&bob), None).await;
@@ -312,7 +329,8 @@ async fn invites_handles_and_devices() {
     let (_, list) = server.call("GET", &format!("/v2/teams/{team_id}/invites"), Some(&alice), None).await;
     assert_eq!(list["invites"].as_array().unwrap().len(), 1);
     assert!(list["invites"][0].get("code").is_none());
-    let (status, _) = server.call("DELETE", &format!("/v2/teams/{team_id}/invites/{}", second["id"].as_str().unwrap()), Some(&alice), None).await;
+    let (status, _) =
+        server.call("DELETE", &format!("/v2/teams/{team_id}/invites/{}", second["id"].as_str().unwrap()), Some(&alice), None).await;
     assert_eq!(status, 204);
     let (_, preview) = server.call("GET", &format!("/v2/invites/{}", second["code"].as_str().unwrap()), None, None).await;
     assert_eq!(preview["reason"], "revoked");
@@ -364,21 +382,33 @@ async fn servers_and_grants() {
 
     let (_, team) = server.call("POST", "/v2/teams", Some(&alice), Some(json!({ "name": "Crew" }))).await;
     let team_id = team["id"].as_str().unwrap().to_string();
-    let (_, invite) = server.call("POST", &format!("/v2/teams/{team_id}/invites"), Some(&alice), Some(json!({ "role": "developer", "needs_approval": false }))).await;
+    let (_, invite) = server
+        .call("POST", &format!("/v2/teams/{team_id}/invites"), Some(&alice), Some(json!({ "role": "developer", "needs_approval": false })))
+        .await;
     let (status, joined) = server.call("POST", &format!("/v2/invites/{}/accept", invite["code"].as_str().unwrap()), Some(&bob), None).await;
     assert_eq!(status, 200, "{joined}");
 
     // A developer can't attach servers; the owner attaches one from the device that runs it.
-    let (status, _) = server.call("POST", &format!("/v2/teams/{team_id}/servers"), Some(&bob), Some(json!({ "instance_id": "x", "name": "X" }))).await;
+    let (status, _) =
+        server.call("POST", &format!("/v2/teams/{team_id}/servers"), Some(&bob), Some(json!({ "instance_id": "x", "name": "X" }))).await;
     assert_eq!(status, 403);
-    let (status, team) = server.call("POST", &format!("/v2/teams/{team_id}/servers"), Some(&alice), Some(json!({ "instance_id": "survival-1", "name": "Survival" }))).await;
+    let (status, team) = server
+        .call(
+            "POST",
+            &format!("/v2/teams/{team_id}/servers"),
+            Some(&alice),
+            Some(json!({ "instance_id": "survival-1", "name": "Survival" })),
+        )
+        .await;
     assert_eq!(status, 200, "{team}");
     assert_eq!(team["servers"][0]["host"], "alice");
     assert_eq!(team["servers"][0]["mine"], true);
     let server_id = team["servers"][0]["id"].as_str().unwrap().to_string();
     let version = team["version"].as_u64().unwrap();
     // The same server can't go in twice.
-    let (status, _) = server.call("POST", &format!("/v2/teams/{team_id}/servers"), Some(&alice), Some(json!({ "instance_id": "survival-1", "name": "Again" }))).await;
+    let (status, _) = server
+        .call("POST", &format!("/v2/teams/{team_id}/servers"), Some(&alice), Some(json!({ "instance_id": "survival-1", "name": "Again" })))
+        .await;
     assert_eq!(status, 409);
 
     // The host says where it is; bob gets a grant for alice's device with that address.
@@ -391,7 +421,11 @@ async fn servers_and_grants() {
     assert_eq!(one["host"], "alice");
     assert_eq!(one["addr"]["id"], "abc");
     let (_, keys) = server.call("GET", "/v2/keys", None, None).await;
-    let public: [u8; 32] = (0..32).map(|at| u8::from_str_radix(&keys["keys"][0]["public_key"].as_str().unwrap()[at * 2..at * 2 + 2], 16).unwrap()).collect::<Vec<_>>().try_into().unwrap();
+    let public: [u8; 32] = (0..32)
+        .map(|at| u8::from_str_radix(&keys["keys"][0]["public_key"].as_str().unwrap()[at * 2..at * 2 + 2], 16).unwrap())
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
     let grant = relay_proto::grant::open(one["grant"].as_str().unwrap(), &[(1, public)]).unwrap();
     assert_eq!(grant.handle, "bob");
     assert_eq!(grant.user, bob_id);
@@ -406,18 +440,30 @@ async fn servers_and_grants() {
     assert_eq!(own["grants"].as_array().unwrap().len(), 0);
 
     // Only the host device may report what happened on its server.
-    let (status, _) = server.call("POST", &format!("/v2/teams/{team_id}/activity"), Some(&bob), Some(json!({ "server": server_id, "kind": "server_started" }))).await;
+    let (status, _) = server
+        .call("POST", &format!("/v2/teams/{team_id}/activity"), Some(&bob), Some(json!({ "server": server_id, "kind": "server_started" })))
+        .await;
     assert_eq!(status, 403);
-    let (status, _) = server.call("POST", &format!("/v2/teams/{team_id}/activity"), Some(&alice), Some(json!({ "server": server_id, "kind": "rm_rf" }))).await;
+    let (status, _) = server
+        .call("POST", &format!("/v2/teams/{team_id}/activity"), Some(&alice), Some(json!({ "server": server_id, "kind": "rm_rf" })))
+        .await;
     assert_eq!(status, 400);
-    let (status, _) = server.call("POST", &format!("/v2/teams/{team_id}/activity"), Some(&alice), Some(json!({ "server": server_id, "kind": "file_changed", "data": { "path": "server.properties" } }))).await;
+    let (status, _) = server
+        .call(
+            "POST",
+            &format!("/v2/teams/{team_id}/activity"),
+            Some(&alice),
+            Some(json!({ "server": server_id, "kind": "file_changed", "data": { "path": "server.properties" } })),
+        )
+        .await;
     assert_eq!(status, 204);
     let (_, activity) = server.call("GET", &format!("/v2/teams/{team_id}/activity"), Some(&bob), None).await;
     assert_eq!(activity["items"][0]["kind"], "file_changed");
     assert_eq!(activity["items"][0]["data"]["server"], "Survival");
 
     // Lowering bob's role raises the version, so the old grant is now outdated at the host.
-    let (_, team) = server.call("PATCH", &format!("/v2/teams/{team_id}/members/{bob_id}"), Some(&alice), Some(json!({ "role": "viewer" }))).await;
+    let (_, team) =
+        server.call("PATCH", &format!("/v2/teams/{team_id}/members/{bob_id}"), Some(&alice), Some(json!({ "role": "viewer" }))).await;
     let newer = team["version"].as_u64().unwrap();
     assert!(newer > version);
     assert_eq!(grant.check(&bob_device, &alice_device, now(), newer), Err(relay_proto::grant::Refused::Outdated));
@@ -439,7 +485,9 @@ async fn nodes_pair_and_host_servers() {
     let (bob, _) = server.sign_up(22, "2200", "bob").await;
     let (_, team) = server.call("POST", "/v2/teams", Some(&alice), Some(json!({ "name": "Crew" }))).await;
     let team_id = team["id"].as_str().unwrap().to_string();
-    let (_, invite) = server.call("POST", &format!("/v2/teams/{team_id}/invites"), Some(&alice), Some(json!({ "role": "developer", "needs_approval": false }))).await;
+    let (_, invite) = server
+        .call("POST", &format!("/v2/teams/{team_id}/invites"), Some(&alice), Some(json!({ "role": "developer", "needs_approval": false })))
+        .await;
     server.call("POST", &format!("/v2/invites/{}/accept", invite["code"].as_str().unwrap()), Some(&bob), None).await;
 
     // Alice gets a code; the node signs it with its own key.
@@ -452,24 +500,61 @@ async fn nodes_pair_and_host_servers() {
     let node_device = relay_proto::DeviceId::of(&node_key.verifying_key().to_bytes());
     let sign = |text: &str| hex(&node_key.sign(relay::accounts::node_pair_message(text).as_bytes()).to_bytes());
     // A wrong signature, then a code nobody made, are refused.
-    let (status, _) = server.call("POST", "/v2/nodes/pair", None, Some(json!({ "code": code, "public_key": public, "signature": sign("OTHER"), "name": "box" }))).await;
+    let (status, _) = server
+        .call(
+            "POST",
+            "/v2/nodes/pair",
+            None,
+            Some(json!({ "code": code, "public_key": public, "signature": sign("OTHER"), "name": "box" })),
+        )
+        .await;
     assert_eq!(status, 400);
-    let (status, _) = server.call("POST", "/v2/nodes/pair", None, Some(json!({ "code": "ZZZZZZZZZZ", "public_key": public, "signature": sign("ZZZZZZZZZZ"), "name": "box" }))).await;
+    let (status, _) = server
+        .call(
+            "POST",
+            "/v2/nodes/pair",
+            None,
+            Some(json!({ "code": "ZZZZZZZZZZ", "public_key": public, "signature": sign("ZZZZZZZZZZ"), "name": "box" })),
+        )
+        .await;
     assert_eq!(status, 400);
-    let (status, paired) = server.call("POST", "/v2/nodes/pair", None, Some(json!({ "code": code.to_lowercase(), "public_key": public, "signature": sign(&code), "name": "box" }))).await;
+    let (status, paired) = server
+        .call(
+            "POST",
+            "/v2/nodes/pair",
+            None,
+            Some(json!({ "code": code.to_lowercase(), "public_key": public, "signature": sign(&code), "name": "box" })),
+        )
+        .await;
     assert_eq!(status, 200, "{paired}");
     assert_eq!(paired["device"], node_device.text());
     let node = paired["token"].as_str().unwrap().to_string();
     // The code works once.
-    let (status, _) = server.call("POST", "/v2/nodes/pair", None, Some(json!({ "code": code, "public_key": public, "signature": sign(&code), "name": "box" }))).await;
+    let (status, _) = server
+        .call("POST", "/v2/nodes/pair", None, Some(json!({ "code": code, "public_key": public, "signature": sign(&code), "name": "box" })))
+        .await;
     assert_eq!(status, 400);
     let (_, devices) = server.call("GET", "/v2/me/devices", Some(&alice), None).await;
     assert!(devices["devices"].as_array().unwrap().iter().any(|one| one["id"] == node_device.text() && one["kind"] == "node"), "{devices}");
 
     // Alice attaches a server that lives on the node; bob can't name alice's node.
-    let (status, _) = server.call("POST", &format!("/v2/teams/{team_id}/servers"), Some(&alice), Some(json!({ "instance_id": "survival", "name": "Survival", "host": "not-a-node" }))).await;
+    let (status, _) = server
+        .call(
+            "POST",
+            &format!("/v2/teams/{team_id}/servers"),
+            Some(&alice),
+            Some(json!({ "instance_id": "survival", "name": "Survival", "host": "not-a-node" })),
+        )
+        .await;
     assert_eq!(status, 403);
-    let (status, team) = server.call("POST", &format!("/v2/teams/{team_id}/servers"), Some(&alice), Some(json!({ "instance_id": "survival", "name": "Survival", "host": node_device.text() }))).await;
+    let (status, team) = server
+        .call(
+            "POST",
+            &format!("/v2/teams/{team_id}/servers"),
+            Some(&alice),
+            Some(json!({ "instance_id": "survival", "name": "Survival", "host": node_device.text() })),
+        )
+        .await;
     assert_eq!(status, 200, "{team}");
     let server_id = team["servers"][0]["id"].as_str().unwrap().to_string();
     assert_eq!(team["servers"][0]["node"], true);
@@ -483,12 +568,18 @@ async fn nodes_pair_and_host_servers() {
     let one = &got["grants"][0];
     assert_eq!(one["addr"]["id"], "node-addr", "{got}");
     let (_, keys) = server.call("GET", "/v2/keys", None, None).await;
-    let key: [u8; 32] = (0..32).map(|at| u8::from_str_radix(&keys["keys"][0]["public_key"].as_str().unwrap()[at * 2..at * 2 + 2], 16).unwrap()).collect::<Vec<_>>().try_into().unwrap();
+    let key: [u8; 32] = (0..32)
+        .map(|at| u8::from_str_radix(&keys["keys"][0]["public_key"].as_str().unwrap()[at * 2..at * 2 + 2], 16).unwrap())
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
     let grant = relay_proto::grant::open(one["grant"].as_str().unwrap(), &[(1, key)]).unwrap();
     assert_eq!(grant.host, node_device);
     assert_eq!(grant.servers, vec!["survival".to_string()]);
     // The node reports activity on its server.
-    let (status, _) = server.call("POST", &format!("/v2/teams/{team_id}/activity"), Some(&node), Some(json!({ "server": server_id, "kind": "server_started" }))).await;
+    let (status, _) = server
+        .call("POST", &format!("/v2/teams/{team_id}/activity"), Some(&node), Some(json!({ "server": server_id, "kind": "server_started" })))
+        .await;
     assert_eq!(status, 204);
 
     // The iroh relay asks whether an endpoint may use it: the node may, a stranger may not, and a call
@@ -581,7 +672,8 @@ async fn crash_reports_are_checked_limited_and_stored() {
     assert_eq!(status, 200, "{answer}");
     assert!(answer["id"].as_i64().unwrap() > 0);
 
-    let (status, answer) = server.call("POST", "/v2/crash", None, Some(json!({ "version": "2.0.0", "os": "windows", "kind": "other", "message": "x" }))).await;
+    let (status, answer) =
+        server.call("POST", "/v2/crash", None, Some(json!({ "version": "2.0.0", "os": "windows", "kind": "other", "message": "x" }))).await;
     assert_eq!((status, answer["error"].as_str()), (400, Some("bad_crash")));
     let big = json!({ "version": "2.0.0", "os": "windows", "kind": "ui", "message": "m".repeat(1001) });
     let (status, answer) = server.call("POST", "/v2/crash", None, Some(big)).await;
@@ -636,7 +728,8 @@ async fn app_connection_hello_updates_and_counts() {
     assert_eq!(stats.by_os, vec![("windows-x86_64".to_string(), 1)]);
 
     // Only from this machine, without X-Forwarded-For (as Caddy adds).
-    let through_caddy = server.http.post(format!("{}/v2/admin/notify-updates", server.base)).header("x-forwarded-for", "203.0.113.9").send().await.unwrap();
+    let through_caddy =
+        server.http.post(format!("{}/v2/admin/notify-updates", server.base)).header("x-forwarded-for", "203.0.113.9").send().await.unwrap();
     assert_eq!(through_caddy.status().as_u16(), 404);
     let local = server.http.post(format!("{}/v2/admin/notify-updates", server.base)).send().await.unwrap();
     assert_eq!(local.status().as_u16(), 204);

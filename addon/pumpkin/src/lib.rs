@@ -9,10 +9,14 @@ mod names;
 mod studio;
 
 use pumpkin_plugin_api::events::{
-    BlockBreakEvent, BlockDamageAbortEvent, BlockDamageEvent, BlockDropItemEvent, BlockPhysicsEvent, BlockPistonExtendEvent, BlockPistonRetractEvent, BlockPlaceEvent, NotePlayEvent, DialogClickActionEvent, EntityCombustEvent, EntityDamageByEntityEvent, EntityDamageEvent, EntityDeathEvent, EntityDismountEvent, EntityPickupItemEvent, EntityTargetEvent, CraftItemEvent, EventData, EventHandler, LootGenerateEvent, PlayerFishEvent, EventPriority, InteractAction, InventoryClickEvent,
-    InventoryCloseEvent, PlayerAdvancementDoneEvent, PlayerChangeWorldEvent, PlayerChatEvent, PlayerCommandPreprocessEvent, PlayerDeathEvent, PlayerInteractEntityEvent,
-    PlayerInteractEvent, PlayerItemConsumeEvent, PlayerJoinEvent, PlayerLeaveEvent, PlayerRespawnEvent, ServerListPingEvent, PlayerToggleSneakEvent, PlayerDropItemEvent,
-    PlayerLevelChangeEvent, PlayerTeleportEvent, PlayerGamemodeChangeEvent, PlayerPickBlockEvent, PlayerPickEntityEvent,
+    BlockBreakEvent, BlockDamageAbortEvent, BlockDamageEvent, BlockDropItemEvent, BlockPhysicsEvent, BlockPistonExtendEvent,
+    BlockPistonRetractEvent, BlockPlaceEvent, CraftItemEvent, DialogClickActionEvent, EntityCombustEvent, EntityDamageByEntityEvent,
+    EntityDamageEvent, EntityDeathEvent, EntityDismountEvent, EntityPickupItemEvent, EntityTargetEvent, EventData, EventHandler,
+    EventPriority, InteractAction, InventoryClickEvent, InventoryCloseEvent, LootGenerateEvent, NotePlayEvent, PlayerAdvancementDoneEvent,
+    PlayerChangeWorldEvent, PlayerChatEvent, PlayerCommandPreprocessEvent, PlayerDeathEvent, PlayerDropItemEvent, PlayerFishEvent,
+    PlayerGamemodeChangeEvent, PlayerInteractEntityEvent, PlayerInteractEvent, PlayerItemConsumeEvent, PlayerJoinEvent, PlayerLeaveEvent,
+    PlayerLevelChangeEvent, PlayerPickBlockEvent, PlayerPickEntityEvent, PlayerRespawnEvent, PlayerTeleportEvent, PlayerToggleSneakEvent,
+    ServerListPingEvent,
 };
 use pumpkin_plugin_api::permissions;
 use pumpkin_plugin_api::scheduler::SchedulerExt;
@@ -217,7 +221,8 @@ impl Plugin for Monolab {
         context.register_event_handler::<BlockDamageAbortEvent, _>(Looks(Arc::clone(&state)), EventPriority::Lowest, false)?;
         // M5: studio mobs.
         // Last and only when it goes ahead (Paper's MONITOR + ignoreCancelled).
-        context.register_event_handler_ignoring_cancelled::<EntityDamageByEntityEvent, _>(Looks(Arc::clone(&state)), EventPriority::Highest)?;
+        context
+            .register_event_handler_ignoring_cancelled::<EntityDamageByEntityEvent, _>(Looks(Arc::clone(&state)), EventPriority::Highest)?;
         context.register_event_handler::<EntityDeathEvent, _>(Looks(Arc::clone(&state)), EventPriority::Lowest, false)?;
         context.register_event_handler::<EntityDismountEvent, _>(Looks(Arc::clone(&state)), EventPriority::Lowest, false)?;
         // Studio loot from chests and fishing.
@@ -319,12 +324,15 @@ impl EventHandler<PlayerChatEvent> for Looks {
         let who = who_of(&event.player);
         let message = event.message.clone();
         self.with(async |studio| {
-            studio.fire(&server, "chat", Some(&event.player), vec![("message".into(), message.clone())], |when| {
-                let contains = studio_format::fields::text(when, "contains", "");
-                contains.trim().is_empty() || message.to_lowercase().contains(&contains.to_lowercase())
-            }).await;
+            studio
+                .fire(&server, "chat", Some(&event.player), vec![("message".into(), message.clone())], |when| {
+                    let contains = studio_format::fields::text(when, "contains", "");
+                    contains.trim().is_empty() || message.to_lowercase().contains(&contains.to_lowercase())
+                })
+                .await;
             Some(())
-        }).await;
+        })
+        .await;
         if let Some(line) = self.with(async |studio| studio.chat(&server, &event.player, &who, &event.message)).await {
             let json = line.to_json();
             for one in &event.recipients {
@@ -349,15 +357,28 @@ impl EventHandler<PlayerInteractEvent> for Looks {
         // M3 first: placing a studio block or piece, or using one of ours.
         let block = matches!(event.action, InteractAction::RightClickBlock);
         if (block && self.with(async |studio| Some(studio.block_clicked(&server, &event.player).await)).await == Some(true))
-            || ((block || matches!(event.action, InteractAction::RightClickAir)) && self.with(async |studio| Some(studio.used_item(&server, &event.player).await)).await == Some(true))
+            || ((block || matches!(event.action, InteractAction::RightClickAir))
+                && self.with(async |studio| Some(studio.used_item(&server, &event.player).await)).await == Some(true))
         {
             event.cancelled = true;
         }
         // The `click` rule event.
         let button = if matches!(event.action, InteractAction::RightClickAir | InteractAction::RightClickBlock) { "right" } else { "left" };
         let extra = match event.clicked_pos {
-            Some(at) => vec![("button".into(), button.to_string()), ("block".into(), block_name(&event.block)), ("x".into(), at.x.to_string()), ("y".into(), at.y.to_string()), ("z".into(), at.z.to_string())],
-            None => vec![("button".into(), button.to_string()), ("block".into(), "air".into()), ("x".into(), String::new()), ("y".into(), String::new()), ("z".into(), String::new())],
+            Some(at) => vec![
+                ("button".into(), button.to_string()),
+                ("block".into(), block_name(&event.block)),
+                ("x".into(), at.x.to_string()),
+                ("y".into(), at.y.to_string()),
+                ("z".into(), at.z.to_string()),
+            ],
+            None => vec![
+                ("button".into(), button.to_string()),
+                ("block".into(), "air".into()),
+                ("x".into(), String::new()),
+                ("y".into(), String::new()),
+                ("z".into(), String::new()),
+            ],
         };
         if self.cancellable(&server, "click", &event.player, extra).await {
             event.cancelled = true;
@@ -377,14 +398,21 @@ impl EventHandler<PlayerInteractEntityEvent> for Looks {
         let ours = if attack {
             self.with(async |studio| Some(studio.is_npc(event.entity_id))).await
         } else {
-            self.with(async |studio| Some(studio.npc_clicked(&server, &event.player, event.entity_id).await || studio.mob_clicked(&server, &event.player, event.entity_id).await)).await
+            self.with(async |studio| {
+                Some(
+                    studio.npc_clicked(&server, &event.player, event.entity_id).await
+                        || studio.mob_clicked(&server, &event.player, event.entity_id).await,
+                )
+            })
+            .await
         };
         if ours == Some(true) {
             event.cancelled = true;
         } else if !attack && !event.cancelled {
             let entity = self.with(async |studio| Some(studio.entity_name(&server, event.entity_id))).await.unwrap_or_default();
             let name = entity.trim_start_matches("studio:").to_string();
-            if self.cancellable(&server, "click_entity", &event.player, vec![("entity".into(), entity), ("entity_name".into(), name)]).await {
+            if self.cancellable(&server, "click_entity", &event.player, vec![("entity".into(), entity), ("entity_name".into(), name)]).await
+            {
                 event.cancelled = true;
             }
         }
@@ -423,9 +451,11 @@ impl EventHandler<EntityDamageEvent> for Looks {
                     studio.player_hurt(&server, event.entity_id).await;
                 }
                 Some(())
-            }).await;
+            })
+            .await;
             if !event.cancelled
-                && let Some(player) = server.get_all_players().into_iter().find(|one| one.as_entity().get_id() as i64 == i64::from(event.entity_id))
+                && let Some(player) =
+                    server.get_all_players().into_iter().find(|one| one.as_entity().get_id() as i64 == i64::from(event.entity_id))
             {
                 let cause = map::biome_name(&format!("{:?}", event.damage_type)).trim_start_matches("minecraft:").to_string();
                 let extra = vec![("cause".into(), cause), ("amount".into(), amount(event.damage)), ("attacker".into(), String::new())];
@@ -442,7 +472,9 @@ impl EventHandler<EntityDamageByEntityEvent> for Looks {
     async fn handle(&self, server: Server, mut event: EventData<EntityDamageByEntityEvent>) -> EventData<EntityDamageByEntityEvent> {
         // Skipped while cancelled (registered with `ignore-cancelled`, Paper's `ignoreCancelled`).
         // The `hit` rule event: a player hitting something themselves.
-        if let Some(player) = server.get_all_players().into_iter().find(|one| one.as_entity().get_id() as i64 == i64::from(event.damager_id)) {
+        if let Some(player) =
+            server.get_all_players().into_iter().find(|one| one.as_entity().get_id() as i64 == i64::from(event.damager_id))
+        {
             let entity = self.with(async |studio| Some(studio.entity_name(&server, event.entity_id))).await.unwrap_or_default();
             if self.cancellable(&server, "hit", &player, vec![("entity".into(), entity), ("amount".into(), amount(event.damage))]).await {
                 event.cancelled = true;
@@ -455,7 +487,8 @@ impl EventHandler<EntityDamageByEntityEvent> for Looks {
             studio.mob_hit(&server, event.entity_id, by).await;
             studio.hit_with_item(&server, event.entity_id, event.damager_id).await;
             Some(())
-        }).await;
+        })
+        .await;
         event
     }
 }
@@ -476,7 +509,8 @@ impl EventHandler<EntityDeathEvent> for Looks {
             studio.mob_loot(&server, event.entity_id, &mut drops).await;
             studio.mob_died(&server, event.entity_id, &mut drops, &mut exp).await;
             Some(())
-        }).await;
+        })
+        .await;
         event.drops = drops;
         event.dropped_exp = exp;
         event
@@ -494,7 +528,8 @@ impl EventHandler<LootGenerateEvent> for Looks {
         self.with(async |studio| {
             studio.chest_loot(&server, &table, &mut items).await;
             Some(())
-        }).await;
+        })
+        .await;
         event.items = items;
         event
     }
@@ -506,19 +541,25 @@ impl EventHandler<PlayerFishEvent> for Looks {
         if event.cancelled || !matches!(event.state, pumpkin_plugin_api::wit::pumpkin::plugin::event::PlayerFishState::CaughtFish) {
             return event;
         }
-        let caught = match event.caught_uuid.and_then(|caught| event.player.as_entity().get_world().get_entity_by_uuid(caught)).and_then(|item| item.get_item_stack()) {
+        let caught = match event
+            .caught_uuid
+            .and_then(|caught| event.player.as_entity().get_world().get_entity_by_uuid(caught))
+            .and_then(|item| item.get_item_stack())
+        {
             Some(stack) => stack.get_registry_key().await,
             None => String::new(),
         };
         let mut event = event;
-        if self.cancellable(&server, "fish", &event.player, vec![("item".into(), block_name(&caught)), ("amount".into(), "1".into())]).await {
+        if self.cancellable(&server, "fish", &event.player, vec![("item".into(), block_name(&caught)), ("amount".into(), "1".into())]).await
+        {
             event.cancelled = true;
             return event;
         }
         self.with(async |studio| {
             studio.quest_event(&server, &event.player, "fish", &caught, 1).await;
             Some(())
-        }).await;
+        })
+        .await;
         let replace = self.with(async |studio| Some(studio.fished(&server, &event.player).await)).await == Some(true);
         if replace
             && let Some(caught) = event.caught_uuid
@@ -537,7 +578,8 @@ impl EventHandler<EntityDismountEvent> for Looks {
             self.with(async |studio| {
                 studio.stood_up(event.entity_id, event.dismounted_id);
                 Some(())
-            }).await;
+            })
+            .await;
         }
         event
     }
@@ -549,7 +591,8 @@ impl EventHandler<EntityTargetEvent> for Looks {
             self.with(async |studio| {
                 studio.mob_targeted(&server, event.entity_id, event.target_id).await;
                 Some(())
-            }).await;
+            })
+            .await;
         }
         event
     }
@@ -567,7 +610,9 @@ impl EventHandler<EntityCombustEvent> for Looks {
 impl EventHandler<CraftItemEvent> for Looks {
     async fn handle(&self, server: Server, mut event: EventData<CraftItemEvent>) -> EventData<CraftItemEvent> {
         let item = event.recipe_id.rsplit(['/', ':']).next().unwrap_or_default().to_string();
-        if !event.cancelled && self.cancellable(&server, "craft", &event.player, vec![("item".into(), item), ("amount".into(), "1".into())]).await {
+        if !event.cancelled
+            && self.cancellable(&server, "craft", &event.player, vec![("item".into(), item), ("amount".into(), "1".into())]).await
+        {
             event.cancelled = true;
         }
         if !event.cancelled {
@@ -575,7 +620,8 @@ impl EventHandler<CraftItemEvent> for Looks {
             self.with(async |studio| {
                 studio.quest_event(&server, &event.player, "craft", recipe.rsplit('/').next().unwrap_or(&recipe), 1).await;
                 Some(())
-            }).await;
+            })
+            .await;
         }
         event
     }
@@ -586,18 +632,23 @@ impl EventHandler<EntityPickupItemEvent> for Looks {
         if self.with(async |studio| Some(studio.mob_no_pickup(event.entity_id))).await == Some(true) {
             event.cancelled = true;
         } else if !event.cancelled
-            && let Some(player) = server.get_all_players().into_iter().find(|one| one.as_entity().get_id() as i64 == i64::from(event.entity_id))
+            && let Some(player) =
+                server.get_all_players().into_iter().find(|one| one.as_entity().get_id() as i64 == i64::from(event.entity_id))
         {
             let item = event.item_name.clone();
             let count = u32::from(event.count);
-            if self.cancellable(&server, "pickup", &player, vec![("item".into(), block_name(&item)), ("amount".into(), count.to_string())]).await {
+            if self
+                .cancellable(&server, "pickup", &player, vec![("item".into(), block_name(&item)), ("amount".into(), count.to_string())])
+                .await
+            {
                 event.cancelled = true;
                 return event;
             }
             self.with(async |studio| {
                 studio.quest_event(&server, &player, "collect", &item, count).await;
                 Some(())
-            }).await;
+            })
+            .await;
         }
         event
     }
@@ -605,7 +656,11 @@ impl EventHandler<EntityPickupItemEvent> for Looks {
 
 impl EventHandler<InventoryClickEvent> for Looks {
     async fn handle(&self, server: Server, mut event: EventData<InventoryClickEvent>) -> EventData<InventoryClickEvent> {
-        if self.with(async |studio| Some(studio.menu_click(&server, &event.player, i32::from(event.raw_slot), event.click_type).await)).await == Some(true) {
+        if self
+            .with(async |studio| Some(studio.menu_click(&server, &event.player, i32::from(event.raw_slot), event.click_type).await))
+            .await
+            == Some(true)
+        {
             event.cancelled = true;
         }
         event
@@ -617,7 +672,8 @@ impl EventHandler<InventoryCloseEvent> for Looks {
         self.with(async |studio| {
             studio.menu_closed(&event.player);
             Some(())
-        }).await;
+        })
+        .await;
         event
     }
 }
@@ -627,7 +683,8 @@ impl EventHandler<PlayerDeathEvent> for Looks {
         self.with(async |studio| {
             studio.fire(&server, "death", Some(&event.player), vec![("killer".into(), String::new())], |_| true).await;
             Some(())
-        }).await;
+        })
+        .await;
         event
     }
 }
@@ -637,21 +694,32 @@ impl EventHandler<PlayerRespawnEvent> for Looks {
         self.with(async |studio| {
             studio.fire_later("respawn", &event.player);
             Some(())
-        }).await;
+        })
+        .await;
         event
     }
 }
 
 impl EventHandler<PlayerItemConsumeEvent> for Looks {
     async fn handle(&self, server: Server, mut event: EventData<PlayerItemConsumeEvent>) -> EventData<PlayerItemConsumeEvent> {
-        if !event.cancelled && self.cancellable(&server, "eat", &event.player, vec![("item".into(), block_name(&event.item_name)), ("amount".into(), "1".into())]).await {
+        if !event.cancelled
+            && self
+                .cancellable(
+                    &server,
+                    "eat",
+                    &event.player,
+                    vec![("item".into(), block_name(&event.item_name)), ("amount".into(), "1".into())],
+                )
+                .await
+        {
             event.cancelled = true;
         }
         if !event.cancelled {
             self.with(async |studio| {
                 studio.ate_item(&server, &event.player).await;
                 Some(())
-            }).await;
+            })
+            .await;
         }
         event
     }
@@ -683,7 +751,8 @@ impl EventHandler<BlockBreakEvent> for Looks {
                 studio.quest_event(&server, player, "break", &block_name(&block), 1).await;
             }
             Some(())
-        }).await;
+        })
+        .await;
         event
     }
 }
@@ -703,7 +772,8 @@ impl EventHandler<BlockPlaceEvent> for Looks {
             studio.block_placed(&event.player, at, &block).await;
             studio.quest_event(&server, &event.player, "place", &block_name(&block), 1).await;
             Some(())
-        }).await;
+        })
+        .await;
         event
     }
 }
@@ -716,7 +786,8 @@ impl EventHandler<BlockDropItemEvent> for Looks {
             studio.studio_block_drops(&server, at, event.player.as_ref(), &mut items).await;
             studio.block_drops(&server, at, event.player.as_ref(), &mut items).await;
             Some(())
-        }).await;
+        })
+        .await;
         event.items = items;
         event
     }
@@ -739,7 +810,14 @@ macro_rules! hold_studio_blocks {
 impl EventHandler<BlockPhysicsEvent> for Looks {
     async fn handle(&self, _server: Server, mut event: EventData<BlockPhysicsEvent>) -> EventData<BlockPhysicsEvent> {
         let at = (event.block_pos.x, event.block_pos.y, event.block_pos.z);
-        if !event.cancelled && self.with(async |studio| Some(studio.block_held(&event.target_world, at) || studio.plain_note_held(&event.target_world, at).await)).await == Some(true) {
+        if !event.cancelled
+            && self
+                .with(async |studio| {
+                    Some(studio.block_held(&event.target_world, at) || studio.plain_note_held(&event.target_world, at).await)
+                })
+                .await
+                == Some(true)
+        {
             event.cancelled = true;
         }
         event
@@ -765,7 +843,8 @@ impl EventHandler<BlockDamageEvent> for Looks {
         self.with(async |studio| {
             studio.dig_started(&event.player, at).await;
             Some(())
-        }).await;
+        })
+        .await;
         event
     }
 }
@@ -775,7 +854,8 @@ impl EventHandler<BlockDamageAbortEvent> for Looks {
         self.with(async |studio| {
             studio.dig_stopped(&event.player);
             Some(())
-        }).await;
+        })
+        .await;
         event
     }
 }
@@ -787,12 +867,15 @@ impl EventHandler<PlayerChangeWorldEvent> for Looks {
         }
         let world = world_name(&event.new_world.get_id(), &event.new_world.get_dimension());
         self.with(async |studio| {
-            studio.fire(&server, "world_change", Some(&event.player), vec![("world".into(), world.clone())], |when| {
-                let to = studio_format::fields::text(when, "world", "");
-                to.trim().is_empty() || to == world
-            }).await;
+            studio
+                .fire(&server, "world_change", Some(&event.player), vec![("world".into(), world.clone())], |when| {
+                    let to = studio_format::fields::text(when, "world", "");
+                    to.trim().is_empty() || to == world
+                })
+                .await;
             Some(())
-        }).await;
+        })
+        .await;
         event
     }
 }
@@ -818,13 +901,20 @@ impl Looks {
                 return Some(false);
             }
             Some(studio.fire_cancellable(server, event, Some(player), extra).await)
-        }).await == Some(true)
+        })
+        .await
+            == Some(true)
     }
 }
 
 /// A block event's placeholders: the block and where it is.
 fn spot_extra(block: &str, at: (i32, i32, i32)) -> Vec<(String, String)> {
-    vec![("block".into(), block_name(block)), ("x".into(), at.0.to_string()), ("y".into(), at.1.to_string()), ("z".into(), at.2.to_string())]
+    vec![
+        ("block".into(), block_name(block)),
+        ("x".into(), at.0.to_string()),
+        ("y".into(), at.1.to_string()),
+        ("z".into(), at.2.to_string()),
+    ]
 }
 
 /// A game mode as rules write it.
@@ -879,7 +969,12 @@ impl EventHandler<PlayerTeleportEvent> for Looks {
         }
         let (x, y, z) = event.to_position;
         let world = who_of(&event.player).world;
-        let extra = vec![("world".into(), world), ("x".into(), (x.floor() as i64).to_string()), ("y".into(), (y.floor() as i64).to_string()), ("z".into(), (z.floor() as i64).to_string())];
+        let extra = vec![
+            ("world".into(), world),
+            ("x".into(), (x.floor() as i64).to_string()),
+            ("y".into(), (y.floor() as i64).to_string()),
+            ("z".into(), (z.floor() as i64).to_string()),
+        ];
         if self.cancellable(&server, "teleport", &event.player, extra).await {
             event.cancelled = true;
         }
@@ -899,7 +994,9 @@ impl EventHandler<PlayerGamemodeChangeEvent> for Looks {
 
 impl EventHandler<DialogClickActionEvent> for Looks {
     async fn handle(&self, server: Server, mut event: EventData<DialogClickActionEvent>) -> EventData<DialogClickActionEvent> {
-        if self.with(async |studio| Some(studio.dialog_clicked(&server, &event.player, &event.id, event.payload_nbt.as_ref()).await)).await == Some(true) {
+        if self.with(async |studio| Some(studio.dialog_clicked(&server, &event.player, &event.id, event.payload_nbt.as_ref()).await)).await
+            == Some(true)
+        {
             event.cancelled = true;
         }
         event
@@ -911,7 +1008,8 @@ impl EventHandler<PlayerAdvancementDoneEvent> for Looks {
         self.with(async |studio| {
             studio.advancement_done(&server, &event.player, &event.advancement_id).await;
             Some(())
-        }).await;
+        })
+        .await;
         event
     }
 }
@@ -931,7 +1029,12 @@ impl EventHandler<ServerListPingEvent> for Looks {
 struct BlockCalls(Arc<State>);
 
 impl pumpkin_plugin_api::custom_block::CustomBlockHandler for BlockCalls {
-    async fn handle(&self, server: Server, _block: &str, call: pumpkin_plugin_api::custom_block::BlockCall) -> pumpkin_plugin_api::custom_block::BlockCallResult {
+    async fn handle(
+        &self,
+        server: Server,
+        _block: &str,
+        call: pumpkin_plugin_api::custom_block::BlockCall,
+    ) -> pumpkin_plugin_api::custom_block::BlockCallResult {
         use pumpkin_plugin_api::custom_block::{BlockCall, BlockCallResult};
         let mut held = self.0.studio.lock().await;
         let Some(studio) = held.as_mut() else { return BlockCallResult::None };
@@ -1102,16 +1205,20 @@ impl State {
     /// A Pumpkin command for studio command names; it runs whatever the studio file says at the time.
     fn command(self: &Arc<Self>, one: studio::play::NewCommand) -> pumpkin_plugin_api::command::Command {
         let state = Arc::clone(self);
-        studio::play::command(one.names, &one.description, Arc::new(move |name, sender, server, args| {
-            let state = Arc::clone(&state);
-            Box::pin(async move {
-                let mut held = state.studio.lock().await;
-                let Some(studio) = held.as_mut() else { return };
-                if let Err(problem) = studio.run_command(&server, &name, &sender, args.as_deref().unwrap_or("")).await {
-                    sender.send_error(pumpkin_plugin_api::text::TextComponent::text(&problem));
-                }
-            })
-        }))
+        studio::play::command(
+            one.names,
+            &one.description,
+            Arc::new(move |name, sender, server, args| {
+                let state = Arc::clone(&state);
+                Box::pin(async move {
+                    let mut held = state.studio.lock().await;
+                    let Some(studio) = held.as_mut() else { return };
+                    if let Err(problem) = studio.run_command(&server, &name, &sender, args.as_deref().unwrap_or("")).await {
+                        sender.send_error(pumpkin_plugin_api::text::TextComponent::text(&problem));
+                    }
+                })
+            }),
+        )
     }
 
     /// Rule traces for the app, as lines in `studio/live/out.jsonl` (kept short: the newest 200).
@@ -1129,16 +1236,13 @@ impl State {
         }
     }
 
-
     /// A config.yml switch (missing = on), reread at most every 5 seconds.
     fn on(&self, key: &str) -> bool {
         let now = now_ms();
         let mut held = lock(&self.config);
         if now.saturating_sub(held.0) > 5_000 {
             held.0 = now;
-            held.1 = fs::read_to_string(lock(&self.folder).join("config.yml"))
-                .map(|text| read_switches(&text))
-                .unwrap_or_default();
+            held.1 = fs::read_to_string(lock(&self.folder).join("config.yml")).map(|text| read_switches(&text)).unwrap_or_default();
         }
         held.1.get(key).copied().unwrap_or(true)
     }
@@ -1147,15 +1251,11 @@ impl State {
         let day = self.today();
         self.sweep_if_new_day(&day);
         let path = lock(&self.folder).join(format!("events-{day}.jsonl"));
-        let written = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .and_then(|mut file| {
-                let mut text = line.to_string();
-                text.push('\n');
-                file.write_all(text.as_bytes())
-            });
+        let written = fs::OpenOptions::new().create(true).append(true).open(&path).and_then(|mut file| {
+            let mut text = line.to_string();
+            text.push('\n');
+            file.write_all(text.as_bytes())
+        });
         if let Err(error) = written {
             self.warn_once(&format!("Couldn't write records ({}): {error}", path.display()));
         }
@@ -1164,8 +1264,7 @@ impl State {
     fn set_live(&self, value: Value) {
         let folder = lock(&self.folder).clone();
         let temporary = folder.join("live.json.tmp");
-        let written = fs::write(&temporary, value.to_string())
-            .and_then(|()| fs::rename(&temporary, folder.join("live.json")));
+        let written = fs::write(&temporary, value.to_string()).and_then(|()| fs::rename(&temporary, folder.join("live.json")));
         if let Err(error) = written {
             self.warn_once(&format!("Couldn't write live.json: {error}"));
         }
@@ -1209,9 +1308,7 @@ impl State {
     }
 
     fn sweep(&self) {
-        let cutoff = civil_date(
-            now_ms() as i64 / 1000 + self.offset_minutes.load(Ordering::Relaxed) * 60 - KEEP_DAYS * 86_400,
-        );
+        let cutoff = civil_date(now_ms() as i64 / 1000 + self.offset_minutes.load(Ordering::Relaxed) * 60 - KEEP_DAYS * 86_400);
         let folder = lock(&self.folder).clone();
         let Ok(entries) = fs::read_dir(&folder) else {
             return;
@@ -1248,10 +1345,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|since| since.as_millis() as u64)
-        .unwrap_or(0)
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|since| since.as_millis() as u64).unwrap_or(0)
 }
 
 /// The server's local time as `HH:MM`, for rule schedules.
@@ -1338,7 +1432,13 @@ async fn inventories_json(server: &Server) -> Value {
             }
         }
         if let Some(living) = player.as_entity().as_living() {
-            for (slot, part) in [(100, EquipmentSlot::Feet), (101, EquipmentSlot::Legs), (102, EquipmentSlot::Chest), (103, EquipmentSlot::Head), (-106, EquipmentSlot::OffHand)] {
+            for (slot, part) in [
+                (100, EquipmentSlot::Feet),
+                (101, EquipmentSlot::Legs),
+                (102, EquipmentSlot::Chest),
+                (103, EquipmentSlot::Head),
+                (-106, EquipmentSlot::OffHand),
+            ] {
                 if let Some(stack) = living.get_equipment(part)
                     && let Some(one) = inventory_item(slot, &stack).await
                 {

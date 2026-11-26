@@ -63,12 +63,7 @@ pub fn on_close(window: &Window) {
     if !settings.tray_hint_shown {
         settings.tray_hint_shown = true;
         let _ = crate::write_app_settings(app, &settings);
-        let _ = app
-            .notification()
-            .builder()
-            .title("Monolab")
-            .body("Monolab is still running in the tray. Use Quit there to exit.")
-            .show();
+        let _ = app.notification().builder().title("Monolab").body("Monolab is still running in the tray. Use Quit there to exit.").show();
     }
 }
 

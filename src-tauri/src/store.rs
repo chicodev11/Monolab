@@ -34,7 +34,11 @@ fn backup_of(path: &Path) -> PathBuf {
 /// The backup to read: the current place, else one left beside the file by an older version.
 fn backup_to_read(path: &Path) -> PathBuf {
     let now = backup_of(path);
-    if now.exists() { now } else { beside(path, ".bak") }
+    if now.exists() {
+        now
+    } else {
+        beside(path, ".bak")
+    }
 }
 
 fn is_json(text: &str) -> bool {
@@ -141,10 +145,7 @@ fn restore_backup<T: DeserializeOwned>(path: &Path, name: &str) -> Result<Option
 
 /// Moves a damaged file out of the way so the next save can't overwrite it; returns where it went.
 pub fn set_aside(path: &Path) -> Option<PathBuf> {
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|time| time.as_secs())
-        .unwrap_or_default();
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|time| time.as_secs()).unwrap_or_default();
     let target = beside(path, &format!(".broken-{stamp}"));
     fs::rename(path, &target).ok().map(|_| target)
 }

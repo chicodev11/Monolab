@@ -1,4 +1,3 @@
-
 use crate::data_root::MonolabDirs;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -85,8 +84,8 @@ pub fn open(app: &AppHandle, server: &str, session: &str, mode: &str, model: &st
             return Ok(id.clone());
         }
     }
-    let claude = claude_agent::find_claude(app)
-        .ok_or("Claude Code isn't installed on this computer. Install it as shown, then try again.")?;
+    let claude =
+        claude_agent::find_claude(app).ok_or("Claude Code isn't installed on this computer. Install it as shown, then try again.")?;
     let instance = crate::team_agent::instance_for(app, server)?;
     let dir = claude_agent::workspace(app, server)?;
     if session.is_empty() {
@@ -149,10 +148,7 @@ pub fn open(app: &AppHandle, server: &str, session: &str, mode: &str, model: &st
     let stdout = child.stdout.take().ok_or("Could not open Claude Code's output.")?;
     let stderr = child.stderr.take();
 
-    let id = format!(
-        "chat{}",
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|one| one.as_millis()).unwrap_or(0)
-    );
+    let id = format!("chat{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|one| one.as_millis()).unwrap_or(0));
     chats().lock().expect("chat poisoned").insert(
         id.clone(),
         Chat {
@@ -247,8 +243,7 @@ fn write_line(id: &str, value: &serde_json::Value) -> Result<(), String> {
 }
 
 pub fn send(app: &AppHandle, id: &str, content: &str) -> Result<(), String> {
-    let content: serde_json::Value =
-        serde_json::from_str(content).map_err(|error| format!("The content to send is invalid: {error}"))?;
+    let content: serde_json::Value = serde_json::from_str(content).map_err(|error| format!("The content to send is invalid: {error}"))?;
     if !(content.is_string() || content.is_array()) {
         return Err("The content to send is invalid.".to_string());
     }
@@ -310,7 +305,9 @@ fn model_name(model: &str) -> Result<&str, String> {
     let model = model.trim();
     let fine = model.is_empty()
         || matches!(model, "default" | "opus" | "sonnet" | "haiku" | "fable" | "opusplan")
-        || (model.starts_with("claude-") && model.len() < 64 && model.chars().all(|one| one.is_ascii_alphanumeric() || matches!(one, '-' | '.' | '[' | ']')));
+        || (model.starts_with("claude-")
+            && model.len() < 64
+            && model.chars().all(|one| one.is_ascii_alphanumeric() || matches!(one, '-' | '.' | '[' | ']')));
     if !fine {
         return Err("Unknown model.".into());
     }
@@ -328,10 +325,7 @@ pub fn set_model(id: &str, model: &str) -> Result<(), String> {
 }
 
 fn request_id(prefix: &str) -> String {
-    format!(
-        "{prefix}{}",
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|one| one.as_nanos()).unwrap_or(0)
-    )
+    format!("{prefix}{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|one| one.as_nanos()).unwrap_or(0))
 }
 
 pub fn set_mode(id: &str, mode: &str) -> Result<(), String> {
@@ -346,10 +340,8 @@ pub fn set_mode(id: &str, mode: &str) -> Result<(), String> {
 }
 
 pub fn interrupt(id: &str) -> Result<(), String> {
-    let request = format!(
-        "stop{}",
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|one| one.as_millis()).unwrap_or(0)
-    );
+    let request =
+        format!("stop{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|one| one.as_millis()).unwrap_or(0));
     let line = serde_json::json!({
         "type": "control_request",
         "request_id": request,
@@ -402,7 +394,11 @@ fn first_words(path: &std::path::Path) -> String {
         }
         let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
         let flag = |key: &str| value.get(key).and_then(|one| one.as_bool()).unwrap_or(false);
-        if value.get("type").and_then(|one| one.as_str()) != Some("user") || flag("isMeta") || flag("isSidechain") || flag("isCompactSummary") {
+        if value.get("type").and_then(|one| one.as_str()) != Some("user")
+            || flag("isMeta")
+            || flag("isSidechain")
+            || flag("isCompactSummary")
+        {
             continue;
         }
         let content = value.get("message").and_then(|one| one.get("content"));
@@ -566,13 +562,8 @@ pub fn close(id: &str) {
 }
 
 pub fn close_server(server: &str) {
-    let ids: Vec<String> = chats()
-        .lock()
-        .expect("chat poisoned")
-        .iter()
-        .filter(|(_, one)| one.server == server)
-        .map(|(id, _)| id.clone())
-        .collect();
+    let ids: Vec<String> =
+        chats().lock().expect("chat poisoned").iter().filter(|(_, one)| one.server == server).map(|(id, _)| id.clone()).collect();
     for id in ids {
         close(&id);
     }

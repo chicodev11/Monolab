@@ -1,4 +1,3 @@
-
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
@@ -47,13 +46,14 @@ pub fn event_folder(server: &Path) -> PathBuf {
 
 pub fn write_timezone(server: &Path) -> Result<(), String> {
     let folder = event_folder(server);
-    fs::create_dir_all(&folder)
-        .map_err(|error| format!("Could not create the record folder: {error}"))?;
+    fs::create_dir_all(&folder).map_err(|error| format!("Could not create the record folder: {error}"))?;
     let minutes = chrono::Local::now().offset().local_minus_utc() / 60;
     fs::write(
         folder.join("timezone.json"),
-        format!("{{\"utcOffsetMinutes\":{minutes}}}
-"),
+        format!(
+            "{{\"utcOffsetMinutes\":{minutes}}}
+"
+        ),
     )
     .map_err(|error| format!("Could not save timezone.json: {error}"))
 }
@@ -80,17 +80,11 @@ pub struct ModTarget {
 
 fn mod_targets() -> &'static [ModTarget] {
     static PARSED: std::sync::OnceLock<Vec<ModTarget>> = std::sync::OnceLock::new();
-    PARSED.get_or_init(|| {
-        serde_json::from_str::<TargetFile>(TARGETS_JSON)
-            .expect("Could not read addon/neoforge/targets.json")
-            .targets
-    })
+    PARSED.get_or_init(|| serde_json::from_str::<TargetFile>(TARGETS_JSON).expect("Could not read addon/neoforge/targets.json").targets)
 }
 
 pub fn mod_target(game_version: &str) -> Option<&'static ModTarget> {
-    mod_targets()
-        .iter()
-        .find(|target| target.games.iter().any(|one| one == game_version))
+    mod_targets().iter().find(|target| target.games.iter().any(|one| one == game_version))
 }
 
 const FABRIC_TARGETS_JSON: &str = include_str!("../../addon/fabric/targets.json");
@@ -108,16 +102,12 @@ pub struct FabricTarget {
 fn fabric_targets() -> &'static [FabricTarget] {
     static PARSED: std::sync::OnceLock<Vec<FabricTarget>> = std::sync::OnceLock::new();
     PARSED.get_or_init(|| {
-        serde_json::from_str::<FabricTargetFile>(FABRIC_TARGETS_JSON)
-            .expect("Could not read addon/fabric/targets.json")
-            .targets
+        serde_json::from_str::<FabricTargetFile>(FABRIC_TARGETS_JSON).expect("Could not read addon/fabric/targets.json").targets
     })
 }
 
 pub fn fabric_target(game_version: &str) -> Option<&'static FabricTarget> {
-    fabric_targets()
-        .iter()
-        .find(|target| target.id == game_version)
+    fabric_targets().iter().find(|target| target.id == game_version)
 }
 
 const PUMPKIN_TARGETS_JSON: &str = include_str!("../../addon/pumpkin/targets.json");
@@ -139,9 +129,7 @@ pub struct PumpkinTarget {
 fn pumpkin_targets() -> &'static [PumpkinTarget] {
     static PARSED: std::sync::OnceLock<Vec<PumpkinTarget>> = std::sync::OnceLock::new();
     PARSED.get_or_init(|| {
-        serde_json::from_str::<PumpkinTargetFile>(PUMPKIN_TARGETS_JSON)
-            .expect("Could not read addon/pumpkin/targets.json")
-            .targets
+        serde_json::from_str::<PumpkinTargetFile>(PUMPKIN_TARGETS_JSON).expect("Could not read addon/pumpkin/targets.json").targets
     })
 }
 
@@ -150,38 +138,24 @@ pub fn pumpkin_target(version: &str) -> Option<&'static PumpkinTarget> {
     if version == crate::forks::PUMPKIN_FORK {
         return pumpkin_targets().iter().find(|target| target.rev.is_some());
     }
-    pumpkin_targets()
-        .iter()
-        .find(|target| target.games.iter().any(|one| one == version))
+    pumpkin_targets().iter().find(|target| target.games.iter().any(|one| one == version))
 }
 
 pub fn supported_games(kind: AddonKind) -> Vec<String> {
     match kind {
         AddonKind::Paper => Vec::new(),
-        AddonKind::NeoForge => mod_targets()
-            .iter()
-            .flat_map(|target| target.games.iter().cloned())
-            .collect(),
-        AddonKind::Fabric => fabric_targets()
-            .iter()
-            .map(|target| target.id.clone())
-            .collect(),
-        AddonKind::Pumpkin => pumpkin_targets()
-            .iter()
-            .flat_map(|target| target.games.iter().cloned())
-            .collect(),
+        AddonKind::NeoForge => mod_targets().iter().flat_map(|target| target.games.iter().cloned()).collect(),
+        AddonKind::Fabric => fabric_targets().iter().map(|target| target.id.clone()).collect(),
+        AddonKind::Pumpkin => pumpkin_targets().iter().flat_map(|target| target.games.iter().cloned()).collect(),
     }
 }
 
 pub fn jar_name(kind: AddonKind, game_version: &str, version: u32) -> Option<String> {
     match kind {
         AddonKind::Paper => Some(format!("Monolab-{version}.jar")),
-        AddonKind::NeoForge => mod_target(game_version)
-            .map(|target| format!("Monolab-mod-{}-{version}.jar", target.id)),
-        AddonKind::Fabric => fabric_target(game_version)
-            .map(|target| format!("Monolab-fabric-{}-{version}.jar", target.id)),
-        AddonKind::Pumpkin => pumpkin_target(game_version)
-            .map(|target| format!("Monolab-pumpkin-{}-{version}.wasm", target.id)),
+        AddonKind::NeoForge => mod_target(game_version).map(|target| format!("Monolab-mod-{}-{version}.jar", target.id)),
+        AddonKind::Fabric => fabric_target(game_version).map(|target| format!("Monolab-fabric-{}-{version}.jar", target.id)),
+        AddonKind::Pumpkin => pumpkin_target(game_version).map(|target| format!("Monolab-pumpkin-{}-{version}.wasm", target.id)),
     }
 }
 
@@ -276,23 +250,14 @@ pub struct GameEvent {
 }
 
 fn read_counts(value: Option<&serde_json::Value>) -> Option<BTreeMap<String, u64>> {
-    let found: BTreeMap<String, u64> = value?
-        .as_object()?
-        .iter()
-        .filter_map(|(block, count)| Some((block.clone(), count.as_u64()?)))
-        .collect();
+    let found: BTreeMap<String, u64> =
+        value?.as_object()?.iter().filter_map(|(block, count)| Some((block.clone(), count.as_u64()?))).collect();
     (!found.is_empty()).then_some(found)
 }
 
 pub fn parse_line(line: &str) -> Option<GameEvent> {
     let value: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
-    let text = |key: &str| {
-        value
-            .get(key)
-            .and_then(|found| found.as_str())
-            .filter(|found| !found.is_empty())
-            .map(str::to_owned)
-    };
+    let text = |key: &str| value.get(key).and_then(|found| found.as_str()).filter(|found| !found.is_empty()).map(str::to_owned);
     let number = |key: &str| value.get(key).and_then(|found| found.as_f64());
     Some(GameEvent {
         at: value.get("at").and_then(|found| found.as_u64())?,
@@ -424,10 +389,7 @@ pub struct LiveWorld {
 const LIVE_STALE_MS: u64 = 15_000;
 
 fn stale(at_ms: u64, limit_ms: u64) -> bool {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|since| since.as_millis() as u64)
-        .unwrap_or(0);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|since| since.as_millis() as u64).unwrap_or(0);
     now > at_ms && now - at_ms > limit_ms
 }
 
@@ -469,10 +431,7 @@ pub fn command_book_from_text(text: &str) -> CommandBook {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
         return CommandBook::default();
     };
-    CommandBook {
-        nodes: read_nodes(&value),
-        flat: read_flat(&value),
-    }
+    CommandBook { nodes: read_nodes(&value), flat: read_flat(&value) }
 }
 
 fn read_nodes(value: &serde_json::Value) -> Vec<CommandNode> {
@@ -484,31 +443,15 @@ fn read_nodes(value: &serde_json::Value) -> Vec<CommandNode> {
                 .filter_map(|one| {
                     Some(CommandNode {
                         kind: one.get("kind")?.as_str()?.to_string(),
-                        name: one
-                            .get("name")
-                            .and_then(|found| found.as_str())
-                            .map(str::to_owned),
+                        name: one.get("name").and_then(|found| found.as_str()).map(str::to_owned),
                         children: one
                             .get("children")
                             .and_then(|found| found.as_array())
-                            .map(|kids| {
-                                kids.iter()
-                                    .filter_map(|kid| kid.as_str()?.parse().ok())
-                                    .collect()
-                            })
+                            .map(|kids| kids.iter().filter_map(|kid| kid.as_str()?.parse().ok()).collect())
                             .unwrap_or_default(),
-                        redirect: one
-                            .get("redirect")
-                            .and_then(|found| found.as_u64())
-                            .map(|at| at as usize),
-                        run: one
-                            .get("run")
-                            .and_then(|found| found.as_bool())
-                            .unwrap_or(false),
-                        from: one
-                            .get("from")
-                            .and_then(|found| found.as_str())
-                            .map(str::to_owned),
+                        redirect: one.get("redirect").and_then(|found| found.as_u64()).map(|at| at as usize),
+                        run: one.get("run").and_then(|found| found.as_bool()).unwrap_or(false),
+                        from: one.get("from").and_then(|found| found.as_str()).map(str::to_owned),
                     })
                 })
                 .collect()
@@ -525,22 +468,12 @@ fn read_flat(value: &serde_json::Value) -> Vec<ServerCommand> {
         .filter_map(|one| {
             Some(ServerCommand {
                 name: one.get("name")?.as_str()?.to_string(),
-                usage: one
-                    .get("usage")
-                    .and_then(|found| found.as_str())
-                    .map(str::to_owned),
-                from: one
-                    .get("from")
-                    .and_then(|found| found.as_str())
-                    .map(str::to_owned),
+                usage: one.get("usage").and_then(|found| found.as_str()).map(str::to_owned),
+                from: one.get("from").and_then(|found| found.as_str()).map(str::to_owned),
                 args: one
                     .get("args")
                     .and_then(|found| found.as_array())
-                    .map(|list| {
-                        list.iter()
-                            .filter_map(|item| item.as_str().map(str::to_owned))
-                            .collect()
-                    })
+                    .map(|list| list.iter().filter_map(|item| item.as_str().map(str::to_owned)).collect())
                     .unwrap_or_default(),
             })
         })
@@ -563,10 +496,7 @@ pub fn live_from_text(text: &str) -> Option<LiveState> {
             let whole = |key: &str| one.get(key).and_then(|found| found.as_i64()).unwrap_or(0);
             Some(LivePlayer {
                 name: one.get("name")?.as_str()?.to_string(),
-                world: one
-                    .get("world")
-                    .and_then(|found| found.as_str())
-                    .map(str::to_owned),
+                world: one.get("world").and_then(|found| found.as_str()).map(str::to_owned),
                 x: number("x").unwrap_or(0.0),
                 y: number("y").unwrap_or(0.0),
                 z: number("z").unwrap_or(0.0),
@@ -602,12 +532,7 @@ fn read_entity_kinds(value: Option<&serde_json::Value>) -> Vec<EntityKind> {
         .and_then(|found| found.as_array())
         .map(|rows| {
             rows.iter()
-                .filter_map(|one| {
-                    Some(EntityKind {
-                        r#type: one.get("type")?.as_str()?.to_string(),
-                        count: one.get("count")?.as_u64()?,
-                    })
-                })
+                .filter_map(|one| Some(EntityKind { r#type: one.get("type")?.as_str()?.to_string(), count: one.get("count")?.as_u64()? }))
                 .collect()
         })
         .unwrap_or_default()
@@ -674,13 +599,7 @@ pub fn read_day(server: &Path, day: &str, filter: &Filter) -> Vec<GameEvent> {
         .rev()
         .filter_map(parse_line)
         .filter(|event| filter.kinds.is_empty() || matches_kind(&filter.kinds, event))
-        .filter(|event| {
-            wanted.is_empty()
-                || event
-                    .player
-                    .as_deref()
-                    .is_some_and(|name| name.to_lowercase().contains(&wanted))
-        })
+        .filter(|event| wanted.is_empty() || event.player.as_deref().is_some_and(|name| name.to_lowercase().contains(&wanted)))
         .take(if filter.limit == 0 { 500 } else { filter.limit })
         .collect();
     found.shrink_to_fit();
@@ -698,20 +617,14 @@ mod tests {
             {"kind":"literal","name":"execute","redirect":0}
         ]}"#;
         let value: serde_json::Value = serde_json::from_str(text).unwrap();
-        let book = super::CommandBook {
-            nodes: super::read_nodes(&value),
-            flat: super::read_flat(&value),
-        };
+        let book = super::CommandBook { nodes: super::read_nodes(&value), flat: super::read_flat(&value) };
         assert_eq!(book.nodes.len(), 4);
         assert_eq!(book.nodes[0].children, vec![1]);
         assert_eq!(book.nodes[1].name.as_deref(), Some("difficulty"));
         assert_eq!(book.nodes[1].from.as_deref(), Some("MyPlugin"));
         assert!(book.nodes[2].run);
         assert_eq!(book.nodes[3].redirect, Some(0));
-        let old = serde_json::from_str::<serde_json::Value>(
-            r#"{"at":1,"commands":[{"name":"say","args":["hi"]}]}"#,
-        )
-        .unwrap();
+        let old = serde_json::from_str::<serde_json::Value>(r#"{"at":1,"commands":[{"name":"say","args":["hi"]}]}"#).unwrap();
         assert!(super::read_nodes(&old).is_empty());
         assert_eq!(super::read_flat(&old).len(), 1);
     }
@@ -727,11 +640,7 @@ mod tests {
             .map(|value| value.trim().to_string())
             .next()
             .expect("seAddonVersion is missing from gradle.properties");
-        assert_eq!(
-            gradle,
-            ADDON_VERSION.to_string(),
-            "seAddonVersion in gradle.properties differs from ADDON_VERSION in events.rs"
-        );
+        assert_eq!(gradle, ADDON_VERSION.to_string(), "seAddonVersion in gradle.properties differs from ADDON_VERSION in events.rs");
         let pumpkin = include_str!("../../addon/pumpkin/src/lib.rs");
         assert!(
             pumpkin.contains(&format!("const VERSION: &str = \"{gradle}\";")),
@@ -746,16 +655,11 @@ mod tests {
         let folder = event_folder(&root);
         std::fs::create_dir_all(&folder).unwrap();
 
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
         let write = |at: u64| {
             std::fs::write(
                 folder.join("live.json"),
-                format!(
-                    r#"{{"at":{at},"tps":20.0,"players":[{{"name":"alex","world":"world","x":1,"y":64,"z":2}}]}}"#
-                ),
+                format!(r#"{{"at":{at},"tps":20.0,"players":[{{"name":"alex","world":"world","x":1,"y":64,"z":2}}]}}"#),
             )
             .unwrap();
         };
@@ -765,32 +669,21 @@ mod tests {
         assert_eq!(live.players.len(), 1);
 
         write(now - 8_000);
-        assert!(
-            read_live(&root).is_some(),
-            "dropping data a few seconds old would make the screen flicker during lag"
-        );
+        assert!(read_live(&root).is_some(), "dropping data a few seconds old would make the screen flicker during lag");
 
         write(now - 60_000);
-        assert!(
-            read_live(&root).is_none(),
-            "stale data counts as missing"
-        );
+        assert!(read_live(&root).is_none(), "stale data counts as missing");
 
         write(now + 30_000);
-        assert!(
-            read_live(&root).is_some(),
-            "treating a future time as stale would drop good values"
-        );
+        assert!(read_live(&root).is_some(), "treating a future time as stale would drop good values");
 
         std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
     fn reads_a_join_line() {
-        let event = parse_line(
-            r#"{"at":1755846000123,"kind":"join","player":"alex","world":"world","x":1.5,"y":64,"z":2}"#,
-        )
-        .expect("should be readable");
+        let event = parse_line(r#"{"at":1755846000123,"kind":"join","player":"alex","world":"world","x":1.5,"y":64,"z":2}"#)
+            .expect("should be readable");
         assert_eq!(event.kind, "join");
         assert_eq!(event.player.as_deref(), Some("alex"));
         assert_eq!(event.x, Some(1.5));
@@ -798,15 +691,12 @@ mod tests {
 
     #[test]
     fn reads_a_block_tally() {
-        let event = parse_line(
-            r#"{"at":9,"kind":"blocks","player":"a","from":3,"placed":{"STONE":412},"broken":{"DIRT":88,"GRAVEL":2}}"#,
-        )
-        .expect("should be readable");
+        let event = parse_line(r#"{"at":9,"kind":"blocks","player":"a","from":3,"placed":{"STONE":412},"broken":{"DIRT":88,"GRAVEL":2}}"#)
+            .expect("should be readable");
         assert_eq!(event.from, Some(3));
         assert_eq!(event.placed.as_ref().unwrap()["STONE"], 412);
         assert_eq!(event.broken.as_ref().unwrap().len(), 2);
-        let only_placed =
-            parse_line(r#"{"at":9,"kind":"blocks","player":"a","placed":{"STONE":1}}"#).unwrap();
+        let only_placed = parse_line(r#"{"at":9,"kind":"blocks","player":"a","placed":{"STONE":1}}"#).unwrap();
         assert!(only_placed.broken.is_none());
     }
 
@@ -832,10 +722,7 @@ mod tests {
         assert_eq!(parse_jar_version(NeoForge, "Monolab-mod-mc1_21_1-5.jar"), Some(5));
         assert_eq!(parse_jar_version(NeoForge, "Monolab-mod-mc26_2-12.jar"), Some(12));
         assert_eq!(parse_jar_version(Paper, "Monolab-mod-mc1_21_1-5.jar"), None);
-        assert_eq!(
-            parse_jar_version(Fabric, "Monolab-fabric-1.21.1-6.jar"),
-            Some(6)
-        );
+        assert_eq!(parse_jar_version(Fabric, "Monolab-fabric-1.21.1-6.jar"), Some(6));
         assert_eq!(parse_jar_version(Fabric, "Monolab-mod-mc1_21_1-6.jar"), None);
         assert_eq!(parse_jar_version(NeoForge, "Monolab-fabric-1.21.1-6.jar"), None);
         assert_eq!(parse_jar_version(Paper, "Monolab-fabric-1.21.1-6.jar"), None);
@@ -847,13 +734,8 @@ mod tests {
 
     #[test]
     fn reads_a_day_from_disk() {
-        let server = std::env::temp_dir().join(format!(
-            "monolab-test-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let server = std::env::temp_dir()
+            .join(format!("monolab-test-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         fs::create_dir_all(event_folder(&server)).unwrap();
         fs::write(
             event_folder(&server).join("events-2026-08-23.jsonl"),
@@ -876,24 +758,10 @@ mod tests {
         assert_eq!(all[0].at, 3);
         assert_eq!(all[2].at, 1);
 
-        let only_death = read_day(
-            &server,
-            "2026-08-23",
-            &Filter {
-                kinds: vec!["death".into()],
-                ..Filter::default()
-            },
-        );
+        let only_death = read_day(&server, "2026-08-23", &Filter { kinds: vec!["death".into()], ..Filter::default() });
         assert_eq!(only_death.len(), 1);
 
-        let mine = read_day(
-            &server,
-            "2026-08-23",
-            &Filter {
-                player: "ALEX".into(),
-                ..Filter::default()
-            },
-        );
+        let mine = read_day(&server, "2026-08-23", &Filter { player: "ALEX".into(), ..Filter::default() });
         assert_eq!(mine.len(), 2);
 
         assert_eq!(event_days(&server), vec!["2026-08-23".to_string()]);
@@ -903,20 +771,12 @@ mod tests {
 
     #[test]
     fn reads_who_is_online() {
-        let server = std::env::temp_dir().join(format!(
-            "monolab-live-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let server = std::env::temp_dir()
+            .join(format!("monolab-live-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         fs::create_dir_all(event_folder(&server)).unwrap();
         assert!(read_live(&server).is_none());
 
-        let at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
         fs::write(
             event_folder(&server).join("live.json"),
             format!(
@@ -940,20 +800,13 @@ mod tests {
         )
         .unwrap();
         let live = read_live(&server).expect("should be readable");
-        assert_eq!(
-            live.entity_kinds,
-            vec![EntityKind { r#type: "minecraft:zombie".into(), count: 2 }]
-        );
+        assert_eq!(live.entity_kinds, vec![EntityKind { r#type: "minecraft:zombie".into(), count: 2 }]);
         assert_eq!(live.hotspots[0].x, 12);
         assert_eq!(live.hotspots[0].z, -4);
         assert_eq!(live.hotspots[0].top.as_deref(), Some("minecraft:zombie"));
         assert_eq!(live.worlds[0].chunks, 600);
 
-        fs::write(
-            event_folder(&server).join("live.json"),
-            format!(r#"{{"at":{at},"players":[]}}"#),
-        )
-        .unwrap();
+        fs::write(event_folder(&server).join("live.json"), format!(r#"{{"at":{at},"players":[]}}"#)).unwrap();
         let empty = read_live(&server).expect("should be readable");
         assert!(empty.players.is_empty());
         assert_eq!(empty.tps, None);
@@ -974,85 +827,45 @@ mod tests {
         assert_eq!(addon_kind("Spigot"), None);
         assert_eq!(addon_kind("Vanilla"), None);
         assert_eq!(addon_kind("Pumpkin"), Some(AddonKind::Pumpkin));
-        assert_eq!(
-            jar_name(AddonKind::Paper, "26.2", 5).as_deref(),
-            Some("Monolab-5.jar")
-        );
-        assert_eq!(
-            jar_name(AddonKind::Paper, "1.21.1", 5).as_deref(),
-            Some("Monolab-5.jar")
-        );
-        assert_eq!(
-            jar_name(AddonKind::NeoForge, "1.21.1", 5).as_deref(),
-            Some("Monolab-mod-mc1_21_1-5.jar")
-        );
-        assert_eq!(
-            jar_name(AddonKind::NeoForge, "26.2", 5).as_deref(),
-            Some("Monolab-mod-mc26_2-5.jar")
-        );
-        assert_eq!(
-            jar_name(AddonKind::NeoForge, "1.21.4", 5).as_deref(),
-            Some("Monolab-mod-mc1_21_4-5.jar")
-        );
-        assert_eq!(
-            jar_name(AddonKind::NeoForge, "1.21.8", 5).as_deref(),
-            Some("Monolab-mod-mc1_21_8-5.jar")
-        );
+        assert_eq!(jar_name(AddonKind::Paper, "26.2", 5).as_deref(), Some("Monolab-5.jar"));
+        assert_eq!(jar_name(AddonKind::Paper, "1.21.1", 5).as_deref(), Some("Monolab-5.jar"));
+        assert_eq!(jar_name(AddonKind::NeoForge, "1.21.1", 5).as_deref(), Some("Monolab-mod-mc1_21_1-5.jar"));
+        assert_eq!(jar_name(AddonKind::NeoForge, "26.2", 5).as_deref(), Some("Monolab-mod-mc26_2-5.jar"));
+        assert_eq!(jar_name(AddonKind::NeoForge, "1.21.4", 5).as_deref(), Some("Monolab-mod-mc1_21_4-5.jar"));
+        assert_eq!(jar_name(AddonKind::NeoForge, "1.21.8", 5).as_deref(), Some("Monolab-mod-mc1_21_8-5.jar"));
         assert_eq!(jar_name(AddonKind::NeoForge, "1.20.1", 5), None);
-        assert_eq!(
-            jar_name(AddonKind::Fabric, "1.21.1", 6).as_deref(),
-            Some("Monolab-fabric-1.21.1-6.jar")
-        );
-        assert_eq!(
-            jar_name(AddonKind::Fabric, "1.21.11", 6).as_deref(),
-            Some("Monolab-fabric-1.21.11-6.jar")
-        );
-        assert_eq!(
-            jar_name(AddonKind::Fabric, "26.2", 6).as_deref(),
-            Some("Monolab-fabric-26.2-6.jar")
-        );
+        assert_eq!(jar_name(AddonKind::Fabric, "1.21.1", 6).as_deref(), Some("Monolab-fabric-1.21.1-6.jar"));
+        assert_eq!(jar_name(AddonKind::Fabric, "1.21.11", 6).as_deref(), Some("Monolab-fabric-1.21.11-6.jar"));
+        assert_eq!(jar_name(AddonKind::Fabric, "26.2", 6).as_deref(), Some("Monolab-fabric-26.2-6.jar"));
         assert_eq!(jar_name(AddonKind::Fabric, "1.20.6", 6), None);
         assert_eq!(jar_name(AddonKind::Fabric, "26.3", 6), None);
         assert!(addon_folder(Path::new("s"), AddonKind::Paper).ends_with("plugins"));
         assert!(addon_folder(Path::new("s"), AddonKind::NeoForge).ends_with("mods"));
         assert!(addon_folder(Path::new("s"), AddonKind::Fabric).ends_with("mods"));
-        assert_eq!(
-            jar_name(AddonKind::Pumpkin, crate::forks::PUMPKIN_FORK, 12).as_deref(),
-            Some("Monolab-pumpkin-26.63-12.wasm")
-        );
-        assert_eq!(
-            jar_name(AddonKind::Pumpkin, "0.2.2+26.3-26.63", 12).as_deref(),
-            Some("Monolab-pumpkin-26.63-12.wasm")
-        );
+        assert_eq!(jar_name(AddonKind::Pumpkin, crate::forks::PUMPKIN_FORK, 12).as_deref(), Some("Monolab-pumpkin-26.63-12.wasm"));
+        assert_eq!(jar_name(AddonKind::Pumpkin, "0.2.2+26.3-26.63", 12).as_deref(), Some("Monolab-pumpkin-26.63-12.wasm"));
         assert_eq!(jar_name(AddonKind::Pumpkin, "nightly", 12), None);
         assert!(addon_folder(Path::new("s"), AddonKind::Pumpkin).ends_with("plugins"));
     }
 
     #[test]
     fn keeps_pumpkin_records_where_the_sandbox_puts_them() {
-        let server = std::env::temp_dir().join(format!(
-            "se-pumpkin-addon-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let server = std::env::temp_dir()
+            .join(format!("se-pumpkin-addon-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let plugins = server.join("plugins");
         fs::create_dir_all(&plugins).unwrap();
         assert_eq!(event_folder(&server), server.join("plugins").join("Monolab"));
-        fs::write(server.join("pumpkin.toml"), "seed = \"1\"
-").unwrap();
-        assert_eq!(
-            event_folder(&server),
-            server.join("plugins").join("data").join("monolab")
-        );
+        fs::write(
+            server.join("pumpkin.toml"),
+            "seed = \"1\"
+",
+        )
+        .unwrap();
+        assert_eq!(event_folder(&server), server.join("plugins").join("data").join("monolab"));
         fs::write(plugins.join("Monolab-pumpkin-26.45-11.wasm.deactivated"), b"").unwrap();
         assert_eq!(installed_addon(&server, AddonKind::Pumpkin), None);
         fs::write(plugins.join("Monolab-pumpkin-26.45-12.wasm"), b"").unwrap();
-        assert_eq!(
-            installed_addon(&server, AddonKind::Pumpkin),
-            Some(("Monolab-pumpkin-26.45-12.wasm".to_string(), 12))
-        );
+        assert_eq!(installed_addon(&server, AddonKind::Pumpkin), Some(("Monolab-pumpkin-26.45-12.wasm".to_string(), 12)));
         assert_eq!(installed_addon(&server, AddonKind::Paper), None);
         write_timezone(&server).unwrap();
         let text = fs::read_to_string(event_folder(&server).join("timezone.json")).unwrap();

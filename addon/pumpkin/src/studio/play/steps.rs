@@ -84,7 +84,8 @@ impl Studio {
             self.play.steps.started = true;
             self.fire(server, "server_start", None, Vec::new(), |_| true).await;
         }
-        let ended: Vec<String> = self.play.steps.bars.iter().filter(|(_, (_, until))| *until > 0 && *until <= now).map(|(id, _)| id.clone()).collect();
+        let ended: Vec<String> =
+            self.play.steps.bars.iter().filter(|(_, (_, until))| *until > 0 && *until <= now).map(|(id, _)| id.clone()).collect();
         for id in ended {
             if let Some((bar, _)) = self.play.steps.bars.remove(&id) {
                 bar.remove_all().await;
@@ -135,8 +136,12 @@ impl Studio {
                 let modes: Vec<String> = fields::lines(one, "modes").into_iter().filter(|one| !one.trim().is_empty()).collect();
                 player.is_some_and(|player| modes.is_empty() || modes.iter().any(|mode| mode == game_mode_name(player.get_gamemode())))
             }
-            "health" => player.is_some_and(|player| compare(f64::from(player.get_health()), &fields::text(one, "op", ">="), number_of(one.get("value"), 10.0))),
-            "level" => player.is_some_and(|player| compare(f64::from(player.get_experience_level()), &fields::text(one, "op", ">="), number_of(one.get("value"), 10.0))),
+            "health" => player.is_some_and(|player| {
+                compare(f64::from(player.get_health()), &fields::text(one, "op", ">="), number_of(one.get("value"), 10.0))
+            }),
+            "level" => player.is_some_and(|player| {
+                compare(f64::from(player.get_experience_level()), &fields::text(one, "op", ">="), number_of(one.get("value"), 10.0))
+            }),
             "sneaking" => player.is_some_and(Player::is_sneaking),
             "time" => world_of(player).is_some_and(|world| {
                 let time = world.get_time_of_day() % 24_000;
@@ -324,7 +329,9 @@ impl Studio {
         if at.1 < bottom || at.1 > top {
             return;
         }
-        world.set_block_state(BlockPos { x: at.0, y: at.1, z: at.2 }, state, BlockFlags::NOTIFY_NEIGHBORS | BlockFlags::NOTIFY_LISTENERS).await;
+        world
+            .set_block_state(BlockPos { x: at.0, y: at.1, z: at.2 }, state, BlockFlags::NOTIFY_NEIGHBORS | BlockFlags::NOTIFY_LISTENERS)
+            .await;
     }
 
     async fn fill(&mut self, server: &Server, one: &Data, run: &Run, player: Option<&Player>) {
@@ -377,14 +384,19 @@ impl Studio {
         let size = ((high.0 - low.0 + 1) as u32, (high.1 - low.1 + 1) as u32, (high.2 - low.2 + 1) as u32);
         let text = Region::from_states(size, &states).to_json();
         let temp = path.with_extension("json.tmp");
-        let saved = path.parent().map_or(Ok(()), fs::create_dir_all).and_then(|()| fs::write(&temp, text)).and_then(|()| fs::rename(&temp, &path));
+        let saved =
+            path.parent().map_or(Ok(()), fs::create_dir_all).and_then(|()| fs::write(&temp, text)).and_then(|()| fs::rename(&temp, &path));
         if let Err(error) = saved {
             tracing::warn!("Couldn't save the studio area {name}: {error}");
         }
     }
 
     async fn paste(&mut self, world: &World, read: &Region, at: (i32, i32, i32), quarter: u32, air: bool) {
-        let palette: Vec<Option<u16>> = read.palette.iter().map(|state| if !air && is_air(state) { None } else { self.state_of(&region::turn_state(state, quarter)) }).collect();
+        let palette: Vec<Option<u16>> = read
+            .palette
+            .iter()
+            .map(|state| if !air && is_air(state) { None } else { self.state_of(&region::turn_state(state, quarter)) })
+            .collect();
         let (width, height, depth) = read.size;
         let (bottom, top) = Self::height(world);
         for y in 0..height {
@@ -396,7 +408,9 @@ impl Studio {
                 for x in 0..width {
                     let Some(Some(state)) = palette.get(read.at(x, y, z) as usize) else { continue };
                     let (tx, tz) = region::turn(x, z, width, depth, quarter);
-                    world.set_block_state(BlockPos { x: at.0 + tx as i32, y: wy, z: at.2 + tz as i32 }, *state, BlockFlags::NOTIFY_LISTENERS).await;
+                    world
+                        .set_block_state(BlockPos { x: at.0 + tx as i32, y: wy, z: at.2 + tz as i32 }, *state, BlockFlags::NOTIFY_LISTENERS)
+                        .await;
                 }
             }
         }
@@ -439,7 +453,10 @@ impl Studio {
             }
             "unload" => {
                 let Some(main) = server.get_all_worlds().into_iter().next() else { return };
-                if name.is_empty() || world_named(server, &name).is_some_and(|found| found.get_id() == main.get_id() && found.get_dimension() == main.get_dimension()) {
+                if name.is_empty()
+                    || world_named(server, &name)
+                        .is_some_and(|found| found.get_id() == main.get_id() && found.get_dimension() == main.get_dimension())
+                {
                     return;
                 }
                 let spawn = main.get_spawn_location();
@@ -575,4 +592,3 @@ async fn xp(player: &Player, one: &Data) {
         _ => player.add_experience_points(amount).await,
     }
 }
-

@@ -1,4 +1,3 @@
-
 use crate::data_root::MonolabDirs;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -106,12 +105,8 @@ pub fn shared_root(app: &AppHandle) -> Result<PathBuf, String> {
 
 pub fn config_for_server(app: &AppHandle, server: &str) -> Option<PathBuf> {
     let store = read(app);
-    let id = store
-        .servers
-        .get(server)
-        .filter(|id| store.accounts.iter().any(|one| &one.id == *id))
-        .cloned()
-        .unwrap_or_else(|| DEFAULT.into());
+    let id =
+        store.servers.get(server).filter(|id| store.accounts.iter().any(|one| &one.id == *id)).cloned().unwrap_or_else(|| DEFAULT.into());
     let dir = account_dir(app, &id).ok()?;
     let _ = prepare(app, &dir);
     Some(dir)
@@ -159,14 +154,8 @@ fn prepare(app: &AppHandle, dir: &Path) -> Result<(), String> {
 
 #[cfg(windows)]
 fn link_folder(link: &Path, target: &Path) -> Result<(), String> {
-    let done = crate::hidden_command("cmd")
-        .arg("/c")
-        .arg("mklink")
-        .arg("/J")
-        .arg(link)
-        .arg(target)
-        .output()
-        .map_err(|error| error.to_string())?;
+    let done =
+        crate::hidden_command("cmd").arg("/c").arg("mklink").arg("/J").arg(link).arg(target).output().map_err(|error| error.to_string())?;
     if done.status.success() {
         Ok(())
     } else {
@@ -192,12 +181,8 @@ pub fn list(app: &AppHandle, server: &str) -> ClaudeAccounts {
         }
         accounts.push(account(app, &one.id, &one.name));
     }
-    let current = store
-        .servers
-        .get(server)
-        .filter(|id| store.accounts.iter().any(|one| &one.id == *id))
-        .cloned()
-        .unwrap_or_else(|| DEFAULT.into());
+    let current =
+        store.servers.get(server).filter(|id| store.accounts.iter().any(|one| &one.id == *id)).cloned().unwrap_or_else(|| DEFAULT.into());
     ClaudeAccounts { accounts, current }
 }
 
@@ -212,10 +197,7 @@ fn clean_name(name: &str) -> Result<String, String> {
 pub fn add(app: &AppHandle, name: &str) -> Result<String, String> {
     let name = clean_name(name)?;
     let mut store = read(app);
-    let id = format!(
-        "acct{}",
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|one| one.as_millis()).unwrap_or(0)
-    );
+    let id = format!("acct{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|one| one.as_millis()).unwrap_or(0));
     prepare(app, &account_dir(app, &id)?)?;
     store.accounts.push(Stored { id: id.clone(), name });
     write(app, &store)?;
@@ -327,7 +309,13 @@ fn run_login(app: &AppHandle, mut command: std::process::Command, signed_in: &dy
         .map_err(|error| format!("Could not start sign-in: {error}"))?;
     *login_input().lock().map_err(|_| "Could not read the sign-in state.")? = child.stdin.take();
     let mut readers = Vec::new();
-    for stream in [child.stdout.take().map(|one| Box::new(one) as Box<dyn std::io::Read + Send>), child.stderr.take().map(|one| Box::new(one) as Box<dyn std::io::Read + Send>)].into_iter().flatten() {
+    for stream in [
+        child.stdout.take().map(|one| Box::new(one) as Box<dyn std::io::Read + Send>),
+        child.stderr.take().map(|one| Box::new(one) as Box<dyn std::io::Read + Send>),
+    ]
+    .into_iter()
+    .flatten()
+    {
         let app = app.clone();
         readers.push(std::thread::spawn(move || {
             for line in BufReader::new(stream).lines().map_while(Result::ok) {

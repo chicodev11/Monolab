@@ -866,9 +866,8 @@ pub const MCP_STDIO_FLAG: &str = "--mcp-stdio";
 pub const MCP_TOKEN_ENV: &str = "MONOLAB_MCP_TOKEN";
 
 fn bridge_url_ok(url: &str) -> bool {
-    reqwest::Url::parse(url).is_ok_and(|url| {
-        url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.username().is_empty() && url.path() == "/mcp"
-    })
+    reqwest::Url::parse(url)
+        .is_ok_and(|url| url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.username().is_empty() && url.path() == "/mcp")
 }
 
 pub fn mcp_stdio_bridge(url: &str) -> i32 {
@@ -901,8 +900,7 @@ pub fn mcp_stdio_bridge(url: &str) -> i32 {
                 let id = serde_json::from_str::<Value>(line).ok().and_then(|value| value.get("id").cloned());
                 match id {
                     Some(id) if !id.is_null() => {
-                        json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32603, "message": "Monolab isn't running." } })
-                            .to_string()
+                        json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32603, "message": "Monolab isn't running." } }).to_string()
                     }
                     _ => continue,
                 }
@@ -1008,7 +1006,12 @@ mod tests {
             eprintln!("[{kind}] {shown}");
             seen.lock().unwrap().push((kind.to_string(), data));
         });
-        let setup = Setup { dir: dir.clone(), roots: vec![dir.clone()], briefing: "You are being tested. Keep answers short.".into(), mcp: Box::new(|_| Ok(json!([]))) };
+        let setup = Setup {
+            dir: dir.clone(),
+            roots: vec![dir.clone()],
+            briefing: "You are being tested. Keep answers short.".into(),
+            mcp: Box::new(|_| Ok(json!([]))),
+        };
         let id = spawn(sink, setup, "test", &agent, &launch, None).expect("spawn");
         let mut opened = start_session(&id, "").expect("start");
         eprintln!("agentInfo {} | authMethods {} | session {:?}", opened.agent_info, opened.auth_methods, opened.session_id);
@@ -1035,7 +1038,9 @@ mod tests {
             .lock()
             .unwrap()
             .iter()
-            .filter(|(kind, data)| kind == "update" && data.pointer("/update/sessionUpdate").and_then(Value::as_str) == Some("agent_message_chunk"))
+            .filter(|(kind, data)| {
+                kind == "update" && data.pointer("/update/sessionUpdate").and_then(Value::as_str) == Some("agent_message_chunk")
+            })
             .filter_map(|(_, data)| data.pointer("/update/content/text").and_then(Value::as_str).map(str::to_string))
             .collect();
         eprintln!("done {done} | reply {reply:?}");

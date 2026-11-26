@@ -54,11 +54,7 @@ pub fn find(text: &str, uuid: &str, now_ms: f64) -> Option<LiveInventory> {
     }
     let want = plain(uuid);
     let person = file.players.into_iter().find(|one| plain(&one.uuid) == want)?;
-    Some(LiveInventory {
-        name: person.name,
-        items: items_of(person.items),
-        ender: items_of(person.ender),
-    })
+    Some(LiveInventory { name: person.name, items: items_of(person.items), ender: items_of(person.ender) })
 }
 
 pub fn merge(live: Vec<InventoryItem>, saved: &[InventoryItem]) -> Vec<InventoryItem> {

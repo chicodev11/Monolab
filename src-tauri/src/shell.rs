@@ -5,13 +5,13 @@
 //! since a shell runs anything on the host.
 
 use base64::Engine;
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Emitter};
-use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 
 /// The most shells open at once (each is a process or an SSH channel).
 const MOST: usize = 8;
@@ -91,7 +91,14 @@ fn local_shell() -> CommandBuilder {
     }
 }
 
-fn open_local(app: AppHandle, session: String, folder: String, cols: u16, rows: u16, mut rx: tokio::sync::mpsc::UnboundedReceiver<Input>) -> Result<(), String> {
+fn open_local(
+    app: AppHandle,
+    session: String,
+    folder: String,
+    cols: u16,
+    rows: u16,
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<Input>,
+) -> Result<(), String> {
     let pair = native_pty_system()
         .openpty(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })
         .map_err(|error| format!("Could not open a terminal: {error}"))?;
@@ -143,7 +150,12 @@ fn open_local(app: AppHandle, session: String, folder: String, cols: u16, rows: 
     Ok(())
 }
 
-async fn run_remote(app: AppHandle, session: String, mut channel: russh::Channel<russh::client::Msg>, mut rx: tokio::sync::mpsc::UnboundedReceiver<Input>) {
+async fn run_remote(
+    app: AppHandle,
+    session: String,
+    mut channel: russh::Channel<russh::client::Msg>,
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<Input>,
+) {
     let mut message = String::new();
     loop {
         tokio::select! {

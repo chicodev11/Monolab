@@ -16,12 +16,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
+use super::Shared;
 use super::store::InstallSeen;
 use super::util::now;
-use super::Shared;
 
 /// Where the signed release list lives. The server only reads the two numbers; apps check the signature.
 pub const UPDATES_URL: &str = "https://github.com/chicodev11/Monolab/releases/download/updates/updates.json";
@@ -310,7 +310,8 @@ mod tests {
     #[test]
     fn hello_is_checked() {
         let id = "0123456789abcdef0123456789abcdef";
-        let ok = parse_hello(&format!(r#"{{"type":"hello","app":"1.0.2","addon":41,"fork":0,"os":"windows-x86_64","install":"{id}"}}"#)).unwrap();
+        let ok = parse_hello(&format!(r#"{{"type":"hello","app":"1.0.2","addon":41,"fork":0,"os":"windows-x86_64","install":"{id}"}}"#))
+            .unwrap();
         assert_eq!(ok, Hello { app: "1.0.2".into(), addon: 41, fork: 0, os: "windows-x86_64".into(), install: Some(id.into()) });
         let anonymous = parse_hello(r#"{"type":"hello","app":"1.0.2","addon":41,"fork":3,"os":"linux-aarch64","install":null}"#).unwrap();
         assert_eq!(anonymous.install, None);
@@ -318,7 +319,9 @@ mod tests {
         let bare = parse_hello(r#"{"type":"hello","app":"1.0.2","os":"macos-aarch64"}"#).unwrap();
         assert_eq!((bare.addon, bare.fork, bare.install), (0, 0, None));
 
-        let hello = |install: &str| parse_hello(&format!(r#"{{"type":"hello","app":"1.0.2","addon":41,"fork":0,"os":"windows-x86_64","install":{install}}}"#));
+        let hello = |install: &str| {
+            parse_hello(&format!(r#"{{"type":"hello","app":"1.0.2","addon":41,"fork":0,"os":"windows-x86_64","install":{install}}}"#))
+        };
         assert_eq!(hello(r#""0123456789ABCDEF0123456789ABCDEF""#), Err("bad_hello"));
         assert_eq!(hello(r#""0123456789abcdef0123456789abcde""#), Err("bad_hello"));
         assert_eq!(hello(r#""0123456789abcdef0123456789abcdef0""#), Err("bad_hello"));

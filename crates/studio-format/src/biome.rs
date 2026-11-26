@@ -8,7 +8,7 @@
 //! fork treats every custom biome as plains on the server anyway), so a vanilla world with them still has ores.
 
 use crate::{fields, item};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 type Data = Map<String, Value>;
 
@@ -16,7 +16,14 @@ pub const REGISTRY: &str = "worldgen/biome";
 /// Plains' carvers, features and mob spawns (Minecraft 26.x), which every studio biome copies.
 const PLAINS_LIFE: &str = include_str!("biome_plains.json");
 /// The colour fields: the file's name, and the biome's.
-pub const COLORS: [(&str, &str); 6] = [("sky", "sky_color"), ("fog", "fog_color"), ("water", "water_color"), ("waterFog", "water_fog_color"), ("grass", "grass_color"), ("foliage", "foliage_color")];
+pub const COLORS: [(&str, &str); 6] = [
+    ("sky", "sky_color"),
+    ("fog", "fog_color"),
+    ("water", "water_color"),
+    ("waterFog", "water_fog_color"),
+    ("grass", "grass_color"),
+    ("foliage", "foliage_color"),
+];
 pub const WATER: &str = "#3f76e4";
 
 /// `#rrggbb` in lower case, or nothing when the field is empty or not a colour.
@@ -29,13 +36,21 @@ pub fn color(data: &Data, key: &str) -> Option<String> {
 /// A sound by a studio sound's name (`monolab:studio.<name>`) or a sound id with `:`, like `song::sound`.
 pub fn sound(data: &Data, key: &str) -> String {
     let raw = fields::text(data, key, "").trim().to_ascii_lowercase();
-    if raw.is_empty() || raw.contains(':') { raw } else { format!("monolab:studio.{raw}") }
+    if raw.is_empty() || raw.contains(':') {
+        raw
+    } else {
+        format!("monolab:studio.{raw}")
+    }
 }
 
 /// A particle id (`minecraft:` added when it has none).
 pub fn particle(data: &Data) -> String {
     let raw = fields::text(data, "particle", "").trim().to_ascii_lowercase();
-    if raw.is_empty() || raw.contains(':') { raw } else { format!("minecraft:{raw}") }
+    if raw.is_empty() || raw.contains(':') {
+        raw
+    } else {
+        format!("minecraft:{raw}")
+    }
 }
 
 pub fn temperature(data: &Data) -> f64 {
@@ -50,7 +65,11 @@ pub fn downfall(data: &Data) -> f64 {
 pub fn like(data: &Data) -> String {
     let raw = fields::text(data, "like", "plains").trim().to_ascii_lowercase();
     let raw = raw.strip_prefix("minecraft:").unwrap_or(&raw).to_string();
-    if raw.is_empty() { "plains".into() } else { raw }
+    if raw.is_empty() {
+        "plains".into()
+    } else {
+        raw
+    }
 }
 
 /// The vanilla datapack JSON (Minecraft 26.x: looks are environment attributes). What both add-ons register, and
@@ -67,11 +86,17 @@ pub fn registry_json(data: &Data) -> String {
     let particle = particle(data);
     if !particle.is_empty() {
         let chance = item::float(data, "particleChance", 0.01, 0.0, 1.0);
-        attributes.insert("minecraft:visual/ambient_particles".into(), json!({ "argument": [{ "particle": { "type": particle }, "probability": chance }], "modifier": "append" }));
+        attributes.insert(
+            "minecraft:visual/ambient_particles".into(),
+            json!({ "argument": [{ "particle": { "type": particle }, "probability": chance }], "modifier": "append" }),
+        );
     }
     let music = sound(data, "music");
     if !music.is_empty() {
-        attributes.insert("minecraft:audio/background_music".into(), json!({ "default": { "sound": music, "min_delay": 12000, "max_delay": 24000 } }));
+        attributes.insert(
+            "minecraft:audio/background_music".into(),
+            json!({ "default": { "sound": music, "min_delay": 12000, "max_delay": 24000 } }),
+        );
     }
     let ambient = sound(data, "ambient");
     if !ambient.is_empty() {
@@ -108,7 +133,13 @@ pub fn problems(data: &Data) -> Vec<String> {
             out.push(format!("\"{key}\" isn't a colour like #78a7ff."));
         }
     }
-    let valid = |name: &str| name.split_once(':').is_some_and(|(space, path)| !space.is_empty() && !path.is_empty() && name.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || b"_-.:/".contains(&one)));
+    let valid = |name: &str| {
+        name.split_once(':').is_some_and(|(space, path)| {
+            !space.is_empty()
+                && !path.is_empty()
+                && name.bytes().all(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || b"_-.:/".contains(&one))
+        })
+    };
     for key in ["music", "ambient"] {
         let one = sound(data, key);
         if !one.is_empty() && !valid(&one) {
@@ -132,7 +163,9 @@ mod tests {
 
     #[test]
     fn biomes_carry_their_looks_and_plains_life() {
-        let one = data(r##"{"sky":"#FF8800","fog":"c0d8ff","water":"#3a7a6a","grass":"#8db127","particle":"white_ash","particleChance":0.1,"music":"calm","rain":false,"temperature":1.5}"##);
+        let one = data(
+            r##"{"sky":"#FF8800","fog":"c0d8ff","water":"#3a7a6a","grass":"#8db127","particle":"white_ash","particleChance":0.1,"music":"calm","rain":false,"temperature":1.5}"##,
+        );
         assert!(problems(&one).is_empty());
         let json: Value = serde_json::from_str(&registry_json(&one)).unwrap();
         assert_eq!(json["attributes"]["minecraft:visual/sky_color"], "#ff8800");

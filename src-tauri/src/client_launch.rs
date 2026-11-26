@@ -122,10 +122,7 @@ fn fail(id: &str, error: String) {
 #[tauri::command(async)]
 #[specta::specta]
 pub fn client_runs() -> Vec<ClientRun> {
-    runs()
-        .lock()
-        .map(|all| all.values().map(|slot| slot.run.clone()).filter(|run| !run.stage.is_empty()).collect())
-        .unwrap_or_default()
+    runs().lock().map(|all| all.values().map(|slot| slot.run.clone()).filter(|run| !run.stage.is_empty()).collect()).unwrap_or_default()
 }
 
 #[tauri::command(async)]
@@ -227,11 +224,7 @@ fn fetch_one(client: &reqwest::blocking::Client, one: &Fetch) -> Result<(), Stri
     }
     let mut last = String::new();
     for _ in 0..3 {
-        let result = client
-            .get(&one.url)
-            .send()
-            .and_then(|r| r.error_for_status())
-            .and_then(|r| r.bytes());
+        let result = client.get(&one.url).send().and_then(|r| r.error_for_status()).and_then(|r| r.bytes());
         match result {
             Ok(bytes) => {
                 if let Some(want) = &one.sha1 {
@@ -411,7 +404,11 @@ fn plan(root: &Path, vanilla: &Value, loader: Option<&Value>) -> Result<Plan, St
             if let (Some(path), Some(url)) = (path, artifact.get("url").and_then(Value::as_str)) {
                 let to = libs_dir.join(&path);
                 if !url.is_empty() {
-                    fetch.push(Fetch { url: url.into(), to: to.clone(), sha1: artifact.get("sha1").and_then(Value::as_str).map(String::from) });
+                    fetch.push(Fetch {
+                        url: url.into(),
+                        to: to.clone(),
+                        sha1: artifact.get("sha1").and_then(Value::as_str).map(String::from),
+                    });
                 }
                 if name.contains(":natives-") {
                     natives.push(to.clone());
@@ -425,7 +422,11 @@ fn plan(root: &Path, vanilla: &Value, loader: Option<&Value>) -> Result<Plan, St
             if let Some(native) = downloads.and_then(|d| d.get("classifiers")).and_then(|c| c.get(&classifier)) {
                 if let (Some(path), Some(url)) = (native.get("path").and_then(Value::as_str), native.get("url").and_then(Value::as_str)) {
                     let to = libs_dir.join(path);
-                    fetch.push(Fetch { url: url.into(), to: to.clone(), sha1: native.get("sha1").and_then(Value::as_str).map(String::from) });
+                    fetch.push(Fetch {
+                        url: url.into(),
+                        to: to.clone(),
+                        sha1: native.get("sha1").and_then(Value::as_str).map(String::from),
+                    });
                     natives.push(to);
                 }
             }
@@ -444,7 +445,11 @@ fn plan(root: &Path, vanilla: &Value, loader: Option<&Value>) -> Result<Plan, St
     let logging = vanilla.pointer("/logging/client").and_then(|log| {
         let file = log.get("file")?;
         let to = root.join("assets").join("log_configs").join(file.get("id")?.as_str()?);
-        fetch.push(Fetch { url: file.get("url")?.as_str()?.into(), to: to.clone(), sha1: file.get("sha1").and_then(Value::as_str).map(String::from) });
+        fetch.push(Fetch {
+            url: file.get("url")?.as_str()?.into(),
+            to: to.clone(),
+            sha1: file.get("sha1").and_then(Value::as_str).map(String::from),
+        });
         Some((log.get("argument")?.as_str()?.to_string(), to))
     });
 
@@ -493,7 +498,10 @@ fn loader_profile(client: &reqwest::blocking::Client, loader: &str, mc: &str) ->
     let items = list.as_array().ok_or("The loader list is malformed.")?;
     let pick = items
         .iter()
-        .find(|one| one.pointer("/loader/stable").and_then(Value::as_bool).unwrap_or(true) && !one.pointer("/loader/version").and_then(Value::as_str).unwrap_or("").contains("beta"))
+        .find(|one| {
+            one.pointer("/loader/stable").and_then(Value::as_bool).unwrap_or(true)
+                && !one.pointer("/loader/version").and_then(Value::as_str).unwrap_or("").contains("beta")
+        })
         .or_else(|| items.first())
         .and_then(|one| one.pointer("/loader/version"))
         .and_then(Value::as_str)
@@ -555,11 +563,7 @@ fn install_and_start(app: &AppHandle, instance: &crate::clients::ClientInstance,
             // Kept byte for byte: Nova checks this file against Mojang's own checksum.
             fetch_one(
                 &client,
-                &Fetch {
-                    url: url.into(),
-                    to: version_file.clone(),
-                    sha1: entry.get("sha1").and_then(Value::as_str).map(String::from),
-                },
+                &Fetch { url: url.into(), to: version_file.clone(), sha1: entry.get("sha1").and_then(Value::as_str).map(String::from) },
             )?;
             let text = fs::read_to_string(&version_file).map_err(|e| e.to_string())?;
             serde_json::from_str(&text).map_err(|e| format!("The version file is damaged: {e}"))?
@@ -630,12 +634,7 @@ fn install_and_start(app: &AppHandle, instance: &crate::clients::ClientInstance,
     let natives_dir = root.join("natives").join(&plan.version_id);
     extract_natives(&plan.natives, &natives_dir)?;
     let separator = if cfg!(windows) { ";" } else { ":" };
-    let classpath = plan
-        .classpath
-        .iter()
-        .map(|p| p.to_string_lossy().to_string())
-        .collect::<Vec<_>>()
-        .join(separator);
+    let classpath = plan.classpath.iter().map(|p| p.to_string_lossy().to_string()).collect::<Vec<_>>().join(separator);
     let uuid = offline_uuid(name);
     let values: HashMap<&str, String> = HashMap::from([
         ("auth_player_name", name.to_string()),
@@ -674,13 +673,7 @@ fn install_and_start(app: &AppHandle, instance: &crate::clients::ClientInstance,
 
 /// Starts the game, records the launch, and watches it until it closes.
 /// A game that fails within 20 seconds is reported with its log.
-fn run_game(
-    app: &AppHandle,
-    id: &str,
-    mut command: std::process::Command,
-    game_dir: &Path,
-    stdin: Option<String>,
-) -> Result<(), String> {
+fn run_game(app: &AppHandle, id: &str, mut command: std::process::Command, game_dir: &Path, stdin: Option<String>) -> Result<(), String> {
     let logs = game_dir.join("logs");
     fs::create_dir_all(&logs).map_err(|e| e.to_string())?;
     let log = fs::File::create(logs.join("monolab-launch.log")).map_err(|e| e.to_string())?;
@@ -704,7 +697,10 @@ fn run_game(
     crate::clients::mark_played(app, id);
     let child = Arc::new(Mutex::new(child));
     if let Ok(mut all) = runs().lock() {
-        all.insert(id.to_string(), Slot { run: ClientRun { id: id.to_string(), stage: "running".into(), ..Default::default() }, child: Some(child.clone()) });
+        all.insert(
+            id.to_string(),
+            Slot { run: ClientRun { id: id.to_string(), stage: "running".into(), ..Default::default() }, child: Some(child.clone()) },
+        );
     }
     let started = std::time::Instant::now();
     loop {
@@ -778,10 +774,7 @@ fn java_home(java: &Path) -> Option<PathBuf> {
 /// A line of `horizon-prepare --progress json`: how far it is, or why it failed.
 fn prepare_line(line: &str) -> (Option<f64>, Option<String>) {
     let Ok(value) = serde_json::from_str::<Value>(line) else { return (None, None) };
-    (
-        value.get("fraction").and_then(Value::as_f64),
-        value.get("error").and_then(Value::as_str).map(String::from),
-    )
+    (value.get("fraction").and_then(Value::as_f64), value.get("error").and_then(Value::as_str).map(String::from))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -886,14 +879,7 @@ fn start_nova(
     })
     .to_string();
     let mut command = crate::hidden_command(crate::forks::nova_program(&bundle, "horizon-client"));
-    command
-        .arg("--resources")
-        .arg(&prepared)
-        .arg("--game-dir")
-        .arg(game_dir)
-        .arg("--home")
-        .arg(game_dir)
-        .arg("--session-stdin");
+    command.arg("--resources").arg(&prepared).arg("--game-dir").arg(game_dir).arg("--home").arg(game_dir).arg("--session-stdin");
     run_game(app, id, command, game_dir, Some(session))
 }
 

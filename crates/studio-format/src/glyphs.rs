@@ -151,7 +151,11 @@ impl Glyphs {
                 continue;
             }
             if letter == ':' {
-                let name: String = letters[at + 1..].iter().take_while(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || **one == '_').take(MOST_NAME + 1).collect();
+                let name: String = letters[at + 1..]
+                    .iter()
+                    .take_while(|one| one.is_ascii_lowercase() || one.is_ascii_digit() || **one == '_')
+                    .take(MOST_NAME + 1)
+                    .collect();
                 let closes = letters.get(at + 1 + name.chars().count()) == Some(&':');
                 if closes {
                     if let Some(glyph) = self.by_name.get(&name) {
@@ -227,7 +231,11 @@ impl Widths {
             if parts.len() < 4 {
                 continue;
             }
-            let (Ok(start), Ok(end), Ok(width)) = (u32::from_str_radix(parts[0], 16), u32::from_str_radix(parts[1], 16), parts[2].parse::<u8>()) else { continue };
+            let (Ok(start), Ok(end), Ok(width)) =
+                (u32::from_str_radix(parts[0], 16), u32::from_str_radix(parts[1], 16), parts[2].parse::<u8>())
+            else {
+                continue;
+            };
             out.starts.push(start);
             out.ends.push(end);
             out.widths.push(width);
@@ -265,7 +273,9 @@ mod tests {
     use super::*;
 
     fn table() -> Glyphs {
-        Glyphs::parse(r#"{"schema":1,"glyphs":{"ruby":{"id":"ruby","char":"","advance":9,"width":8,"height":8},"red":{"char":"","advance":5}},"hit":{"char":"","advance":2},"problems":{"broken":"No picture."}}"#)
+        Glyphs::parse(
+            r#"{"schema":1,"glyphs":{"ruby":{"id":"ruby","char":"","advance":9,"width":8,"height":8},"red":{"char":"","advance":5}},"hit":{"char":"","advance":2},"problems":{"broken":"No picture."}}"#,
+        )
     }
 
     #[test]
@@ -281,7 +291,10 @@ mod tests {
     #[test]
     fn menu_backgrounds_go_under_the_title() {
         let mut table = Glyphs::default();
-        table.by_name.insert("menu_bg".into(), Glyph { id: "menu-bg".into(), text: "\u{E201}".into(), advance: 177, width: 176, height: 222, canvas: false });
+        table.by_name.insert(
+            "menu_bg".into(),
+            Glyph { id: "menu-bg".into(), text: "\u{E201}".into(), advance: 177, width: 176, height: 222, canvas: false },
+        );
         let title = table.menu_title("menu_bg", "<gold>Shop");
         assert!(title.starts_with(&format!("<font:{SPACE_FONT}>{}</font>", spaces(-8))), "{title}");
         assert!(title.contains(&glyph_mini("\u{E201}")));
@@ -306,7 +319,11 @@ mod tests {
             text.chars()
                 .map(|one| {
                     let code = one as u32;
-                    if code >= SPACE_DOWN { -(1 << (code - SPACE_DOWN)) } else { 1 << (code - SPACE_UP) }
+                    if code >= SPACE_DOWN {
+                        -(1 << (code - SPACE_DOWN))
+                    } else {
+                        1 << (code - SPACE_UP)
+                    }
                 })
                 .sum()
         };

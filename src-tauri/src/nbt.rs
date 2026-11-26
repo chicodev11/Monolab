@@ -1,4 +1,3 @@
-
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -94,12 +93,9 @@ pub(crate) fn decode_nbt(raw: Vec<u8>) -> Result<fastnbt::Value, String> {
 }
 
 fn write_gzip_nbt(path: &Path, value: &fastnbt::Value) -> Result<(), String> {
-    let bytes = fastnbt::to_bytes(value)
-        .map_err(|error| format!("Could not write NBT: {error}"))?;
+    let bytes = fastnbt::to_bytes(value).map_err(|error| format!("Could not write NBT: {error}"))?;
     let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-    encoder
-        .write_all(&bytes)
-        .map_err(|error| error.to_string())?;
+    encoder.write_all(&bytes).map_err(|error| error.to_string())?;
     let compressed = encoder.finish().map_err(|error| error.to_string())?;
     fs::write(path, compressed).map_err(|error| format!("Could not save the file: {error}"))
 }
@@ -170,11 +166,7 @@ pub fn read_player_bytes(raw: Vec<u8>, uuid: &str) -> Result<PlayerSnapshot, Str
 fn snapshot_of(value: fastnbt::Value, uuid: &str) -> Result<PlayerSnapshot, String> {
     let root = compound(&value).ok_or("The player data is malformed.")?;
     let position = match root.get("Pos") {
-        Some(fastnbt::Value::List(items)) if items.len() >= 3 => [
-            as_f64(items.first()),
-            as_f64(items.get(1)),
-            as_f64(items.get(2)),
-        ],
+        Some(fastnbt::Value::List(items)) if items.len() >= 3 => [as_f64(items.first()), as_f64(items.get(1)), as_f64(items.get(2))],
         _ => [0.0, 0.0, 0.0],
     };
     let health = match root.get("Health") {
@@ -234,11 +226,8 @@ fn item_of(entry: &Map, slot: i64) -> Option<InventoryItem> {
     let tag = entry.get("tag").and_then(compound);
     let part = |key: &str| parts.and_then(|map| map.get(key));
     let damage = part("minecraft:damage").or_else(|| tag.and_then(|map| map.get("Damage")));
-    let name = part("minecraft:custom_name").or_else(|| {
-        tag.and_then(|map| map.get("display"))
-            .and_then(compound)
-            .and_then(|display| display.get("Name"))
-    });
+    let name = part("minecraft:custom_name")
+        .or_else(|| tag.and_then(|map| map.get("display")).and_then(compound).and_then(|display| display.get("Name")));
     let mut enchantments = Vec::new();
     for key in ["minecraft:enchantments", "minecraft:stored_enchantments"] {
         enchantments.extend(enchantments_of(part(key)));
@@ -332,9 +321,7 @@ fn json_text(value: &serde_json::Value) -> String {
 }
 
 fn overworld_data_dir(level_dat: &Path) -> Option<std::path::PathBuf> {
-    level_dat
-        .parent()
-        .map(|world| world.join("dimensions").join("minecraft").join("overworld").join("data").join("minecraft"))
+    level_dat.parent().map(|world| world.join("dimensions").join("minecraft").join("overworld").join("data").join("minecraft"))
 }
 
 fn is_new_layout(data: &std::collections::HashMap<String, fastnbt::Value>) -> bool {
@@ -362,7 +349,13 @@ fn difficulty_name(level: u8) -> &'static str {
 
 fn rule_value_text(value: &fastnbt::Value) -> String {
     match value {
-        fastnbt::Value::Byte(bit) => if *bit != 0 { "true".into() } else { "false".into() },
+        fastnbt::Value::Byte(bit) => {
+            if *bit != 0 {
+                "true".into()
+            } else {
+                "false".into()
+            }
+        }
         fastnbt::Value::String(text) => text.clone(),
         other => as_i64(Some(other)).to_string(),
     }
@@ -371,22 +364,11 @@ fn rule_value_text(value: &fastnbt::Value) -> String {
 pub fn read_level_data(path: &Path) -> Result<WorldSettings, String> {
     let value = read_gzip_nbt(path)?;
     let root = compound(&value).ok_or("level.dat is malformed.")?;
-    let data = root
-        .get("Data")
-        .and_then(compound)
-        .ok_or("level.dat has no Data entry.")?;
+    let data = root.get("Data").and_then(compound).ok_or("level.dat has no Data entry.")?;
     let mut game_rules = data
         .get("GameRules")
         .and_then(compound)
-        .map(|rules| {
-            rules
-                .iter()
-                .map(|(name, value)| GameRule {
-                    name: name.clone(),
-                    value: rule_value_text(value),
-                })
-                .collect::<Vec<_>>()
-        })
+        .map(|rules| rules.iter().map(|(name, value)| GameRule { name: name.clone(), value: rule_value_text(value) }).collect::<Vec<_>>())
         .unwrap_or_default();
     let mut seed = data
         .get("WorldGenSettings")
@@ -395,18 +377,13 @@ pub fn read_level_data(path: &Path) -> Result<WorldSettings, String> {
         .filter(|seed| *seed != 0)
         .unwrap_or_else(|| as_i64(data.get("RandomSeed")));
     let (difficulty, spawn) = if is_new_layout(data) {
-        let name = data
-            .get("difficulty_settings")
-            .and_then(compound)
-            .map(|settings| as_string(settings.get("difficulty")))
-            .unwrap_or_default();
+        let name =
+            data.get("difficulty_settings").and_then(compound).map(|settings| as_string(settings.get("difficulty"))).unwrap_or_default();
         let pos = data
             .get("spawn")
             .and_then(compound)
             .and_then(|spawn| match spawn.get("pos") {
-                Some(fastnbt::Value::IntArray(array)) if array.len() >= 3 => {
-                    Some([array[0], array[1], array[2]])
-                }
+                Some(fastnbt::Value::IntArray(array)) if array.len() >= 3 => Some([array[0], array[1], array[2]]),
                 _ => None,
             })
             .unwrap_or([0, 0, 0]);
@@ -415,13 +392,7 @@ pub fn read_level_data(path: &Path) -> Result<WorldSettings, String> {
             if rules_file.is_file() {
                 let rules = read_gzip_nbt(&rules_file)?;
                 if let Some(map) = compound(&rules).and_then(|root| root.get("data")).and_then(compound) {
-                    game_rules = map
-                        .iter()
-                        .map(|(name, value)| GameRule {
-                            name: name.clone(),
-                            value: rule_value_text(value),
-                        })
-                        .collect();
+                    game_rules = map.iter().map(|(name, value)| GameRule { name: name.clone(), value: rule_value_text(value) }).collect();
                 }
             }
             let gen_file = dir.join("world_gen_settings.dat");
@@ -439,11 +410,7 @@ pub fn read_level_data(path: &Path) -> Result<WorldSettings, String> {
     } else {
         (
             as_i64(data.get("Difficulty")) as u8,
-            [
-                as_i64(data.get("SpawnX")) as i32,
-                as_i64(data.get("SpawnY")) as i32,
-                as_i64(data.get("SpawnZ")) as i32,
-            ],
+            [as_i64(data.get("SpawnX")) as i32, as_i64(data.get("SpawnY")) as i32, as_i64(data.get("SpawnZ")) as i32],
         )
     };
     game_rules.sort_by(|left, right| left.name.cmp(&right.name));
@@ -462,11 +429,7 @@ pub fn file_hash(path: &Path) -> Result<String, String> {
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
     let mut hasher = Sha256::new();
     hasher.update(&bytes);
-    Ok(hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect())
+    Ok(hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 pub fn write_level_data(
@@ -491,20 +454,14 @@ pub fn write_level_data(
         }
         if new_layout {
             if let Some(fastnbt::Value::Compound(settings)) = data.get_mut("difficulty_settings") {
-                settings.insert(
-                    "difficulty".into(),
-                    fastnbt::Value::String(difficulty_name(difficulty).into()),
-                );
+                settings.insert("difficulty".into(), fastnbt::Value::String(difficulty_name(difficulty).into()));
             }
         } else {
             data.insert("Difficulty".into(), fastnbt::Value::Byte(difficulty as i8));
         }
     }
     if let Some(hardcore) = hardcore {
-        data.insert(
-            "hardcore".into(),
-            fastnbt::Value::Byte(if hardcore { 1 } else { 0 }),
-        );
+        data.insert("hardcore".into(), fastnbt::Value::Byte(if hardcore { 1 } else { 0 }));
     }
     if let Some([x, y, z]) = spawn {
         if new_layout {
@@ -537,18 +494,12 @@ pub fn write_level_data(
                         "false" | "0" => fastnbt::Value::Byte(0),
                         _ => return Err(format!("{} must be true or false.", rule.name)),
                     },
-                    fastnbt::Value::Int(_) => fastnbt::Value::Int(
-                        rule.value
-                            .trim()
-                            .parse::<i32>()
-                            .map_err(|_| format!("{} accepts numbers only.", rule.name))?,
-                    ),
-                    fastnbt::Value::Long(_) => fastnbt::Value::Long(
-                        rule.value
-                            .trim()
-                            .parse::<i64>()
-                            .map_err(|_| format!("{} accepts numbers only.", rule.name))?,
-                    ),
+                    fastnbt::Value::Int(_) => {
+                        fastnbt::Value::Int(rule.value.trim().parse::<i32>().map_err(|_| format!("{} accepts numbers only.", rule.name))?)
+                    }
+                    fastnbt::Value::Long(_) => {
+                        fastnbt::Value::Long(rule.value.trim().parse::<i64>().map_err(|_| format!("{} accepts numbers only.", rule.name))?)
+                    }
                     fastnbt::Value::String(_) => fastnbt::Value::String(rule.value.clone()),
                     _ => return Err(format!("{} is a type the app cannot change.", rule.name)),
                 };
@@ -563,10 +514,7 @@ pub fn write_level_data(
                 if !existing.contains_key(&rule.name) {
                     return Err(format!("Unknown game rule: {}", rule.name));
                 }
-                existing.insert(
-                    rule.name.clone(),
-                    fastnbt::Value::String(rule.value.clone()),
-                );
+                existing.insert(rule.name.clone(), fastnbt::Value::String(rule.value.clone()));
             }
         }
     }
@@ -649,7 +597,10 @@ mod tests {
             }
             Value::Compound(map)
         };
-        let mut slot0 = match item("minecraft:stone", Some(5)) { Value::Compound(map) => map, _ => unreachable!() };
+        let mut slot0 = match item("minecraft:stone", Some(5)) {
+            Value::Compound(map) => map,
+            _ => unreachable!(),
+        };
         slot0.insert("Slot".to_string(), Value::Byte(0));
         let mut equipment = HashMap::new();
         equipment.insert("head".to_string(), item("minecraft:diamond_helmet", None));
@@ -683,7 +634,10 @@ mod tests {
         let mut equipment = HashMap::new();
         equipment.insert("head".to_string(), Value::Compound(helmet));
         let mut root = HashMap::new();
-        root.insert("Inventory".to_string(), Value::List(vec![stack(0, "minecraft:stone", Value::Int(5), "count"), stack(1, "minecraft:dirt", Value::Byte(9), "Count")]));
+        root.insert(
+            "Inventory".to_string(),
+            Value::List(vec![stack(0, "minecraft:stone", Value::Int(5), "count"), stack(1, "minecraft:dirt", Value::Byte(9), "Count")]),
+        );
         root.insert("EnderItems".to_string(), Value::List(vec![stack(3, "minecraft:diamond", Value::Int(2), "count")]));
         root.insert("equipment".to_string(), Value::Compound(equipment));
         let raw = fastnbt::to_bytes(&Value::Compound(root)).unwrap();
@@ -711,52 +665,51 @@ mod tests {
             ("id", Value::String("minecraft:diamond_sword".into())),
             ("count", Value::Int(1)),
             ("Slot", Value::Byte(0)),
-            ("components", map(vec![
-                ("minecraft:damage", Value::Int(61)),
-                ("minecraft:enchantments", map(vec![
-                    ("minecraft:sharpness", Value::Int(5)),
-                    ("minecraft:unbreaking", Value::Int(3)),
-                ])),
-                ("minecraft:custom_name", map(vec![
-                    ("text", Value::String("Ex".into())),
-                    ("extra", Value::List(vec![Value::String("calibur".into())])),
-                ])),
-            ])),
+            (
+                "components",
+                map(vec![
+                    ("minecraft:damage", Value::Int(61)),
+                    ("minecraft:enchantments", map(vec![("minecraft:sharpness", Value::Int(5)), ("minecraft:unbreaking", Value::Int(3))])),
+                    (
+                        "minecraft:custom_name",
+                        map(vec![("text", Value::String("Ex".into())), ("extra", Value::List(vec![Value::String("calibur".into())]))]),
+                    ),
+                ]),
+            ),
         ]);
         let mid_book = map(vec![
             ("id", Value::String("minecraft:enchanted_book".into())),
             ("count", Value::Int(1)),
             ("Slot", Value::Byte(1)),
-            ("components", map(vec![
-                ("minecraft:stored_enchantments", map(vec![
-                    ("levels", map(vec![("minecraft:mending", Value::Int(1))])),
-                    ("show_in_tooltip", Value::Byte(1)),
-                ])),
-                ("minecraft:custom_name", Value::String(r#"{"text":"Book"}"#.into())),
-            ])),
+            (
+                "components",
+                map(vec![
+                    (
+                        "minecraft:stored_enchantments",
+                        map(vec![("levels", map(vec![("minecraft:mending", Value::Int(1))])), ("show_in_tooltip", Value::Byte(1))]),
+                    ),
+                    ("minecraft:custom_name", Value::String(r#"{"text":"Book"}"#.into())),
+                ]),
+            ),
         ]);
         let old_pick = map(vec![
             ("id", Value::String("minecraft:iron_pickaxe".into())),
             ("Count", Value::Byte(1)),
             ("Slot", Value::Byte(2)),
-            ("tag", map(vec![
-                ("Damage", Value::Int(9)),
-                ("Enchantments", Value::List(vec![map(vec![
-                    ("id", Value::String("minecraft:efficiency".into())),
-                    ("lvl", Value::Short(4)),
-                ])])),
-                ("display", map(vec![("Name", Value::String(r#"{"text":"Digger"}"#.into()))])),
-            ])),
+            (
+                "tag",
+                map(vec![
+                    ("Damage", Value::Int(9)),
+                    (
+                        "Enchantments",
+                        Value::List(vec![map(vec![("id", Value::String("minecraft:efficiency".into())), ("lvl", Value::Short(4))])]),
+                    ),
+                    ("display", map(vec![("Name", Value::String(r#"{"text":"Digger"}"#.into()))])),
+                ]),
+            ),
         ]);
-        let pearl = map(vec![
-            ("id", Value::String("minecraft:ender_pearl".into())),
-            ("count", Value::Int(16)),
-            ("Slot", Value::Byte(26)),
-        ]);
-        let root = map(vec![
-            ("Inventory", Value::List(vec![new_sword, mid_book, old_pick])),
-            ("EnderItems", Value::List(vec![pearl])),
-        ]);
+        let pearl = map(vec![("id", Value::String("minecraft:ender_pearl".into())), ("count", Value::Int(16)), ("Slot", Value::Byte(26))]);
+        let root = map(vec![("Inventory", Value::List(vec![new_sword, mid_book, old_pick])), ("EnderItems", Value::List(vec![pearl]))]);
         let snapshot = super::snapshot_of(root, "u").unwrap();
         let at = |slot: i64| snapshot.inventory.iter().find(|one| one.slot == slot).unwrap();
         let sword = at(0);
@@ -777,8 +730,8 @@ mod tests {
 
     #[test]
     fn reads_and_writes_a_26x_world() {
-        use std::collections::HashMap;
         use fastnbt::Value;
+        use std::collections::HashMap;
         let dir = std::env::temp_dir().join(format!("se-nbt26-{}", std::process::id()));
         let data_dir = dir.join("dimensions/minecraft/overworld/data/minecraft");
         std::fs::create_dir_all(&data_dir).unwrap();

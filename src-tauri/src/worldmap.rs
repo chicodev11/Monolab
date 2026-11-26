@@ -1,4 +1,3 @@
-
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -17,7 +16,11 @@ pub fn realm_key(value: &str) -> String {
         && !value.contains("..")
         && !value.starts_with('.')
         && value.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '.' | '-'));
-    if fine { value.to_string() } else { "overworld".to_string() }
+    if fine {
+        value.to_string()
+    } else {
+        "overworld".to_string()
+    }
 }
 
 pub fn modded_dims(world: &Path) -> Vec<(String, PathBuf)> {
@@ -61,16 +64,12 @@ pub fn region_dir(server: &Path, level_name: &str, realm: Realm) -> Option<PathB
         Realm::Nether => vec![
             world.join("dimensions/minecraft/the_nether/region"),
             world.join("DIM-1/region"),
-            server
-                .join(format!("{level_name}_nether"))
-                .join("DIM-1/region"),
+            server.join(format!("{level_name}_nether")).join("DIM-1/region"),
         ],
         Realm::End => vec![
             world.join("dimensions/minecraft/the_end/region"),
             world.join("DIM1/region"),
-            server
-                .join(format!("{level_name}_the_end"))
-                .join("DIM1/region"),
+            server.join(format!("{level_name}_the_end")).join("DIM1/region"),
         ],
     };
     candidates.into_iter().find(|path| path.is_dir())
@@ -161,11 +160,14 @@ impl Tile {
 
 /// How much a region can be shrunk for a zoom level: the step between the columns that level samples.
 pub fn shrink_for(z: i32) -> usize {
-    if z >= 3 { 1 << (z - 2).min(3) } else { 1 }
+    if z >= 3 {
+        1 << (z - 2).min(3)
+    } else {
+        1
+    }
 }
 
-impl Tile {
-}
+impl Tile {}
 
 fn read_utf(raw: &[u8], at: &mut usize) -> Option<String> {
     let length = u16::from_be_bytes([*raw.get(*at)?, *raw.get(*at + 1)?]) as usize;
@@ -188,10 +190,8 @@ pub fn parse_tile(bytes: &[u8]) -> Option<Tile> {
     }
     let mut at = 4;
     // Pumpkin addon 31 wrote bare block names (`stone`); the palette is keyed by `minecraft:stone`.
-    let blocks: Vec<String> = read_names(&raw, &mut at)?
-        .into_iter()
-        .map(|name| if name.contains(':') { name } else { format!("minecraft:{name}") })
-        .collect();
+    let blocks: Vec<String> =
+        read_names(&raw, &mut at)?.into_iter().map(|name| if name.contains(':') { name } else { format!("minecraft:{name}") }).collect();
     let biomes = read_names(&raw, &mut at)?;
     let cells = raw.get(at..at + SPAN * SPAN * 10)?;
     let mut tile = Tile::empty();
@@ -223,9 +223,30 @@ fn plant_lift(name: &str) -> i16 {
         return 2;
     }
     const LOW: [&str; 24] = [
-        "short_grass", "grass", "fern", "dead_bush", "dandelion", "poppy", "blue_orchid", "allium", "azure_bluet",
-        "oxeye_daisy", "cornflower", "lily_of_the_valley", "wither_rose", "torchflower", "pink_petals", "wildflowers",
-        "leaf_litter", "bush", "firefly_bush", "short_dry_grass", "snow", "moss_carpet", "pale_moss_carpet", "sweet_berry_bush",
+        "short_grass",
+        "grass",
+        "fern",
+        "dead_bush",
+        "dandelion",
+        "poppy",
+        "blue_orchid",
+        "allium",
+        "azure_bluet",
+        "oxeye_daisy",
+        "cornflower",
+        "lily_of_the_valley",
+        "wither_rose",
+        "torchflower",
+        "pink_petals",
+        "wildflowers",
+        "leaf_litter",
+        "bush",
+        "firefly_bush",
+        "short_dry_grass",
+        "snow",
+        "moss_carpet",
+        "pale_moss_carpet",
+        "sweet_berry_bush",
     ];
     if LOW.contains(&short)
         || short.ends_with("_tulip")
@@ -272,12 +293,7 @@ fn hex(text: &str) -> Option<u32> {
 
 impl Palette {
     pub fn empty() -> Palette {
-        Palette {
-            blocks: Default::default(),
-            biomes: Default::default(),
-            grass: None,
-            foliage: None,
-        }
+        Palette { blocks: Default::default(), biomes: Default::default(), grass: None, foliage: None }
     }
 
     pub fn parse(json: &[u8], grass: Option<&[u8]>, foliage: Option<&[u8]>) -> Palette {
@@ -331,14 +347,7 @@ impl Palette {
     }
 
     fn tints(&self, biome: Option<&Biome>) -> [u32; 3] {
-        let fallback = Biome {
-            temperature: 0.8,
-            downfall: 0.4,
-            water: 0x3f_76_e4,
-            grass: None,
-            foliage: None,
-            modifier: String::new(),
-        };
+        let fallback = Biome { temperature: 0.8, downfall: 0.4, water: 0x3f_76_e4, grass: None, foliage: None, modifier: String::new() };
         let biome = biome.unwrap_or(&fallback);
         let grass = biome.grass.unwrap_or_else(|| Palette::colormap(&self.grass, biome, 0x91_bd_59));
         let grass = match biome.modifier.as_str() {
@@ -640,7 +649,16 @@ pub fn render_view(
                     }
                     let west = height_at(bx - 1, bz - 1, &mut tile_at);
                     let north = height_at(bx, bz - 1, &mut tile_at);
-                    let color = channels(shade(palette, &tile, at, west, north, 1, night, land.at(bx, bz).map(|one| [one[0], one[1], water.at(bx, bz).map_or(one[2], |w| w[2])])));
+                    let color = channels(shade(
+                        palette,
+                        &tile,
+                        at,
+                        west,
+                        north,
+                        1,
+                        night,
+                        land.at(bx, bz).map(|one| [one[0], one[1], water.at(bx, bz).map_or(one[2], |w| w[2])]),
+                    ));
                     for i in 0..3 {
                         sum[i] += color[i];
                     }
@@ -667,9 +685,13 @@ pub fn render_view(
     // Fast compression: tiles are small and drawn often; size matters less than time here.
     use image::ImageEncoder;
     let mut png = Vec::new();
-    image::codecs::png::PngEncoder::new_with_quality(&mut png, image::codecs::png::CompressionType::Fast, image::codecs::png::FilterType::Sub)
-        .write_image(&pixels, width, height, image::ExtendedColorType::Rgba8)
-        .map_err(|error| error.to_string())?;
+    image::codecs::png::PngEncoder::new_with_quality(
+        &mut png,
+        image::codecs::png::CompressionType::Fast,
+        image::codecs::png::FilterType::Sub,
+    )
+    .write_image(&pixels, width, height, image::ExtendedColorType::Rgba8)
+    .map_err(|error| error.to_string())?;
     Ok(png)
 }
 
@@ -738,7 +760,11 @@ mod tests {
     #[test]
     fn parses_what_the_addon_writes() {
         let bytes = tile_bytes(&["minecraft:stone", "minecraft:water"], |x, _| {
-            if x == 0 { (u16::MAX, u16::MAX, 0, 0) } else { (0, u16::MAX, x as i16 - 64, 0) }
+            if x == 0 {
+                (u16::MAX, u16::MAX, 0, 0)
+            } else {
+                (0, u16::MAX, x as i16 - 64, 0)
+            }
         });
         let tile = parse_tile(&bytes).expect("could not read the tile");
         assert_eq!(tile.blocks, ["minecraft:stone", "minecraft:water"]);
@@ -750,9 +776,19 @@ mod tests {
     #[test]
     fn paints_the_void_only_where_the_addon_drew() {
         let palette = Palette::parse(br#"{"blocks":{"minecraft:end_stone":["dbde9e","none"]},"biomes":{}}"#, None, None);
-        let drawn = Arc::new(parse_tile(&tile_bytes(&["minecraft:end_stone"], |x, _| {
-            if x < 256 { (0, u16::MAX, 60, 0) } else { (u16::MAX, u16::MAX, 0, 0) }
-        })).unwrap());
+        let drawn = Arc::new(
+            parse_tile(&tile_bytes(
+                &["minecraft:end_stone"],
+                |x, _| {
+                    if x < 256 {
+                        (0, u16::MAX, 60, 0)
+                    } else {
+                        (u16::MAX, u16::MAX, 0, 0)
+                    }
+                },
+            ))
+            .unwrap(),
+        );
         let mut fetch = |rx: i32, _rz: i32| if rx == 0 { drawn.clone() } else { Arc::new(Tile::empty()) };
         let png = render_view(&mut fetch, &palette, 0, 0, 64, 16, 16.0, false, void_color("end")).unwrap();
         let image = image::load_from_memory(&png).unwrap().to_rgba8();
@@ -761,9 +797,18 @@ mod tests {
         assert_ne!(image.get_pixel(4, 8).0, [8, 0, 24, 255], "islands keep their color");
         assert_eq!(void_color("overworld"), None);
 
-        let marked = Arc::new(parse_tile(&tile_bytes(&["minecraft:end_stone"], |x, _| {
-            if x < 256 { (0, u16::MAX, 60, 0) } else if x < 384 { (0xFFFE, u16::MAX, 0, 0) } else { (u16::MAX, u16::MAX, 0, 0) }
-        })).unwrap());
+        let marked = Arc::new(
+            parse_tile(&tile_bytes(&["minecraft:end_stone"], |x, _| {
+                if x < 256 {
+                    (0, u16::MAX, 60, 0)
+                } else if x < 384 {
+                    (0xFFFE, u16::MAX, 0, 0)
+                } else {
+                    (u16::MAX, u16::MAX, 0, 0)
+                }
+            }))
+            .unwrap(),
+        );
         assert!(marked.marks_void && marked.block[300] == u16::MAX);
         let mut fetch = |_rx: i32, _rz: i32| marked.clone();
         let png = render_view(&mut fetch, &palette, 0, 0, 512, 16, 16.0, false, void_color("end")).unwrap();
@@ -782,7 +827,9 @@ mod tests {
         );
         assert_eq!(palette.color("minecraft:grass_block", palette.biomes.get("minecraft:plains")), 0x91_bd_59);
         assert_eq!(palette.color("minecraft:grass_block", palette.biomes.get("minecraft:swamp")), 0x6a_70_39);
-        let tile = Arc::new(parse_tile(&tile_bytes(&["minecraft:water", "minecraft:sand"], |x, _| (0, 1, 62, if x < 8 { 1 } else { 12 }))).unwrap());
+        let tile = Arc::new(
+            parse_tile(&tile_bytes(&["minecraft:water", "minecraft:sand"], |x, _| (0, 1, 62, if x < 8 { 1 } else { 12 }))).unwrap(),
+        );
         let shallow = channels(shade(&palette, &tile, 2, None, None, 1, false, None));
         let deep = channels(shade(&palette, &tile, 20, None, None, 1, false, None));
         assert!(shallow[0] > deep[0] + 8.0, "{shallow:?} {deep:?}");
@@ -790,7 +837,10 @@ mod tests {
 
     #[test]
     fn shrunken_regions_keep_the_columns_far_views_sample() {
-        let tile = parse_tile(&tile_bytes(&["minecraft:stone", "minecraft:dirt"], |x, z| (((x + z) % 2) as u16, u16::MAX, (x * 3 + z) as i16 % 300, 0))).unwrap();
+        let tile = parse_tile(&tile_bytes(&["minecraft:stone", "minecraft:dirt"], |x, z| {
+            (((x + z) % 2) as u16, u16::MAX, (x * 3 + z) as i16 % 300, 0)
+        }))
+        .unwrap();
         for scale in [2, 4, 8] {
             let small = tile.shrink(scale);
             assert_eq!(small.block.len(), (SPAN / scale) * (SPAN / scale));
@@ -809,8 +859,12 @@ mod tests {
         let dir = std::path::PathBuf::from(std::env::var("SE_MAP_DIR").unwrap());
         let palette = Palette::parse(&std::fs::read(dir.join("../palette.json")).unwrap_or_default(), None, None);
         let parsing = std::time::Instant::now();
-        let regions: std::collections::HashMap<(i32, i32), Arc<Tile>> = std::fs::read_dir(&dir).unwrap().flatten()
-            .filter_map(|one| Some((tile_coords(&one.file_name().to_string_lossy())?, Arc::new(parse_tile(&std::fs::read(one.path()).ok()?)?))))
+        let regions: std::collections::HashMap<(i32, i32), Arc<Tile>> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .filter_map(|one| {
+                Some((tile_coords(&one.file_name().to_string_lossy())?, Arc::new(parse_tile(&std::fs::read(one.path()).ok()?)?)))
+            })
             .collect();
         eprintln!("read {} regions: {:?}", regions.len(), parsing.elapsed());
         let started = std::time::Instant::now();
@@ -827,7 +881,8 @@ mod tests {
         eprintln!("z0: {tiles} tiles in {:?}", started.elapsed());
         for z in [3, 4, 5] {
             let span = 128 * (1 << z);
-            let small: std::collections::HashMap<(i32, i32), Arc<Tile>> = regions.iter().map(|(at, one)| (*at, Arc::new(one.shrink(shrink_for(z))))).collect();
+            let small: std::collections::HashMap<(i32, i32), Arc<Tile>> =
+                regions.iter().map(|(at, one)| (*at, Arc::new(one.shrink(shrink_for(z))))).collect();
             for (name, set) in [("whole", &regions), ("shrunk", &small)] {
                 let started = std::time::Instant::now();
                 let mut fetch = |rx: i32, rz: i32| set.get(&(rx, rz)).cloned().unwrap_or_else(Tile::blank);
@@ -854,7 +909,8 @@ mod tests {
         let realm = std::env::var("SE_MAP_REALM").unwrap_or_else(|_| "overworld".into());
         let out = std::env::var("SE_MAP_OUT").expect("SE_MAP_OUT");
         let read = |name: &str| std::fs::read(dir.join(name)).ok();
-        let palette = Palette::parse(&read("palette.json").unwrap_or_default(), read("grass.png").as_deref(), read("foliage.png").as_deref());
+        let palette =
+            Palette::parse(&read("palette.json").unwrap_or_default(), read("grass.png").as_deref(), read("foliage.png").as_deref());
         let mut fetch = |rx: i32, rz: i32| {
             Arc::new(
                 std::fs::read(dir.join(&realm).join(tile_name(rx, rz)))

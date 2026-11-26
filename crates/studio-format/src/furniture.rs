@@ -63,7 +63,11 @@ pub fn cells(data: &Data) -> Vec<Cell> {
 
 pub fn turns(data: &Data) -> i64 {
     let one = fields::number(data, "turns", 4, 1, 8);
-    if TURNS.contains(&one) { one } else { 4 }
+    if TURNS.contains(&one) {
+        one
+    } else {
+        4
+    }
 }
 
 /// The yaw a piece placed by a player looking at `player_yaw` gets: facing the player, snapped to `turns` ways
@@ -93,7 +97,11 @@ pub fn turn_cell(cell: Cell, yaw: f64) -> Cell {
 
 pub fn display(data: &Data) -> String {
     let one = fields::text(data, "display", "fixed");
-    if DISPLAYS.contains(&one.as_str()) { one } else { "fixed".into() }
+    if DISPLAYS.contains(&one.as_str()) {
+        one
+    } else {
+        "fixed".into()
+    }
 }
 
 pub fn scale(data: &Data) -> f64 {
@@ -123,7 +131,11 @@ pub fn seat(data: &Data) -> Option<f64> {
 
 /// Light level on its cells; a solid piece can't have light (both need the cell's block).
 pub fn light(data: &Data) -> u8 {
-    if solid(data) { 0 } else { fields::number(data, "light", 0, 0, 15) as u8 }
+    if solid(data) {
+        0
+    } else {
+        fields::number(data, "light", 0, 0, 15) as u8
+    }
 }
 
 pub fn drops(data: &Data) -> bool {
@@ -147,7 +159,9 @@ pub fn problems(data: &Data) -> Vec<String> {
         if list.len() > MOST_CELLS {
             out.push(format!("A piece of furniture takes up to {MOST_CELLS} cells."));
         }
-        let far = list.iter().filter_map(Value::as_object).any(|one| ["x", "y", "z"].iter().any(|key| one.get(*key).and_then(Value::as_f64).is_some_and(|at| at.abs() > MOST_REACH as f64)));
+        let far = list.iter().filter_map(Value::as_object).any(|one| {
+            ["x", "y", "z"].iter().any(|key| one.get(*key).and_then(Value::as_f64).is_some_and(|at| at.abs() > MOST_REACH as f64))
+        });
         if far {
             out.push(format!("Cells reach at most {MOST_REACH} blocks from the first."));
         }
@@ -191,7 +205,9 @@ mod tests {
 
     #[test]
     fn reads_fields() {
-        let one = data(json!({ "look": { "texture": "chair" }, "cells": [{ "x": 0 }, { "x": 1 }, { "x": 1 }, { "x": 9 }], "seat": {}, "light": 7 }));
+        let one = data(
+            json!({ "look": { "texture": "chair" }, "cells": [{ "x": 0 }, { "x": 1 }, { "x": 1 }, { "x": 9 }], "seat": {}, "light": 7 }),
+        );
         assert_eq!(cells(&one), vec![Cell { x: 0, y: 0, z: 0 }, Cell { x: 1, y: 0, z: 0 }, Cell { x: 4, y: 0, z: 0 }]);
         assert_eq!(seat(&one), Some(0.5));
         assert_eq!(light(&one), 7);

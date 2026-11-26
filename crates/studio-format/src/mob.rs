@@ -92,7 +92,11 @@ pub fn clean(name: &str) -> String {
 /// The vanilla entity it is, lower case, `zombie` when missing.
 pub fn base(data: &Data) -> String {
     let one = clean(&fields::text(data, "base", ""));
-    if one.is_empty() { BASE.to_string() } else { one }
+    if one.is_empty() {
+        BASE.to_string()
+    } else {
+        one
+    }
 }
 
 /// The model kind id riding it, or empty.
@@ -324,7 +328,9 @@ mod tests {
         let none = spawn(&data(json!({})));
         assert!(!none.enabled);
         assert_eq!((none.light_min, none.light_max, none.max, none.every, none.chance, none.radius), (0, 15, 10, 30.0, 50.0, 32.0));
-        let one = spawn(&data(json!({ "spawn": { "enabled": true, "worlds": ["world", " "], "biomes": ["minecraft:Plains"], "radius": 4, "max": 0 } })));
+        let one = spawn(&data(
+            json!({ "spawn": { "enabled": true, "worlds": ["world", " "], "biomes": ["minecraft:Plains"], "radius": 4, "max": 0 } }),
+        ));
         assert!(one.enabled);
         assert_eq!(one.worlds, ["world"]);
         assert_eq!(one.biomes, ["plains"]);
@@ -334,7 +340,9 @@ mod tests {
 
     #[test]
     fn problems_are_named() {
-        let good = data(json!({ "base": "zombie", "health": 40, "equipment": { "head": "diamond_helmet" }, "skills": [{ "trigger": "spawn", "targets": "self", "actions": [] }] }));
+        let good = data(
+            json!({ "base": "zombie", "health": 40, "equipment": { "head": "diamond_helmet" }, "skills": [{ "trigger": "spawn", "targets": "self", "actions": [] }] }),
+        );
         assert!(problems(&good).is_empty(), "{:?}", problems(&good));
         assert!(problems(&data(json!({}))).is_empty());
         assert!(problems(&data(json!({ "base": "player" })))[0].contains("player"));

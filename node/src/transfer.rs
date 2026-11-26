@@ -44,7 +44,9 @@ fn locked<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 fn random_hex() -> Result<String, String> {
     let mut bytes = [0u8; 16];
-    fs::File::open("/dev/urandom").and_then(|mut random| random.read_exact(&mut bytes)).map_err(|error| format!("No randomness: {error}"))?;
+    fs::File::open("/dev/urandom")
+        .and_then(|mut random| random.read_exact(&mut bytes))
+        .map_err(|error| format!("No randomness: {error}"))?;
     Ok(relay_proto::hex(&bytes))
 }
 
@@ -93,14 +95,19 @@ impl Uploads {
                 let name = plain_name(&text("name"))?;
                 let token = random_hex()?;
                 let folder = self.dir.join(&token);
-                fs::DirBuilder::new().recursive(true).mode(0o700).create(&folder).map_err(|error| format!("Could not keep the upload: {error}"))?;
+                fs::DirBuilder::new()
+                    .recursive(true)
+                    .mode(0o700)
+                    .create(&folder)
+                    .map_err(|error| format!("Could not keep the upload: {error}"))?;
                 let slot = folder.join(&name);
                 fs::File::create(&slot).map_err(|error| format!("Could not keep the upload: {error}"))?;
                 open.insert(token.clone(), Upload { peer: *peer, slot, size, written: 0, touched: Instant::now(), done: false });
                 Ok(json!({ "upload": token }))
             }
             "__upload_part" => {
-                let upload = open.get_mut(&text("upload")).filter(|one| one.peer == *peer && !one.done).ok_or("That upload isn't open any more.")?;
+                let upload =
+                    open.get_mut(&text("upload")).filter(|one| one.peer == *peer && !one.done).ok_or("That upload isn't open any more.")?;
                 let at = body.get("at").and_then(Value::as_u64).ok_or("Say where this piece goes.")?;
                 if at != upload.written {
                     return Err("A piece of the file went missing. Try again.".into());
@@ -109,7 +116,11 @@ impl Uploads {
                 if bytes.len() > PART_MAX || upload.written + bytes.len() as u64 > upload.size {
                     return Err("The file is bigger than it said.".into());
                 }
-                fs::OpenOptions::new().append(true).open(&upload.slot).and_then(|mut file| file.write_all(&bytes)).map_err(|error| error.to_string())?;
+                fs::OpenOptions::new()
+                    .append(true)
+                    .open(&upload.slot)
+                    .and_then(|mut file| file.write_all(&bytes))
+                    .map_err(|error| error.to_string())?;
                 upload.written += bytes.len() as u64;
                 upload.touched = Instant::now();
                 Ok(json!(upload.written))
@@ -165,10 +176,7 @@ pub fn free_name(folder: &Path, name: &str) -> PathBuf {
         Some((stem, extension)) if !stem.is_empty() => (stem.to_string(), format!(".{extension}")),
         _ => (name.to_string(), String::new()),
     };
-    (2..)
-        .map(|number| folder.join(format!("{stem} ({number}){extension}")))
-        .find(|one| !one.exists())
-        .unwrap_or(first)
+    (2..).map(|number| folder.join(format!("{stem} ({number}){extension}"))).find(|one| !one.exists()).unwrap_or(first)
 }
 
 /// `add_server_uploads` `{id,path,uploads}`: puts uploaded files in a folder of the server (`""` is the
@@ -288,11 +296,24 @@ mod tests {
         let uploads = Uploads::new(&base.join("state"));
         let begun = uploads.request(&ME, "__upload_begin", &json!({ "name": "../a.jar", "size": 5 })).unwrap();
         let token = begun["upload"].as_str().unwrap().to_string();
-        assert!(uploads.request(&OTHER, "__upload_part", &json!({ "upload": token, "at": 0, "data": encode(b"hel") })).is_err(), "someone else's upload");
-        assert!(uploads.request(&ME, "__upload_part", &json!({ "upload": token, "at": 1, "data": encode(b"hel") })).unwrap_err().contains("missing"));
+        assert!(
+            uploads.request(&OTHER, "__upload_part", &json!({ "upload": token, "at": 0, "data": encode(b"hel") })).is_err(),
+            "someone else's upload"
+        );
+        assert!(
+            uploads
+                .request(&ME, "__upload_part", &json!({ "upload": token, "at": 1, "data": encode(b"hel") }))
+                .unwrap_err()
+                .contains("missing")
+        );
         uploads.request(&ME, "__upload_part", &json!({ "upload": token, "at": 0, "data": encode(b"hel") })).unwrap();
         uploads.request(&ME, "__upload_part", &json!({ "upload": token, "at": 3, "data": encode(b"lo") })).unwrap();
-        assert!(uploads.request(&ME, "__upload_part", &json!({ "upload": token, "at": 5, "data": encode(b"!") })).unwrap_err().contains("bigger"));
+        assert!(
+            uploads
+                .request(&ME, "__upload_part", &json!({ "upload": token, "at": 5, "data": encode(b"!") }))
+                .unwrap_err()
+                .contains("bigger")
+        );
         assert_eq!(uploads.request(&ME, "__upload_end", &json!({ "upload": token })).unwrap(), json!(token));
         assert!(add_to_server(&uploads, &OTHER, &root, "plugins", std::slice::from_ref(&token)).is_err(), "only the sender uses the token");
         assert!(add_to_server(&uploads, &ME, &root, "../", std::slice::from_ref(&token)).unwrap_err().contains("outside"));
@@ -304,7 +325,8 @@ mod tests {
         assert_eq!(fs::read_dir(base.join("state/uploads")).unwrap().count(), 0, "nothing is left behind");
 
         // Short of what it said.
-        let short = uploads.request(&ME, "__upload_begin", &json!({ "name": "b.txt", "size": 3 })).unwrap()["upload"].as_str().unwrap().to_string();
+        let short =
+            uploads.request(&ME, "__upload_begin", &json!({ "name": "b.txt", "size": 3 })).unwrap()["upload"].as_str().unwrap().to_string();
         assert!(uploads.request(&ME, "__upload_end", &json!({ "upload": short })).unwrap_err().contains("whole"));
         fs::remove_dir_all(&base).unwrap();
     }

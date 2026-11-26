@@ -7,18 +7,18 @@ use std::sync::Arc;
 
 use axum::extract::{ConnectInfo, DefaultBodyLimit, FromRequestParts, Path, Query, State, WebSocketUpgrade};
 use axum::http::request::Parts;
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use relay_proto::DeviceId;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use super::store::{Activity, CrashReport, Invite, Joined, User, HANDLE_COOLDOWN};
-use super::util::{self, check_handle, hex, now, sha256, Role, DAY};
-use super::{may_remove, may_set_role, pages, Login, LoginResult, Shared};
+use super::store::{Activity, CrashReport, HANDLE_COOLDOWN, Invite, Joined, User};
+use super::util::{self, DAY, Role, check_handle, hex, now, sha256};
+use super::{Login, LoginResult, Shared, may_remove, may_set_role, pages};
 
 pub fn router(shared: Arc<Shared>) -> Router {
     Router::new()
@@ -72,7 +72,11 @@ pub fn router(shared: Arc<Shared>) -> Router {
 /// Headers for every answer; web pages also get a policy that allows only their own inline styles
 /// (no scripts, no outside requests, no framing).
 async fn security_headers(mut response: Response) -> Response {
-    let html = response.headers().get(header::CONTENT_TYPE).and_then(|value| value.to_str().ok()).is_some_and(|value| value.starts_with("text/html"));
+    let html = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("text/html"));
     let headers = response.headers_mut();
     headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
     // Invite codes and sign-in ids are in some addresses: never pass them on.
@@ -143,7 +147,8 @@ type Answer = Result<Json<Value>, ApiError>;
 /// real one; Caddy replaces whatever the client sent there.
 pub(crate) fn client_ip(headers: &HeaderMap, peer: SocketAddr) -> String {
     if peer.ip().is_loopback()
-        && let Some(first) = headers.get("x-forwarded-for").and_then(|value| value.to_str().ok()).and_then(|forwarded| forwarded.split(',').next())
+        && let Some(first) =
+            headers.get("x-forwarded-for").and_then(|value| value.to_str().ok()).and_then(|forwarded| forwarded.split(',').next())
     {
         return first.trim().to_string();
     }
@@ -266,7 +271,12 @@ pub fn login_message(provider: &str, at: u64) -> String {
     format!("monolab-login-v1\n{provider}\n{at}")
 }
 
-async fn auth_begin(State(shared): State<Arc<Shared>>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap, Json(body): Json<Begin>) -> Answer {
+async fn auth_begin(
+    State(shared): State<Arc<Shared>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<Begin>,
+) -> Answer {
     if !shared.limits.allow(&format!("begin:{}", client_ip(&headers, peer)), 10, 60) {
         return Err(ApiError::slow());
     }
@@ -449,7 +459,12 @@ async fn auth_poll(State(shared): State<Arc<Shared>>, Json(body): Json<Poll>) ->
     Ok(Json(answer))
 }
 
-async fn handle_check(State(shared): State<Arc<Shared>>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap, Path(handle): Path<String>) -> Answer {
+async fn handle_check(
+    State(shared): State<Arc<Shared>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(handle): Path<String>,
+) -> Answer {
     if !shared.limits.allow(&format!("handle:{}", client_ip(&headers, peer)), 60, 60) {
         return Err(ApiError::slow());
     }
@@ -466,7 +481,12 @@ struct Finish {
     handle: String,
 }
 
-async fn auth_finish(State(shared): State<Arc<Shared>>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap, Json(body): Json<Finish>) -> Answer {
+async fn auth_finish(
+    State(shared): State<Arc<Shared>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<Finish>,
+) -> Answer {
     if !shared.limits.allow(&format!("finish:{}", client_ip(&headers, peer)), 30, 60) {
         return Err(ApiError::slow());
     }
@@ -615,7 +635,12 @@ struct NodePair {
 
 /// A node turns in its code: its key becomes a device of the code's owner, of kind `node`, with a session
 /// of its own (stretched each time it's used, like an app's).
-async fn node_pair(State(shared): State<Arc<Shared>>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap, Json(body): Json<NodePair>) -> Answer {
+async fn node_pair(
+    State(shared): State<Arc<Shared>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<NodePair>,
+) -> Answer {
     if !shared.limits.allow(&format!("node-pair:{}", client_ip(&headers, peer)), 10, 60) {
         return Err(ApiError::slow());
     }
@@ -623,7 +648,9 @@ async fn node_pair(State(shared): State<Arc<Shared>>, ConnectInfo(peer): Connect
     let key: [u8; 32] = util::unhex(&body.public_key).and_then(|bytes| bytes.try_into().ok()).ok_or(ApiError::bad("bad_key"))?;
     let signature: [u8; 64] = util::unhex(&body.signature).and_then(|bytes| bytes.try_into().ok()).ok_or(ApiError::bad("bad_signature"))?;
     let verifying = VerifyingKey::from_bytes(&key).map_err(|_| ApiError::bad("bad_key"))?;
-    verifying.verify(node_pair_message(&code).as_bytes(), &Signature::from_bytes(&signature)).map_err(|_| ApiError::bad("bad_signature"))?;
+    verifying
+        .verify(node_pair_message(&code).as_bytes(), &Signature::from_bytes(&signature))
+        .map_err(|_| ApiError::bad("bad_signature"))?;
     let now = now();
     let user = {
         let mut codes = shared.node_codes.lock().expect("node codes poisoned");
@@ -760,7 +787,12 @@ struct RoleBody {
     role: String,
 }
 
-async fn member_patch(State(shared): State<Arc<Shared>>, me: Me, Path((team, user)): Path<(String, String)>, Json(body): Json<RoleBody>) -> Answer {
+async fn member_patch(
+    State(shared): State<Arc<Shared>>,
+    me: Me,
+    Path((team, user)): Path<(String, String)>,
+    Json(body): Json<RoleBody>,
+) -> Answer {
     let actor = role_in(&shared, &team, &me)?;
     let new = Role::parse(&body.role).ok_or(ApiError::bad("bad_role"))?;
     let current = shared.store.role(&team, &user)?.ok_or_else(ApiError::not_found)?;
@@ -781,7 +813,11 @@ async fn member_patch(State(shared): State<Arc<Shared>>, me: Me, Path((team, use
     team_answer(&shared, &team, &me)
 }
 
-async fn member_delete(State(shared): State<Arc<Shared>>, me: Me, Path((team, user)): Path<(String, String)>) -> Result<StatusCode, ApiError> {
+async fn member_delete(
+    State(shared): State<Arc<Shared>>,
+    me: Me,
+    Path((team, user)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
     let actor = role_in(&shared, &team, &me)?;
     let now = now();
     let name = shared.store.team(&team)?.map(|one| one.name).unwrap_or_default();
@@ -832,7 +868,11 @@ async fn member_invite(State(shared): State<Arc<Shared>>, me: Me, Path(team): Pa
     shared.store.invite_person(&team, &person.id, role, &me.user.id, now, now + INVITE_MAX)?;
     let name = shared.store.team(&team)?.map(|one| one.name).unwrap_or_default();
     shared.record(&team, Some(&me.user.id), "person_invited", json!({ "user": person.handle, "role": role.as_str() }), now);
-    shared.notice(std::slice::from_ref(&person.id), "invited", json!({ "team": team, "name": name, "by": me.user.handle, "role": role.as_str() }));
+    shared.notice(
+        std::slice::from_ref(&person.id),
+        "invited",
+        json!({ "team": team, "name": name, "by": me.user.handle, "role": role.as_str() }),
+    );
     Ok(Json(json!({ "user": user_json(&person), "role": role.as_str() })))
 }
 
@@ -922,7 +962,11 @@ async fn invites_list(State(shared): State<Arc<Shared>>, me: Me, Path(team): Pat
     Ok(Json(json!({ "invites": invites })))
 }
 
-async fn invite_delete(State(shared): State<Arc<Shared>>, me: Me, Path((team, id)): Path<(String, String)>) -> Result<StatusCode, ApiError> {
+async fn invite_delete(
+    State(shared): State<Arc<Shared>>,
+    me: Me,
+    Path((team, id)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
     manager_in(&shared, &team, &me)?;
     let hash = util::unhex(&id).ok_or_else(ApiError::not_found)?;
     if !shared.store.revoke_invite(&team, &hash, now())? {
@@ -952,7 +996,12 @@ fn preview_json(shared: &Shared, invite: &Invite) -> Result<Value, ApiError> {
     }))
 }
 
-async fn invite_preview(State(shared): State<Arc<Shared>>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap, Path(code): Path<String>) -> Answer {
+async fn invite_preview(
+    State(shared): State<Arc<Shared>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(code): Path<String>,
+) -> Answer {
     if !shared.limits.allow(&format!("preview:{}", client_ip(&headers, peer)), 30, 60) {
         return Err(ApiError::slow());
     }
@@ -1042,7 +1091,16 @@ async fn activity_list(State(shared): State<Arc<Shared>>, me: Me, Path(team): Pa
 }
 
 /// What a host may say happened on one of its servers (section 6.5). Paths and names only, never contents.
-const HOST_ACTIVITY: &[&str] = &["server_started", "server_stopped", "server_crashed", "file_changed", "plugin_added", "studio_asset_added", "storage_added", "storage_used"];
+const HOST_ACTIVITY: &[&str] = &[
+    "server_started",
+    "server_stopped",
+    "server_crashed",
+    "file_changed",
+    "plugin_added",
+    "studio_asset_added",
+    "storage_added",
+    "storage_used",
+];
 
 #[derive(Deserialize)]
 struct ActivityPost {
@@ -1052,7 +1110,12 @@ struct ActivityPost {
     data: Value,
 }
 
-async fn activity_post(State(shared): State<Arc<Shared>>, me: Me, Path(team): Path<String>, Json(body): Json<ActivityPost>) -> Result<StatusCode, ApiError> {
+async fn activity_post(
+    State(shared): State<Arc<Shared>>,
+    me: Me,
+    Path(team): Path<String>,
+    Json(body): Json<ActivityPost>,
+) -> Result<StatusCode, ApiError> {
     role_in(&shared, &team, &me)?;
     if !HOST_ACTIVITY.contains(&body.kind.as_str()) {
         return Err(ApiError::bad("bad_kind"));
@@ -1135,7 +1198,11 @@ async fn server_attach(State(shared): State<Arc<Shared>>, me: Me, Path(team): Pa
     team_answer(&shared, &team, &me)
 }
 
-async fn server_detach(State(shared): State<Arc<Shared>>, me: Me, Path((team, id)): Path<(String, String)>) -> Result<StatusCode, ApiError> {
+async fn server_detach(
+    State(shared): State<Arc<Shared>>,
+    me: Me,
+    Path((team, id)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
     let role = role_in(&shared, &team, &me)?;
     let server = shared.store.team_servers(&team)?.into_iter().find(|one| one.id == id).ok_or_else(ApiError::not_found)?;
     if !role.manages() && server.host_device != me.device {
@@ -1210,7 +1277,11 @@ async fn grants(State(shared): State<Arc<Shared>>, me: Me, Json(body): Json<Gran
             exp: now + relay_proto::grant::LIFE_SECS,
         };
         let addr = addrs.get(&host).filter(|(_, at)| now < *at + ADDR_FRESH).and_then(|(text, _)| serde_json::from_str::<Value>(text).ok());
-        let host_handle = servers.first().and_then(|one| one.host_user.as_deref()).and_then(|id| shared.store.user(id).ok().flatten()).map(|one| one.handle);
+        let host_handle = servers
+            .first()
+            .and_then(|one| one.host_user.as_deref())
+            .and_then(|id| shared.store.user(id).ok().flatten())
+            .map(|one| one.handle);
         out.push(json!({
             "host_device": host,
             "host": host_handle,
@@ -1236,7 +1307,12 @@ async fn ws(State(shared): State<Arc<Shared>>, upgrade: WebSocketUpgrade) -> Res
 }
 
 /// `/v2/app`: update notices and anonymous usage counts for every running app, no sign-in (app.rs).
-async fn app_ws(State(shared): State<Arc<Shared>>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap, upgrade: WebSocketUpgrade) -> Response {
+async fn app_ws(
+    State(shared): State<Arc<Shared>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    upgrade: WebSocketUpgrade,
+) -> Response {
     let ip = client_ip(&headers, peer);
     if !shared.limits.allow(&format!("app:{ip}"), super::app::CONNECTS_PER_MINUTE, 60) {
         return ApiError::slow().into_response();
@@ -1247,7 +1323,12 @@ async fn app_ws(State(shared): State<Arc<Shared>>, ConnectInfo(peer): ConnectInf
     upgrade.max_message_size(1024).on_upgrade(move |socket| super::app::run(shared, socket, slot))
 }
 
-async fn invite_page(State(shared): State<Arc<Shared>>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap, Path(code): Path<String>) -> Response {
+async fn invite_page(
+    State(shared): State<Arc<Shared>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(code): Path<String>,
+) -> Response {
     if !shared.limits.allow(&format!("preview:{}", client_ip(&headers, peer)), 30, 60) {
         return (StatusCode::TOO_MANY_REQUESTS, Html(pages::invite_unusable("slow"))).into_response();
     }
@@ -1294,20 +1375,34 @@ pub const CRASH_DETAIL_MAX: usize = 12_000;
 
 /// Checks a report someone chose to send from the app's crash dialog. Nothing about who sent it is kept.
 fn crash_from(body: CrashBody) -> Result<CrashReport, ApiError> {
-    let short = |text: &str, most: usize| !text.trim().is_empty() && text.chars().count() <= most && !text.chars().any(|letter| letter.is_control());
+    let short = |text: &str, most: usize| {
+        !text.trim().is_empty() && text.chars().count() <= most && !text.chars().any(|letter| letter.is_control())
+    };
     if !short(&body.version, 32) || !short(&body.os, 64) {
         return Err(ApiError::bad("bad_crash"));
     }
     if !matches!(body.kind.as_str(), "panic" | "ui") {
         return Err(ApiError::bad("bad_crash"));
     }
-    if body.message.trim().is_empty() || body.message.chars().count() > CRASH_MESSAGE_MAX || body.detail.chars().count() > CRASH_DETAIL_MAX {
+    if body.message.trim().is_empty() || body.message.chars().count() > CRASH_MESSAGE_MAX || body.detail.chars().count() > CRASH_DETAIL_MAX
+    {
         return Err(ApiError::bad("crash_too_big"));
     }
-    Ok(CrashReport { version: body.version.trim().into(), os: body.os.trim().into(), kind: body.kind, message: body.message, detail: body.detail })
+    Ok(CrashReport {
+        version: body.version.trim().into(),
+        os: body.os.trim().into(),
+        kind: body.kind,
+        message: body.message,
+        detail: body.detail,
+    })
 }
 
-async fn crash_report(State(shared): State<Arc<Shared>>, ConnectInfo(peer): ConnectInfo<SocketAddr>, headers: HeaderMap, Json(body): Json<CrashBody>) -> Answer {
+async fn crash_report(
+    State(shared): State<Arc<Shared>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(body): Json<CrashBody>,
+) -> Answer {
     if !shared.limits.allow(&format!("crash:{}", client_ip(&headers, peer)), 5, 3600) {
         return Err(ApiError::slow());
     }

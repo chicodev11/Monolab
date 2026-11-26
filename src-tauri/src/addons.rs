@@ -1,4 +1,3 @@
-
 use serde::Serialize;
 use sha2::{Digest, Sha512};
 use std::{
@@ -118,11 +117,7 @@ pub(crate) fn sha512_of(path: &Path) -> Result<String, String> {
         }
         hasher.update(&buffer[..read]);
     }
-    Ok(hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect())
+    Ok(hasher.finalize().iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 #[derive(Default)]
@@ -157,31 +152,16 @@ fn read_descriptors<R: std::io::Read + std::io::Seek>(zip: &mut ZipArchive<R>) -
 }
 
 fn yml_value(text: &str, key: &str) -> Option<String> {
-    text.lines().find_map(|line| {
-        line.trim()
-            .strip_prefix(&format!("{key}:"))
-            .map(|value| value.trim().trim_matches(['"', '\'']).to_string())
-    })
+    text.lines()
+        .find_map(|line| line.trim().strip_prefix(&format!("{key}:")).map(|value| value.trim().trim_matches(['"', '\'']).to_string()))
 }
 
 fn identity_from(found: &Descriptors, fallback: &str) -> (String, String, String) {
     if let Some(text) = &found.fabric {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
-            let id = value
-                .get("id")
-                .and_then(|value| value.as_str())
-                .unwrap_or(fallback)
-                .to_string();
-            let name = value
-                .get("name")
-                .and_then(|value| value.as_str())
-                .unwrap_or(&id)
-                .to_string();
-            let version = value
-                .get("version")
-                .and_then(|value| value.as_str())
-                .unwrap_or_default()
-                .to_string();
+            let id = value.get("id").and_then(|value| value.as_str()).unwrap_or(fallback).to_string();
+            let name = value.get("name").and_then(|value| value.as_str()).unwrap_or(&id).to_string();
+            let version = value.get("version").and_then(|value| value.as_str()).unwrap_or_default().to_string();
             return (id, name, version);
         }
     }
@@ -204,10 +184,7 @@ fn icon_from(zip: &mut ZipArchive<fs::File>, found: &Descriptors) -> Option<Stri
     let mut named: Option<String> = None;
     if let Some(text) = &found.fabric {
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
-            named = value
-                .get("icon")
-                .and_then(|value| value.as_str())
-                .map(str::to_owned);
+            named = value.get("icon").and_then(|value| value.as_str()).map(str::to_owned);
         }
     }
     if named.is_none() {
@@ -225,11 +202,7 @@ fn icon_from(zip: &mut ZipArchive<fs::File>, found: &Descriptors) -> Option<Stri
     if let Some(name) = named {
         tries.push(name);
     }
-    tries.extend(
-        ["icon.png", "logo.png", "pack.png", "assets/icon.png"]
-            .into_iter()
-            .map(str::to_owned),
-    );
+    tries.extend(["icon.png", "logo.png", "pack.png", "assets/icon.png"].into_iter().map(str::to_owned));
 
     for name in tries {
         let Ok(mut entry) = zip.by_name(&name) else {
@@ -243,10 +216,7 @@ fn icon_from(zip: &mut ZipArchive<fs::File>, found: &Descriptors) -> Option<Stri
             continue;
         }
         use base64::Engine;
-        return Some(format!(
-            "data:image/png;base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(bytes)
-        ));
+        return Some(format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)));
     }
     None
 }
@@ -261,11 +231,7 @@ pub struct JarFacts {
 }
 
 pub fn read_jar(path: &Path, kind: &str) -> JarFacts {
-    let fallback = path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("unknown")
-        .to_string();
+    let fallback = path.file_stem().and_then(|value| value.to_str()).unwrap_or("unknown").to_string();
     let blank = |metadata: &str| JarFacts {
         display_name: fallback.clone(),
         version: String::new(),
@@ -285,29 +251,17 @@ pub fn read_jar(path: &Path, kind: &str) -> JarFacts {
 
     let (listed_name, metadata) = if kind == "plugin" {
         match &found.plugin_yml {
-            Some((name, text)) => (
-                yml_value(text, "name").unwrap_or_else(|| fallback.clone()),
-                (*name).to_string(),
-            ),
+            Some((name, text)) => (yml_value(text, "name").unwrap_or_else(|| fallback.clone()), (*name).to_string()),
             None => (fallback.clone(), "No metadata".into()),
         }
     } else if let Some(text) = &found.fabric {
         let name = serde_json::from_str::<serde_json::Value>(text)
             .ok()
-            .and_then(|value| {
-                value
-                    .get("name")
-                    .or_else(|| value.get("id"))
-                    .and_then(|value| value.as_str())
-                    .map(str::to_string)
-            })
+            .and_then(|value| value.get("name").or_else(|| value.get("id")).and_then(|value| value.as_str()).map(str::to_string))
             .unwrap_or_else(|| fallback.clone());
         (name, "fabric.mod.json".into())
     } else if let Some((name, text)) = &found.forge {
-        let picked = mod_from_toml(text)
-            .map(|(_, shown, _)| shown)
-            .filter(|shown| !shown.is_empty())
-            .unwrap_or_else(|| fallback.clone());
+        let picked = mod_from_toml(text).map(|(_, shown, _)| shown).filter(|shown| !shown.is_empty()).unwrap_or_else(|| fallback.clone());
         (picked, (*name).to_string())
     } else {
         (fallback.clone(), "No metadata".into())
@@ -317,31 +271,15 @@ pub fn read_jar(path: &Path, kind: &str) -> JarFacts {
         .fabric
         .as_deref()
         .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
-        .and_then(|value| {
-            value
-                .get("environment")
-                .and_then(|value| value.as_str())
-                .map(str::to_owned)
-        })
+        .and_then(|value| value.get("environment").and_then(|value| value.as_str()).map(str::to_owned))
         .is_some_and(|environment| environment.eq_ignore_ascii_case("client"));
 
     let icon = icon_from(&mut zip, &found);
-    JarFacts {
-        display_name,
-        version,
-        metadata,
-        listed_name,
-        client_only,
-        icon,
-    }
+    JarFacts { display_name, version, metadata, listed_name, client_only, icon }
 }
 
 pub fn jar_identity(path: &Path) -> (String, String, String) {
-    let fallback = path
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("unknown")
-        .to_string();
+    let fallback = path.file_stem().and_then(|value| value.to_str()).unwrap_or("unknown").to_string();
     let Ok(file) = fs::File::open(path) else {
         return (fallback.clone(), fallback, String::new());
     };
@@ -365,13 +303,7 @@ fn mod_from_toml(text: &str) -> Option<(String, String, String)> {
     let doc = text.parse::<toml_edit::DocumentMut>().ok()?;
     let mods = doc.get("mods")?.as_array_of_tables()?;
     let first = mods.get(0)?;
-    let read = |key: &str| {
-        first
-            .get(key)
-            .and_then(|value| value.as_str())
-            .unwrap_or_default()
-            .to_string()
-    };
+    let read = |key: &str| first.get(key).and_then(|value| value.as_str()).unwrap_or_default().to_string();
     Some((read("modId"), read("displayName"), read("version")))
 }
 
@@ -412,22 +344,12 @@ pub fn scan(instance_path: &Path) -> Vec<InstalledAddon> {
             .flatten(),
         );
     }
-    found.sort_by(|left, right| {
-        left.display_name
-            .to_lowercase()
-            .cmp(&right.display_name.to_lowercase())
-    });
+    found.sort_by_key(|left| left.display_name.to_lowercase());
     found
 }
 
-pub fn identify(
-    client: &reqwest::blocking::Client,
-    addons: &mut [InstalledAddon],
-) -> Result<(), String> {
-    let hashes = addons
-        .iter()
-        .map(|addon| addon.sha512.clone())
-        .collect::<Vec<_>>();
+pub fn identify(client: &reqwest::blocking::Client, addons: &mut [InstalledAddon]) -> Result<(), String> {
+    let hashes = addons.iter().map(|addon| addon.sha512.clone()).collect::<Vec<_>>();
     if hashes.is_empty() {
         return Ok(());
     }
@@ -443,46 +365,27 @@ pub fn identify(
     let Some(map) = value.as_object() else {
         return Ok(());
     };
-    let project_ids = map
-        .values()
-        .filter_map(|version| version.get("project_id").and_then(|id| id.as_str()))
-        .collect::<HashSet<_>>();
+    let project_ids = map.values().filter_map(|version| version.get("project_id").and_then(|id| id.as_str())).collect::<HashSet<_>>();
     let titles = fetch_projects(client, &project_ids).unwrap_or_default();
 
     for addon in addons.iter_mut() {
         let Some(version) = map.get(&addon.sha512) else {
             continue;
         };
-        let project_id = version
-            .get("project_id")
-            .and_then(|id| id.as_str())
-            .map(str::to_owned);
-        addon.project_title = project_id
-            .as_ref()
-            .and_then(|id| titles.get(id))
-            .map(|brief| brief.title.clone());
+        let project_id = version.get("project_id").and_then(|id| id.as_str()).map(str::to_owned);
+        addon.project_title = project_id.as_ref().and_then(|id| titles.get(id)).map(|brief| brief.title.clone());
         addon.project_id = project_id;
         let list = |key: &str| {
             version
                 .get(key)
                 .and_then(|value| value.as_array())
-                .map(|items| {
-                    items
-                        .iter()
-                        .filter_map(|item| item.as_str())
-                        .map(str::to_owned)
-                        .collect::<Vec<_>>()
-                })
+                .map(|items| items.iter().filter_map(|item| item.as_str()).map(str::to_owned).collect::<Vec<_>>())
                 .unwrap_or_default()
         };
         addon.loaders = list("loaders");
         addon.game_versions = list("game_versions");
         if addon.version.is_empty() {
-            addon.version = version
-                .get("version_number")
-                .and_then(|value| value.as_str())
-                .unwrap_or_default()
-                .to_string();
+            addon.version = version.get("version_number").and_then(|value| value.as_str()).unwrap_or_default().to_string();
         }
     }
     Ok(())
@@ -495,15 +398,11 @@ pub struct ProjectCard {
     pub server_side: String,
 }
 
-pub fn fetch_project_cards(
-    client: &reqwest::blocking::Client,
-    ids: &HashSet<&str>,
-) -> Result<HashMap<String, ProjectCard>, String> {
+pub fn fetch_project_cards(client: &reqwest::blocking::Client, ids: &HashSet<&str>) -> Result<HashMap<String, ProjectCard>, String> {
     if ids.is_empty() {
         return Ok(HashMap::new());
     }
-    let list = serde_json::to_string(&ids.iter().collect::<Vec<_>>())
-        .map_err(|error| error.to_string())?;
+    let list = serde_json::to_string(&ids.iter().collect::<Vec<_>>()).map_err(|error| error.to_string())?;
     let value: serde_json::Value = client
         .get("https://api.modrinth.com/v2/projects")
         .query(&[("ids", list)])
@@ -520,26 +419,9 @@ pub fn fetch_project_cards(
         .filter_map(|project| {
             let id = project.get("id")?.as_str()?.to_string();
             let title = project.get("title")?.as_str()?.to_string();
-            let icon = project
-                .get("icon_url")
-                .and_then(|value| value.as_str())
-                .filter(|value| !value.is_empty())
-                .map(str::to_owned);
-            let side = |key: &str| {
-                project
-                    .get(key)
-                    .and_then(|value| value.as_str())
-                    .unwrap_or("unknown")
-                    .to_string()
-            };
-            Some((
-                id,
-                ProjectCard {
-                    title,
-                    icon,
-                    server_side: side("server_side"),
-                },
-            ))
+            let icon = project.get("icon_url").and_then(|value| value.as_str()).filter(|value| !value.is_empty()).map(str::to_owned);
+            let side = |key: &str| project.get(key).and_then(|value| value.as_str()).unwrap_or("unknown").to_string();
+            Some((id, ProjectCard { title, icon, server_side: side("server_side") }))
         })
         .collect())
 }
@@ -550,15 +432,11 @@ pub struct ProjectBrief {
     pub icon_url: Option<String>,
 }
 
-fn fetch_projects(
-    client: &reqwest::blocking::Client,
-    ids: &HashSet<&str>,
-) -> Result<HashMap<String, ProjectBrief>, String> {
+fn fetch_projects(client: &reqwest::blocking::Client, ids: &HashSet<&str>) -> Result<HashMap<String, ProjectBrief>, String> {
     if ids.is_empty() {
         return Ok(HashMap::new());
     }
-    let list = serde_json::to_string(&ids.iter().collect::<Vec<_>>())
-        .map_err(|error| error.to_string())?;
+    let list = serde_json::to_string(&ids.iter().collect::<Vec<_>>()).map_err(|error| error.to_string())?;
     let value: serde_json::Value = client
         .get("https://api.modrinth.com/v2/projects")
         .query(&[("ids", list)])
@@ -577,11 +455,7 @@ fn fetch_projects(
                 project.get("id")?.as_str()?.to_string(),
                 ProjectBrief {
                     title: project.get("title")?.as_str()?.to_string(),
-                    icon_url: project
-                        .get("icon_url")
-                        .and_then(|value| value.as_str())
-                        .filter(|value| !value.is_empty())
-                        .map(str::to_owned),
+                    icon_url: project.get("icon_url").and_then(|value| value.as_str()).filter(|value| !value.is_empty()).map(str::to_owned),
                 },
             ))
         })
@@ -594,17 +468,11 @@ pub fn find_updates(
     loader: &str,
     game_version: &str,
 ) -> Result<Vec<AddonUpdate>, String> {
-    let known = addons
-        .iter()
-        .filter(|addon| addon.project_id.is_some())
-        .collect::<Vec<_>>();
+    let known = addons.iter().filter(|addon| addon.project_id.is_some()).collect::<Vec<_>>();
     if known.is_empty() {
         return Ok(Vec::new());
     }
-    let hashes = known
-        .iter()
-        .map(|addon| addon.sha512.clone())
-        .collect::<Vec<_>>();
+    let hashes = known.iter().map(|addon| addon.sha512.clone()).collect::<Vec<_>>();
     let value: serde_json::Value = client
         .post("https://api.modrinth.com/v2/version_files/update")
         .json(&serde_json::json!({
@@ -647,7 +515,8 @@ pub fn find_updates(
             .and_then(|answer| answer.json::<serde_json::Value>())
         {
             for one in found.as_array().into_iter().flatten() {
-                if let (Some(id), Some(project)) = (one.get("id").and_then(|v| v.as_str()), one.get("project_id").and_then(|v| v.as_str())) {
+                if let (Some(id), Some(project)) = (one.get("id").and_then(|v| v.as_str()), one.get("project_id").and_then(|v| v.as_str()))
+                {
                     projects_of_versions.insert(id.to_string(), project.to_string());
                 }
             }
@@ -667,16 +536,9 @@ pub fn find_updates(
         }
         updates.push(AddonUpdate {
             file_name: addon.file_name.clone(),
-            display_name: addon
-                .project_title
-                .clone()
-                .unwrap_or_else(|| addon.display_name.clone()),
+            display_name: addon.project_title.clone().unwrap_or_else(|| addon.display_name.clone()),
             current_version: addon.version.clone(),
-            new_version: latest
-                .get("version_number")
-                .and_then(|value| value.as_str())
-                .unwrap_or_default()
-                .to_string(),
+            new_version: latest.get("version_number").and_then(|value| value.as_str()).unwrap_or_default().to_string(),
             new_file_name: file.0,
             download_url: file.1,
             sha512: file.2,
@@ -716,51 +578,31 @@ pub fn find_updates(
 
 fn covers(unnamed: &[String], slug: &str) -> bool {
     let plain = slug.replace('-', "");
-    unnamed.iter().any(|one| one == slug || one.replace(['-', '_'], "") == plain || (one.ends_with(".jar") && one.replace(['-', '_'], "").contains(&plain)))
+    unnamed.iter().any(|one| {
+        one == slug || one.replace(['-', '_'], "") == plain || (one.ends_with(".jar") && one.replace(['-', '_'], "").contains(&plain))
+    })
 }
 
 fn primary_file(version: &serde_json::Value) -> Option<(String, String, String)> {
     let files = version.get("files")?.as_array()?;
-    let file = files
-        .iter()
-        .find(|file| {
-            file.get("primary")
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false)
-        })
-        .or_else(|| files.first())?;
-    let name = Path::new(file.get("filename")?.as_str()?)
-        .file_name()?
-        .to_str()?
-        .to_string();
-    Some((
-        name,
-        file.get("url")?.as_str()?.to_string(),
-        file.pointer("/hashes/sha512")?.as_str()?.to_string(),
-    ))
+    let file =
+        files.iter().find(|file| file.get("primary").and_then(|value| value.as_bool()).unwrap_or(false)).or_else(|| files.first())?;
+    let name = Path::new(file.get("filename")?.as_str()?).file_name()?.to_str()?.to_string();
+    Some((name, file.get("url")?.as_str()?.to_string(), file.pointer("/hashes/sha512")?.as_str()?.to_string()))
 }
 
 pub fn find_conflicts(addons: &[InstalledAddon]) -> Vec<AddonConflict> {
     let mut conflicts = Vec::new();
     let mut by_id: HashMap<&str, Vec<&InstalledAddon>> = HashMap::new();
-    for addon in addons
-        .iter()
-        .filter(|addon| addon.enabled && !addon.mod_id.trim().is_empty())
-    {
+    for addon in addons.iter().filter(|addon| addon.enabled && !addon.mod_id.trim().is_empty()) {
         by_id.entry(addon.mod_id.as_str()).or_default().push(addon);
     }
     for (mod_id, group) in &by_id {
         if group.len() > 1 {
             conflicts.push(AddonConflict {
                 kind: "Duplicate".into(),
-                message: format!(
-                    "{mod_id} is enabled {} times. Keep only one.",
-                    group.len()
-                ),
-                files: group
-                    .iter()
-                    .map(|addon| addon.file_name.clone())
-                    .collect(),
+                message: format!("{mod_id} is enabled {} times. Keep only one.", group.len()),
+                files: group.iter().map(|addon| addon.file_name.clone()).collect(),
             });
         }
     }
@@ -779,10 +621,7 @@ pub fn find_conflicts(addons: &[InstalledAddon]) -> Vec<AddonConflict> {
                 kind: "Duplicate".into(),
                 message: format!(
                     "{} has {} enabled files.",
-                    group[0]
-                        .project_title
-                        .clone()
-                        .unwrap_or_else(|| group[0].display_name.clone()),
+                    group[0].project_title.clone().unwrap_or_else(|| group[0].display_name.clone()),
                     group.len()
                 ),
                 files: group.iter().map(|a| a.file_name.clone()).collect(),
@@ -802,8 +641,7 @@ pub fn plan_install(
     installed: &HashSet<String>,
 ) -> Result<InstallPlan, String> {
     let version = pick_version(client, project_id, loader, game_version)?;
-    let (file_name, download_url, sha512) =
-        primary_file(&version).ok_or("No release file was found.")?;
+    let (file_name, download_url, sha512) = primary_file(&version).ok_or("No release file was found.")?;
     let wanted: Vec<(String, bool)> = version
         .get("dependencies")
         .and_then(|value| value.as_array())
@@ -818,10 +656,7 @@ pub fn plan_install(
     let titles_needed: HashSet<&str> = wanted.iter().map(|(id, _)| id.as_str()).collect();
     let (titles, picked) = std::thread::scope(|scope| {
         let titles = scope.spawn(|| fetch_projects(client, &titles_needed).unwrap_or_default());
-        let picks: Vec<_> = wanted
-            .iter()
-            .map(|(id, _)| scope.spawn(move || pick_version(client, id, loader, game_version).ok()))
-            .collect();
+        let picks: Vec<_> = wanted.iter().map(|(id, _)| scope.spawn(move || pick_version(client, id, loader, game_version).ok())).collect();
         let picked: Vec<Option<serde_json::Value>> = picks.into_iter().map(|handle| handle.join().unwrap_or(None)).collect();
         (titles.join().unwrap_or_default(), picked)
     });
@@ -835,11 +670,7 @@ pub fn plan_install(
             project_id: dep_project.clone(),
             title: brief.map(|one| one.title.clone()).unwrap_or_else(|| dep_project.clone()),
             icon_url: brief.and_then(|one| one.icon_url.clone()),
-            version_name: dep_version
-                .get("version_number")
-                .and_then(|value| value.as_str())
-                .unwrap_or("")
-                .to_string(),
+            version_name: dep_version.get("version_number").and_then(|value| value.as_str()).unwrap_or("").to_string(),
             required: *required,
             already_installed: installed.contains(dep_project),
             file_name: name,
@@ -848,11 +679,7 @@ pub fn plan_install(
         });
     }
     Ok(InstallPlan {
-        title: version
-            .get("name")
-            .and_then(|value| value.as_str())
-            .unwrap_or(project_id)
-            .to_string(),
+        title: version.get("name").and_then(|value| value.as_str()).unwrap_or(project_id).to_string(),
         file_name,
         download_url,
         sha512,
@@ -867,9 +694,7 @@ fn pick_version(
     game_version: &str,
 ) -> Result<serde_json::Value, String> {
     let versions: serde_json::Value = client
-        .get(format!(
-            "https://api.modrinth.com/v2/project/{project_id}/version"
-        ))
+        .get(format!("https://api.modrinth.com/v2/project/{project_id}/version"))
         .send()
         .map_err(|error| format!("Could not fetch the release list: {error}"))?
         .error_for_status()
@@ -885,30 +710,22 @@ fn pick_version(
                     let matches_game = item
                         .get("game_versions")
                         .and_then(|value| value.as_array())
-                        .is_some_and(|list| {
-                            list.iter().any(|value| value.as_str() == Some(game_version))
-                        });
+                        .is_some_and(|list| list.iter().any(|value| value.as_str() == Some(game_version)));
                     let matches_loader = item
                         .get("loaders")
                         .and_then(|value| value.as_array())
-                        .is_some_and(|list| {
-                            list.iter().any(|value| value.as_str() == Some(loader))
-                        });
+                        .is_some_and(|list| list.iter().any(|value| value.as_str() == Some(loader)));
                     matches_game && matches_loader
                 })
                 .cloned()
         })
-        .ok_or_else(|| {
-            format!("No release matches {game_version} · {loader}.")
-        })
+        .ok_or_else(|| format!("No release matches {game_version} · {loader}."))
 }
 
 pub fn download_url_for(sha512: &str) -> Option<String> {
     let client = client().ok()?;
     let value: serde_json::Value = client
-        .get(format!(
-            "https://api.modrinth.com/v2/version_file/{sha512}?algorithm=sha512"
-        ))
+        .get(format!("https://api.modrinth.com/v2/version_file/{sha512}?algorithm=sha512"))
         .send()
         .ok()?
         .error_for_status()
@@ -977,18 +794,12 @@ modId="configurable"
 version="3.5.2"
 displayName="Configurable"
 "#;
-        assert_eq!(
-            mod_from_toml(text),
-            Some(("configurable".into(), "Configurable".into(), "3.5.2".into()))
-        );
+        assert_eq!(mod_from_toml(text), Some(("configurable".into(), "Configurable".into(), "3.5.2".into())));
     }
 
     #[test]
     fn flags_the_same_mod_installed_twice() {
-        let list = vec![
-            addon("sodium-0.5.jar", "sodium", None),
-            addon("sodium-0.6.jar", "sodium", None),
-        ];
+        let list = vec![addon("sodium-0.5.jar", "sodium", None), addon("sodium-0.6.jar", "sodium", None)];
         let conflicts = find_conflicts(&list);
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].files.len(), 2);
@@ -996,10 +807,7 @@ displayName="Configurable"
 
     #[test]
     fn ignores_disabled_duplicates() {
-        let mut list = vec![
-            addon("sodium-0.5.jar", "sodium", None),
-            addon("sodium-0.6.jar", "sodium", None),
-        ];
+        let mut list = vec![addon("sodium-0.5.jar", "sodium", None), addon("sodium-0.6.jar", "sodium", None)];
         list[0].enabled = false;
         assert!(find_conflicts(&list).is_empty());
     }
@@ -1059,13 +867,19 @@ mod identity_tests {
         let file = fs::File::create(&path).unwrap();
         let mut zip = zip::ZipWriter::new(file);
         zip.start_file("plugin.yml", SimpleFileOptions::default()).unwrap();
-        zip.write_all(b"name: commonnetworking
+        zip.write_all(
+            b"name: commonnetworking
 version: 26.3-1.1.0
-").unwrap();
+",
+        )
+        .unwrap();
         zip.start_file("paper-plugin.yml", SimpleFileOptions::default()).unwrap();
-        zip.write_all(b"name: journeymap
+        zip.write_all(
+            b"name: journeymap
 version: 26.3-6.0.8
-").unwrap();
+",
+        )
+        .unwrap();
         zip.finish().unwrap();
         let (id, name, version) = jar_identity(&path);
         assert_eq!(id, "journeymap");
@@ -1085,15 +899,16 @@ version: 26.3-6.0.8
 
     #[test]
     fn reads_a_jar_held_in_memory() {
-        let path = jar("bytes", "plugin.yml", "name: OurGuild
+        let path = jar(
+            "bytes",
+            "plugin.yml",
+            "name: OurGuild
 version: 2.0
-");
+",
+        );
         let bytes = fs::read(&path).unwrap();
         let _ = fs::remove_file(path);
-        assert_eq!(
-            identity_of_bytes(&bytes, "x"),
-            Some(("OurGuild".into(), "OurGuild".into(), "2.0".into()))
-        );
+        assert_eq!(identity_of_bytes(&bytes, "x"), Some(("OurGuild".into(), "OurGuild".into(), "2.0".into())));
         assert_eq!(identity_of_bytes(b"not a zip", "x"), None);
     }
 }

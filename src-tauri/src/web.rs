@@ -1,4 +1,3 @@
-
 pub mod api;
 pub mod auth;
 pub mod tls;
@@ -48,10 +47,7 @@ pub type Running = Arc<Mutex<Option<Panel>>>;
 pub(crate) fn make_key() -> String {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).expect("Could not get randomness from the operating system");
-    bytes
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// One address the web panel can listen on: a network card's IPv4 address.
@@ -148,8 +144,7 @@ pub fn start(app: &AppHandle, port: u16) -> Result<(String, u16), String> {
                     &mut stream,
                     503,
                     "application/json; charset=utf-8",
-                    "{\"error\":\"The app is busy. Try again once the other work finishes.\"}"
-                        .as_bytes(),
+                    "{\"error\":\"The app is busy. Try again once the other work finishes.\"}".as_bytes(),
                 );
                 continue;
             }
@@ -233,9 +228,7 @@ fn redirect(stream: TcpStream, port: u16) -> std::io::Result<()> {
     }
     let target = first.split_whitespace().nth(1).unwrap_or("/");
     let location = tls::https_location(&host, target, port);
-    let head = format!(
-        "HTTP/1.1 301 Moved Permanently\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-    );
+    let head = format!("HTTP/1.1 301 Moved Permanently\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
     let stream = reader.get_mut();
     stream.write_all(head.as_bytes())?;
     stream.flush()
@@ -288,12 +281,7 @@ fn serve<S: Read + Write>(app: &AppHandle, guard: &auth::Guard, stream: &mut S, 
             let value = api::events_for(&body, &who.servers);
             return json(reader.get_mut(), 200, &api::without_console(value, &api::perms_for(app, &who)).to_string());
         }
-        return reply(
-            reader.get_mut(),
-            200,
-            "text/html; charset=utf-8",
-            &api::index(),
-        );
+        return reply(reader.get_mut(), 200, "text/html; charset=utf-8", &api::index());
     }
 
     if method != "POST" {
@@ -338,23 +326,13 @@ fn serve<S: Read + Write>(app: &AppHandle, guard: &auth::Guard, stream: &mut S, 
     if length > 0 {
         std::io::Read::read_exact(&mut reader, &mut body)?;
     }
-    let body: serde_json::Value =
-        serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
-    let text = |name: &str| -> String {
-        body.get(name)
-            .and_then(|value| value.as_str())
-            .unwrap_or_default()
-            .to_string()
-    };
+    let body: serde_json::Value = serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
+    let text = |name: &str| -> String { body.get(name).and_then(|value| value.as_str()).unwrap_or_default().to_string() };
 
     if path == "/login" {
         let accounts = crate::web_accounts(app);
         if accounts.is_empty() {
-            return json(
-                reader.get_mut(),
-                403,
-                "{\"error\":\"Create an account in the app first.\"}",
-            );
+            return json(reader.get_mut(), 403, "{\"error\":\"Create an account in the app first.\"}");
         }
         return match guard.login_from(&accounts, &text("name"), &text("password"), peer) {
             Ok(token) => json(reader.get_mut(), 200, &serde_json::json!({ "session": token }).to_string()),
@@ -380,11 +358,7 @@ fn serve<S: Read + Write>(app: &AppHandle, guard: &auth::Guard, stream: &mut S, 
 
     if path == "/whoami" {
         return match guard.whose(&session) {
-            Some(one) => json(
-                reader.get_mut(),
-                200,
-                &serde_json::json!({ "name": one.name, "role": one.role }).to_string(),
-            ),
+            Some(one) => json(reader.get_mut(), 200, &serde_json::json!({ "name": one.name, "role": one.role }).to_string()),
             None => json(reader.get_mut(), 401, "{\"error\":\"Please sign in.\"}"),
         };
     }
@@ -577,20 +551,13 @@ mod tests {
     fn every_control_sits_behind_the_login() {
         let source = include_str!("web/api.rs");
 
-        let gate = source
-            .find("if !READS.contains(&command) && !WRITES.contains(&command)")
-            .expect("the allow-list check is gone");
+        let gate = source.find("if !READS.contains(&command) && !WRITES.contains(&command)").expect("the allow-list check is gone");
         // The role check: what this account's role (built-in or the host's own) may do.
-        let login = source
-            .find("if !permits(&perms, command)")
-            .expect("the role check is gone");
-        let per_server = source
-            .find("if !who.may(id)")
-            .expect("the per-server permission check is gone");
+        let login = source.find("if !permits(&perms, command)").expect("the role check is gone");
+        let per_server = source.find("if !who.may(id)").expect("the per-server permission check is gone");
         let run = source.find("crate::web_invoke(app, command, body)").expect("nothing wires it up");
 
-        assert!(gate < login && login < per_server && per_server < run,
-            "The three checks must come before running the command.");
+        assert!(gate < login && login < per_server && per_server < run, "The three checks must come before running the command.");
 
         let from = source.find("const READS").expect("the read list is missing");
         let reads = &source[from..from + source[from..].find("];").expect("the menu did not close")];

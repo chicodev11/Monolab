@@ -4,7 +4,7 @@
 //! the player (`monolab:quests`) as JSON, so it survives rejoins and restarts. Both add-ons share this file's rules.
 
 use crate::fields;
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 type Data = Map<String, Value>;
@@ -48,7 +48,11 @@ pub fn steps(data: &Data) -> Vec<Step> {
                 amount,
                 text: fields::text(one, "text", "").trim().to_string(),
                 world: fields::text(one, "world", "").trim().to_string(),
-                spot: (crate::item::float(one, "x", 0.0, -3.0e7, 3.0e7), crate::item::float(one, "y", 64.0, -2048.0, 4096.0), crate::item::float(one, "z", 0.0, -3.0e7, 3.0e7)),
+                spot: (
+                    crate::item::float(one, "x", 0.0, -3.0e7, 3.0e7),
+                    crate::item::float(one, "y", 64.0, -2048.0, 4096.0),
+                    crate::item::float(one, "z", 0.0, -3.0e7, 3.0e7),
+                ),
                 radius: crate::item::float(one, "radius", 5.0, 1.0, 512.0),
             }
         })
@@ -75,7 +79,11 @@ pub fn step_text(step: &Step) -> String {
 
 pub fn name(data: &Data, id: &str) -> String {
     let name = fields::text(data, "name", "").trim().to_string();
-    if name.is_empty() { id.replace(['-', '_'], " ") } else { name }
+    if name.is_empty() {
+        id.replace(['-', '_'], " ")
+    } else {
+        name
+    }
 }
 
 pub fn repeatable(data: &Data) -> bool {
@@ -158,7 +166,13 @@ fn matches(step: &Step, target: &str) -> bool {
 
 /// Something happened to the player (`kind` is a step type, `target` what it was, `amount` how many). Every active
 /// quest whose current step it fits moves on. `quest` gives a quest file by id.
-pub fn record(progress: &mut Progress, quest: &dyn Fn(&str) -> Option<Data>, kind: &str, target: &str, amount: u32) -> Vec<(String, Change)> {
+pub fn record(
+    progress: &mut Progress,
+    quest: &dyn Fn(&str) -> Option<Data>,
+    kind: &str,
+    target: &str,
+    amount: u32,
+) -> Vec<(String, Change)> {
     advance(progress, quest, |step| step.kind == kind && matches(step, target), amount)
 }
 
@@ -176,7 +190,12 @@ pub fn visit(progress: &mut Progress, quest: &dyn Fn(&str) -> Option<Data>, worl
     )
 }
 
-fn advance(progress: &mut Progress, quest: &dyn Fn(&str) -> Option<Data>, fits: impl Fn(&Step) -> bool, amount: u32) -> Vec<(String, Change)> {
+fn advance(
+    progress: &mut Progress,
+    quest: &dyn Fn(&str) -> Option<Data>,
+    fits: impl Fn(&Step) -> bool,
+    amount: u32,
+) -> Vec<(String, Change)> {
     let mut out = Vec::new();
     let ids: Vec<String> = progress.active.keys().cloned().collect();
     for id in ids {
@@ -238,7 +257,10 @@ mod tests {
         assert!(start(&mut progress, "hunt", &data));
         assert!(!start(&mut progress, "hunt", &data));
         assert!(record(&mut progress, &lookup, "kill", "creeper", 1).is_empty());
-        assert_eq!(record(&mut progress, &lookup, "kill", "Zombie", 1), vec![("hunt".into(), Change::Counted(1, 2, "Kill 2 zombie or husk".into()))]);
+        assert_eq!(
+            record(&mut progress, &lookup, "kill", "Zombie", 1),
+            vec![("hunt".into(), Change::Counted(1, 2, "Kill 2 zombie or husk".into()))]
+        );
         assert_eq!(record(&mut progress, &lookup, "kill", "husk", 1), vec![("hunt".into(), Change::Next("Talk to elder".into()))]);
         assert_eq!(record(&mut progress, &lookup, "talk", "elder", 1).len(), 1);
         assert!(wants_visit(&progress, &lookup));
