@@ -104,7 +104,7 @@ export function LogFilters({
             {timed && (
               <div className="log-filter-range">
                 <TimePicker value={filter.from || "00:00"} onChange={(from) => onChange({ ...filter, from })} />
-                <span className="muted">{tr("and")}</span>
+                <span className="muted">~</span>
                 <TimePicker value={filter.to || "23:59"} onChange={(to) => onChange({ ...filter, to })} />
               </div>
             )}

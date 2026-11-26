@@ -27,6 +27,7 @@ export function Dropdown({
   align = "start",
   search,
   className = "",
+  noPills = false,
 }: {
   value: string;
   options: DropdownOption[];
@@ -36,6 +37,8 @@ export function Dropdown({
   align?: "start" | "end";
   search?: string;
   className?: string;
+  /** Keep the dropdown even for two or three short choices (a row that already has pills next to it). */
+  noPills?: boolean;
 }) {
   const [openList, setOpenList] = useState(false);
   const [query, setQuery] = useState("");
@@ -120,7 +123,7 @@ export function Dropdown({
   }, [openList]);
 
   // Two or three short choices read better as pills, one click and all of them in view.
-  const pills = !search && options.length >= 2 && options.length <= 3 && !!current && options.reduce((sum, option) => sum + option.label.length, 0) <= 30;
+  const pills = !noPills && !search && options.length >= 2 && options.length <= 3 && !!current && options.reduce((sum, option) => sum + option.label.length, 0) <= 30;
   if (pills)
     return (
       <div className={`ui-tabs dropdown-pills ${className}`} role="radiogroup">

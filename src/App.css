@@ -12331,47 +12331,49 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .agent-side-top > * { min-width: 0; }
 .agent-new { min-width: 0; overflow: hidden; white-space: nowrap; }
 
-/* Server tool rail: icons only, and the names slide out over the page while the pointer rests on it. */
+/* Server tool rail: icons only, and the names slide out over the page while the pointer rests on it.
+   Both states share one layout (buttons pinned 12 px from the left), so only the rail's edge and the
+   names move; the icons stay put. */
 .app-shell.wb .wb-rail {
   position: relative;
   z-index: 40;
-  transition: flex-basis 180ms var(--ease), margin-right 180ms var(--ease), box-shadow 180ms var(--ease);
-}
-.app-shell.wb .wb-rail button > span {
-  position: absolute;
-  left: 46px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 140ms var(--ease);
-}
-.app-shell.wb .wb-rail:hover {
-  flex-basis: 212px;
-  margin-right: -144px;
   align-items: stretch;
   padding-left: 12px;
   padding-right: 12px;
-  background: var(--panel);
-  box-shadow: 12px 0 32px rgb(0 0 0 / 35%);
-  transition-delay: 220ms;
+  overflow-x: hidden;
+  transition: flex-basis 180ms var(--ease), margin-right 180ms var(--ease), box-shadow 180ms var(--ease), background-color 180ms var(--ease);
 }
-.app-shell.wb .wb-rail:hover button { display: flex; width: auto; justify-content: flex-start; gap: 12px; padding: 0 0 0 11.5px; }
-.app-shell.wb .wb-rail:hover button > span {
+.app-shell.wb .wb-rail button {
+  display: flex;
+  width: auto;
+  justify-content: flex-start;
+  gap: 14px;
+  padding: 0 0 0 11.5px;
+  overflow: hidden;
+}
+.app-shell.wb .wb-rail button > svg { flex: none; }
+.app-shell.wb .wb-rail button > span {
   position: static;
   width: auto;
   height: auto;
   overflow: hidden;
   clip-path: none;
-  opacity: 1;
   color: inherit;
   font-size: 14px;
   font-weight: 500;
-  text-overflow: ellipsis;
+  text-overflow: clip;
   white-space: nowrap;
-  transition-delay: 260ms;
 }
-.app-shell.wb .wb-rail:hover .wb-homerail-line { align-self: stretch; }
+.app-shell.wb .wb-rail .wb-homerail-line { align-self: flex-start; margin-left: 8px; }
+.app-shell.wb .wb-rail:hover {
+  flex-basis: 212px;
+  margin-right: -144px;
+  background: var(--panel);
+  box-shadow: 12px 0 32px rgb(0 0 0 / 35%);
+  transition-delay: 220ms;
+}
 @media (prefers-reduced-motion: reduce) {
-  .app-shell.wb .wb-rail, .app-shell.wb .wb-rail button > span { transition: none; }
+  .app-shell.wb .wb-rail { transition: none; }
 }
 
 /* Monolink: Activity log and Roles sit in the same column as the other team tabs, next to the member list. */
@@ -12400,5 +12402,11 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .mlt-server-mark { display: grid; flex: none; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--raise); color: var(--text-2); }
 .mlt-server-mark svg { width: 16px; height: 16px; }
 .mlt-server-mark.off { opacity: 0.45; }
-.mlt-extra .monolink-roles .role-list { border-color: transparent; background: transparent; }
 .mlt-extra .team-log-box { border-color: transparent; background: var(--panel); }
+
+/* Web panel: the Accounts card runs as tall as the panel card beside it. */
+.web-layout > .web-accounts { align-self: stretch; align-content: start; }
+
+/* Monolink member rows: two compact dropdowns and the remove button on one line. */
+.mlt-members .list-actions { gap: 8px; align-items: center; }
+.mlt-members .list-actions .dropdown-trigger { height: 32px; border-radius: var(--r-full); }

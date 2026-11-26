@@ -1161,6 +1161,7 @@ function TeamPanel({
             <Dropdown
               value={member.role}
               align="end"
+              noPills
               onChange={(next) => void run(() => api("PATCH", `/v2/teams/${id}/members/${member.id}`, { role: next }))}
               options={roleChoices(member).map((role) => ({ value: role, label: roleName(role) }))}
             />

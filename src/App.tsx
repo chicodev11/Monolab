@@ -13190,6 +13190,34 @@ ${payload.plugin}`;
           </div>
           {(
           <div className="topbar-actions">
+            <SearchField value={filter} onChange={setFilter} placeholder={t("top.search")} />
+            {serverGroups.length > 0 && (
+              <Dropdown
+                className="group-filter"
+                value={groupShown}
+                align="end"
+                options={[
+                  { value: "", label: tr("All groups") },
+                  ...serverGroups.map((one) => ({ value: one, label: one, hint: String(instances.filter((item) => item.group === one).length) })),
+                  { value: NO_GROUP, label: tr("No group") },
+                ]}
+                onChange={showGroup}
+              />
+            )}
+            {!place.startsWith("panel:") && webAdmin && (
+              <>
+                <button
+                  className="button secondary"
+                  onClick={() => setModal("import")}
+                >
+                  <Icon name="import" />
+                  {tr("Import server")}</button>
+                <button className="button primary" onClick={() => void openCreate()}>
+                  <Icon name="plus" />
+                  {t("top.create")}
+                </button>
+              </>
+            )}
               {(!onWeb || webAdmin) && (
                 <div className="place-actions in-top">
                   {webAdmin && (
@@ -13222,34 +13250,6 @@ ${payload.plugin}`;
                   )}
                 </div>
               )}
-            <SearchField value={filter} onChange={setFilter} placeholder={t("top.search")} />
-            {serverGroups.length > 0 && (
-              <Dropdown
-                className="group-filter"
-                value={groupShown}
-                align="end"
-                options={[
-                  { value: "", label: tr("All groups") },
-                  ...serverGroups.map((one) => ({ value: one, label: one, hint: String(instances.filter((item) => item.group === one).length) })),
-                  { value: NO_GROUP, label: tr("No group") },
-                ]}
-                onChange={showGroup}
-              />
-            )}
-            {!place.startsWith("panel:") && webAdmin && (
-              <>
-                <button
-                  className="button secondary"
-                  onClick={() => setModal("import")}
-                >
-                  <Icon name="import" />
-                  {tr("Import server")}</button>
-                <button className="button primary" onClick={() => void openCreate()}>
-                  <Icon name="plus" />
-                  {t("top.create")}
-                </button>
-              </>
-            )}
           </div>
           )}
         </header>
@@ -13837,7 +13837,6 @@ ${payload.plugin}`;
                             : tr("Turn it on to check servers from a browser. Sign in to start, stop and send commands.")}
                         </small>
                       </div>
-                      <span className={`status-dot status-${webPanel.on ? "running" : "stopped"}`} aria-hidden="true" />
                     </header>
                     {webPanel.on ? (
                       <>
@@ -14076,9 +14075,6 @@ ${payload.plugin}`;
                               <TeamLog servers={instances.map((one) => ({ id: one.id, name: one.name }))} confirm={confirmAction} onError={setError} onDone={setNotice} />
                             ) : monolinkView === "roles" ? (
                               <div className="monolink-roles">
-                                <p className="muted monolink-roles-lead">
-                                  {tr("Roles you make here can be given to teammates on your servers, in a team's People list. Web panel accounts use the same roles.")}
-                                </p>
                                 <RolesEditor onError={setError} onNotice={setNotice} confirm={confirmAction} />
                               </div>
                             ) : null,
