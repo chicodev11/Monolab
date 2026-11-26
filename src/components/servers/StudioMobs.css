@@ -1,0 +1,36 @@
+/* Studio maker M5: the mob form (StudioMobFields.tsx). Monochrome, no side bars. */
+
+.studio-mob-section {
+  display: grid;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.studio-mob-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.studio-mob-section-head strong {
+  font-size: 13px;
+}
+
+.studio-mob-section-head small {
+  color: var(--text-3);
+}
+
+.studio-mob-stage {
+  height: 220px;
+}
+
+.studio-mob-skills {
+  max-width: none;
+}
+
+.studio-mob-skill {
+  gap: 10px;
+}

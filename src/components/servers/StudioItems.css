@@ -1,0 +1,185 @@
+/* Studio maker M1: the item form's look and component parts (StudioItemFields.tsx). Monochrome, no side bars. */
+
+.studio-item-look {
+  display: grid;
+  gap: 10px;
+}
+
+.studio-item-asset {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.studio-item-asset > :last-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.studio-item-pic {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text-3);
+}
+
+.studio-item-pic img {
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+  object-fit: contain;
+}
+
+.studio-item-pic svg {
+  width: 14px;
+  height: 14px;
+}
+
+.studio-item-part {
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+}
+
+.studio-item-part.on {
+  border-color: var(--line);
+}
+
+.studio-item-part-body {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.studio-item-checks {
+  display: grid;
+  gap: 4px;
+}
+
+.studio-item-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.studio-item-check:hover {
+  background: var(--raise);
+}
+
+.studio-item-check:focus-visible {
+  outline: 2px solid var(--text-2);
+  outline-offset: 1px;
+}
+
+.studio-item-check-box {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  place-items: center;
+  border: 1.5px solid var(--line);
+  border-radius: 5px;
+  color: var(--panel);
+}
+
+.studio-item-check.on .studio-item-check-box {
+  border-color: var(--text);
+  background: var(--text);
+}
+
+.studio-item-check-box svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* The item preview's inventory slot with the picked picture. */
+.mc-tooltip-slot {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+.mc-tooltip-slot img {
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-item-check {
+    transition: none;
+  }
+}
+
+/* The item preview: its slot, then the tooltip. Game colors, like the rest of the preview. */
+.mc-item-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.mc-item-preview .mc-tooltip-slot {
+  margin-bottom: 0;
+}
+
+.mc-tooltip-gray {
+  color: #aaaaaa;
+}
+
+.mc-tooltip-green {
+  padding-left: 0.5em;
+  color: #00aa00;
+}
+
+.studio-item-set-effect {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 120px) auto;
+  align-items: end;
+}
+
+.studio-tool-rule {
+  display: grid;
+  gap: 6px;
+}
+
+.studio-tool-rule .studio-fields-row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 120px) auto;
+  align-items: end;
+}
+
+.studio-steps-hint {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.studio-enchant-groups.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+.studio-enchant-groups .list-row + .list-row { border-top: 0; }
+
+/* Off, the part is one switch row like its neighbours; the box shows only once it has fields inside. */
+.studio-item-part:not(.on) {
+  padding: 0;
+  border-color: transparent;
+}
+
+/* The groups are a grid: the box and its name on one line (three columns wrapped the name under the box). */
+.studio-enchant-groups .list-row { flex-wrap: nowrap; }
+.studio-enchant-groups .list-main { flex: 1 1 0; min-width: 0; }
+.studio-enchant-groups .list-row::before { content: none !important; }

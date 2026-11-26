@@ -1,0 +1,105 @@
+/* Studio maker M4: the model form (StudioModelFields.tsx). Monochrome, no side bars. */
+
+.studio-model-preview {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.studio-model-stage {
+  height: 260px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+.studio-model-stage .model-view {
+  height: 100%;
+}
+
+.studio-model-player {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.studio-model-player > :first-child {
+  flex: 0 1 220px;
+  min-width: 0;
+}
+
+.studio-model-time {
+  flex: 1 1 140px;
+  min-width: 0;
+  accent-color: var(--text-2);
+}
+
+.studio-model-player small,
+.studio-model-bones small,
+.studio-model-roles > small {
+  color: var(--text-3);
+}
+
+.studio-model-bones {
+  display: grid;
+  gap: 4px;
+}
+
+.studio-model-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 72px;
+  overflow: auto;
+}
+
+.studio-model-chips code {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.studio-model-roles {
+  display: grid;
+  gap: 4px;
+}
+
+.studio-model-label {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.studio-model-note,
+.studio-model-problems {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+.studio-model-problems {
+  padding-left: 18px;
+}
+
+/* 3D stage (Studio3dStage): the reset button sits in the corner over the view. */
+.studio-model-stage {
+  position: relative;
+}
+
+.studio-stage-reset {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-soft);
+  background: var(--panel);
+}
+
+.studio-stage-reset svg {
+  width: 14px;
+  height: 14px;
+}

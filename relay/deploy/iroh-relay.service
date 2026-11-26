@@ -1,0 +1,36 @@
+[Unit]
+Description=Monolink iroh relay
+After=network-online.target monolab-relay.service
+Wants=network-online.target
+
+[Service]
+User=iroh-relay
+Group=iroh-relay
+# Only on loopback: Caddy serves https://mnlab.cc/relay on 443 and passes it here.
+ExecStart=/usr/local/bin/iroh-relay --config-path /etc/monolab-relay/iroh-relay.toml
+Restart=always
+RestartSec=3
+
+CapabilityBoundingSet=
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

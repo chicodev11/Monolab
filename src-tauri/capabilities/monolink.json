@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "monolink",
+  "description": "Team views showing a teammate's servers (a webview inside the Monolab window): only the title bar and opening web links. App commands are limited in lib.rs (monolink_guard).",
+  "webviews": [
+    "monolink-*"
+  ],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-is-maximized",
+    "core:window:allow-unmaximize",
+    "core:window:allow-maximize",
+    "opener:allow-open-url",
+    "opener:allow-default-urls"
+  ]
+}

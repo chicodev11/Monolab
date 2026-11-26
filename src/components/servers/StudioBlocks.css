@@ -1,0 +1,27 @@
+/* Studio maker M3: block and furniture forms (StudioBlockFields.tsx, StudioFurnitureFields.tsx). */
+
+.studio-block-look {
+  display: grid;
+  gap: 10px;
+}
+
+.studio-furniture-cells {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.studio-block-growth {
+  display: grid;
+  gap: 10px;
+}
+
+.studio-block-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+
+.studio-pack3d-stage {
+  height: 220px;
+}

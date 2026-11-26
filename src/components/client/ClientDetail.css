@@ -1,0 +1,36 @@
+/* One Library instance from the inside: its header, then a Content tab built from the same parts as a
+   server's Mods tab (.addon-bar, .pick-chips, .addon-table, .file-float in App.css). */
+.cd { display: grid; gap: 14px; min-width: 0; padding-top: 4px; }
+
+.cd-back { justify-self: start; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px 0 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); font: 500 13px var(--sans); cursor: pointer; }
+.cd-back:hover { background: var(--raise); color: var(--text); }
+.cd-back svg { width: 15px; height: 15px; }
+
+.cd-head { display: flex; align-items: center; gap: 16px; padding-bottom: 18px; border-bottom: 1px solid var(--line-soft); }
+.cd-title { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.cd-title h1 { overflow: hidden; margin: 0; color: var(--text); font: 700 24px var(--sans); letter-spacing: -0.01em; white-space: nowrap; text-overflow: ellipsis; }
+.cd-title p { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; color: var(--text-3); font-size: 13.5px; }
+.cd-title p span { display: inline-flex; align-items: center; gap: 6px; }
+.cd-title p svg { width: 14px; height: 14px; }
+.cd-title p i { font-style: normal; color: var(--text-4); }
+.cd-head-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* The Content tab sits under the header, not at the top of a server page. */
+.cd > .addon-page { padding-top: 0; }
+
+.cd-empty { display: grid; justify-items: center; gap: 6px; padding: 48px 24px; border: 1px dashed var(--line); border-radius: var(--r-lg); text-align: center; }
+.cd-empty h3 { margin: 0; color: var(--text); font-size: 15px; }
+.cd-empty p { max-width: 380px; margin: 0; color: var(--text-3); font-size: 13.5px; }
+
+.ch-card { cursor: pointer; }
+.ch-card-open { display: block; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ch-card-open b { display: block; }
+
+@media (max-width: 760px) {
+  .cd-head { flex-wrap: wrap; }
+}
+
+/* The tab row under the header (like other launchers' Content / Files / Worlds row). */
+.cd-tabs { justify-self: start; }
+.cd-tabs button { display: inline-flex; align-items: center; gap: 7px; }
+.cd-tabs button svg { width: 15px; height: 15px; }

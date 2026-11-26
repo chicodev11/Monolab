@@ -1,0 +1,42 @@
+[Unit]
+Description=Monolink account server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=relay
+Group=relay
+# Discord client secret for Monolink sign-in (see env.example). Without it the server won't start.
+EnvironmentFile=/etc/monolab-relay/env
+# Only on loopback: Caddy serves https://mnlab.cc on 443 and passes it here.
+ExecStart=/usr/local/bin/monolab-relay --data /var/lib/monolab-relay --api 127.0.0.1:8080 --public-url https://mnlab.cc
+Restart=always
+RestartSec=3
+
+# The port is above 1024, so the server needs no special rights at all.
+CapabilityBoundingSet=
+NoNewPrivileges=true
+
+# The server only needs its own data folder.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/monolab-relay
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

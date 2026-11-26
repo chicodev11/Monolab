@@ -1,0 +1,13 @@
+.team-storage { display: grid; gap: 12px; }
+.team-storage-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.team-storage-space { display: grid; flex: 1; min-width: 180px; gap: 4px; color: var(--text-2); font-size: 12.5px; }
+.team-storage-bar { display: block; height: 6px; overflow: hidden; border-radius: 999px; background: var(--line); }
+.team-storage-bar i { display: block; height: 100%; border-radius: inherit; background: var(--text-2); }
+.team-storage-from { display: flex; gap: 8px; }
+.team-storage-from input, .team-storage-into input { flex: 1; min-width: 160px; height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--raise); color: var(--text); font: inherit; font-size: 13px; }
+.team-storage-list .list-lead svg { color: var(--text-2); }
+.team-storage-list .list-detail { display: grid; gap: 4px; padding-left: 28px; }
+.team-storage-note { color: var(--text-2); }
+.team-storage-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.team-storage-into { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--raise); }
+.team-storage-empty { margin: 8px 0; }

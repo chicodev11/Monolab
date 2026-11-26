@@ -1,0 +1,35 @@
+/* Git page: every section sits in a card so no text lands on the page background.
+   App.css loads after this file, so rules are scoped one class deeper than its .git-page rules. */
+
+.page-body.git-page .card {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--panel-2);
+}
+.page-body.git-page .card > .card-head { margin-bottom: 0; }
+.page-body.git-page .card > p.muted,
+.page-body.git-page .card > small.muted { margin: 0; font-size: 13px; line-height: 1.55; }
+.page-body.git-page .git-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--panel-2);
+  color: var(--text-3);
+  font-size: 13.5px;
+}
+.page-body.git-page .git-loading svg { width: 15px; height: 15px; }
+.page-body.git-page .git-remote {
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--panel);
+}
+.page-body.git-page .git-repos li { padding: 10px 12px; border: 1px solid var(--line-soft); border-top: 1px solid var(--line-soft); border-radius: var(--r-md); background: var(--panel); }
+.page-body.git-page .git-repos { gap: 8px; }
+.page-body.git-page .tool-empty { border: 1px solid var(--line-soft); background: var(--panel-2); }

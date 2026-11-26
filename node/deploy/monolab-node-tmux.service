@@ -1,0 +1,22 @@
+[Unit]
+Description=tmux for the Minecraft servers that monolab-node starts
+After=network-online.target
+Wants=network-online.target
+# monolab-node only asks this tmux to open sessions. The servers run here, outside the node's
+# locked-down service: Java needs memory it can write and run (MemoryDenyWriteExecute stops it), and
+# restarting the node must not stop the servers.
+
+[Service]
+# install.sh sets the user (RUN_AS) in monolab-node-tmux.service.d/local.conf.
+User=minecraft
+Group=minecraft
+Type=forking
+# A session that holds nothing, so tmux keeps running while no server does.
+ExecStart=/usr/bin/tmux -S /var/lib/monolab-node/tmux.sock new-session -d -s monolab-hold
+Restart=on-failure
+RestartSec=5
+# Stopping this (shutting down) stops the servers too: they get time to save.
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

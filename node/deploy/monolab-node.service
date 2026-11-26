@@ -1,0 +1,48 @@
+[Unit]
+Description=Monolab node (Monolink team access to this machine's Minecraft servers)
+After=network-online.target monolab-node-tmux.service
+Wants=network-online.target monolab-node-tmux.service
+
+[Service]
+# The user that owns the server folders and runs the servers in tmux. install.sh sets it
+# (RUN_AS, default minecraft) in /etc/systemd/system/monolab-node.service.d/local.conf.
+User=minecraft
+Group=minecraft
+ExecStartPre=/usr/local/bin/monolab-node check --config /etc/monolab-node/config.toml
+ExecStart=/usr/local/bin/monolab-node run --config /etc/monolab-node/config.toml --data /var/lib/monolab-node
+Restart=always
+RestartSec=3
+# The device key and the team log are for this user only.
+UMask=0077
+
+# iroh uses ordinary UDP ports, so the node needs no special rights at all.
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=true
+
+# Read-only everywhere except its data folder (key, team log, tmux socket) and the server folders,
+# which local.conf adds with ReadWritePaths= (the node saves files there).
+ProtectSystem=strict
+ReadWritePaths=/var/lib/monolab-node
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+# AF_NETLINK: iroh watches the network interfaces to notice address changes.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

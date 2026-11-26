@@ -1,0 +1,106 @@
+# Every push to main or dev and every pull request: the same checks as before a commit.
+# web: types, lint, unit tests, translations, the production build.
+# app: clippy and tests for src-tauri on Windows (it only builds there), the bindings, and the e2e smoke test.
+# relay / node / crates: the account server, the Linux node, the shared Monolink types and the studio file
+# format, on Linux (node only builds there).
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run i18n:check
+      - run: npm run build
+
+  app:
+    name: app (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The web panel bundles dist/ into the app, so it must exist before cargo builds.
+      - run: npm run build
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: src-tauri
+      - name: clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+      - name: test
+        working-directory: src-tauri
+        run: cargo test
+      - name: test nbt crate
+        run: cargo test --manifest-path crates/nbt/Cargo.toml
+      - run: npm run bindings:check
+      # e2e: the debug app with its web panel on 127.0.0.1:25566, driven by Playwright. The tests make one
+      # Paper 1.21.4 server (e2e/app.ts ensureTestServer), start it, read the console and stop it.
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: build the debug app
+        working-directory: src-tauri
+        run: cargo build
+      - run: npx playwright install chromium
+      - name: e2e
+        run: npm run e2e
+      - name: keep the e2e log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: e2e
+          path: |
+            e2e/.app.log
+            test-results/
+          if-no-files-found: ignore
+
+  rust:
+    name: ${{ matrix.crate }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [relay, node, crates/relay-proto, crates/studio-format]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: ${{ matrix.crate }}
+      - name: clippy
+        working-directory: ${{ matrix.crate }}
+        run: cargo clippy --all-targets -- -D warnings
+      - name: test
+        working-directory: ${{ matrix.crate }}
+        run: cargo test

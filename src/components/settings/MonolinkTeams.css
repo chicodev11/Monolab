@@ -1,0 +1,353 @@
+/* Monolink teams (MonolinkTeams.tsx): a team list on the left, the chosen team (or "Make or join a team") on the
+   right, and a column of team facts beside the tabs. Grey only; the online dot and the count badge are the only marks.
+   Boxes are the app's content box: var(--panel) on the page background, no lines between them. */
+
+/* ---------- page: team list | main ---------- */
+.mlp {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+}
+/* The old team space capped the width at 980px, which left the right side empty. */
+.team-space:has(> .mlp),
+.team-space:has(> .mlt-view),
+.settings-list.team-space:has(.mlp) { max-width: none; }
+
+.mlp-side {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: var(--r-lg);
+  background: var(--panel);
+}
+.mlp-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 2px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.mlp-side-head b {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--r-full);
+  background: var(--raise);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  display: inline-grid;
+  place-items: center;
+  font-variant-numeric: tabular-nums;
+}
+.mlp-side-empty { margin: 0; padding: 10px 6px; font-size: 13px; }
+.mlp-teams.list { --list-pad: 8px; background: none; padding: 0; }
+.mlp-teams .list-row { min-height: 44px; cursor: pointer; }
+.mlp-teams .list-row + .list-row { margin-top: 2px; }
+
+/* Making or joining is a separate block under the list, never another team row. */
+.mlp-side-foot { margin-top: 4px; padding-top: 10px; }
+.mlp-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--fast), color var(--fast), border-color var(--fast);
+}
+.mlp-add svg { width: 15px; height: 15px; flex: none; }
+.mlp-add:hover { border-color: var(--line-strong); background: var(--raise); color: var(--text); }
+.mlp-add.on { border-style: solid; border-color: var(--line-strong); background: var(--selected); color: var(--text); }
+.mlp-add:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* The team's letter, where an icon would be. */
+.mlp-mark {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  background: var(--raise);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.mlp-mark.big { width: 44px; height: 44px; border-radius: var(--r-md); font-size: 18px; }
+
+.mlp-main { min-width: 0; }
+.mlp-loading { margin: 0; padding: 20px; border-radius: var(--r-lg); background: var(--panel); }
+
+/* ---------- make or join ---------- */
+.mlp-add-view { display: grid; gap: 14px; max-width: 920px; }
+.mlp-add-head h2 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 700; }
+.mlp-add-head p { margin: 4px 0 0; font-size: 13.5px; max-width: 62ch; }
+.mlp-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.mlp-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 18px;
+  border-radius: var(--r-lg);
+  background: var(--panel);
+}
+.mlp-choice h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.mlp-choice > p { margin: 0; font-size: 13px; line-height: 1.5; flex: 1; }
+.mlp-choice .field { width: 100%; }
+.mlp-choice .field input { width: 100%; }
+.mlp-choice > .button { margin-top: 2px; }
+.mlp-choice-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-sm);
+  background: var(--raise);
+  color: var(--text-2);
+  display: grid;
+  place-items: center;
+}
+.mlp-choice-icon svg { width: 17px; height: 17px; }
+.mlp-invite {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-radius: var(--r-lg);
+  background: var(--panel);
+}
+.mlp-invite > svg { width: 18px; height: 18px; flex: none; color: var(--danger); }
+.mlp-invite-text { display: grid; gap: 3px; flex: 1; min-width: 200px; }
+.mlp-invite-text strong { font-size: 14px; }
+.mlp-invite-text small { color: var(--text-3); font-size: 12.5px; line-height: 1.45; }
+.mlp-back { justify-self: start; }
+.mlp-back svg { width: 14px; height: 14px; }
+
+/* ---------- one team ---------- */
+.mlt-panel.mlt-view { display: flex; flex-direction: column; gap: 14px; padding: 0; min-width: 0; }
+.mlt-view-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px 14px;
+}
+.mlt-view-title { display: grid; gap: 2px; min-width: 0; }
+.mlt-view-title h2 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mlt-view-title small { font-size: 12.5px; }
+/* Tabs are a pill group of their own: no rule under them for the buttons to sit on. */
+.mlt-view-head .mlt-tabs {
+  grid-column: 1 / -1;
+  justify-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--r-md);
+  background: var(--panel);
+  max-width: 100%;
+}
+.mlt-view-head .mlt-tabs button { height: 30px; border-radius: var(--r-sm); white-space: nowrap; }
+.mlt-view-head .mlt-tabs button.on { background: var(--raise); }
+
+.mlt-view-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  align-items: start;
+  gap: 14px;
+  min-width: 0;
+}
+.mlt-view-main { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.mlt-view-aside { position: sticky; top: 0; display: grid; gap: 12px; min-width: 0; }
+
+/* Everything in the main column sits in the same content box. */
+.mlt-view-main > .mlt-empty,
+.mlt-view-main > .mlt-team-actions,
+.mlt-view-main > .mlt-invite-form,
+.mlt-view-main > .mlt-made,
+.mlt-view-main > .mlt-nodes,
+.mlt-view-main > .mlt-activity,
+.mlt-view-main > .mlt-settings > .mlt-set {
+  margin: 0;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: var(--r-lg);
+  background: var(--panel);
+}
+.mlt-view-main > .mlt-empty { font-size: 13.5px; line-height: 1.5; }
+.mlt-view-main > .mlt-activity { padding: 6px; }
+.mlt-view-main > .mlt-activity li { border-radius: var(--r-sm); }
+.mlt-view-main > .mlt-activity li:hover { background: var(--raise); }
+.mlt-view-main .list-card { --list-pad: 12px; }
+
+/* Rows wrap their buttons onto a new line instead of running under each other. */
+.mlt-view .list-row { row-gap: 8px; }
+.mlt-view .list-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+.mlt-view .mlt-switch { display: inline-flex; align-items: center; gap: 8px; color: var(--text-3); font-size: 12.5px; white-space: nowrap; }
+
+.mlt-view-main > .mlt-team-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.mlt-view-main > .mlt-team-actions > small { flex-basis: 100%; }
+.mlt-view-main > .mlt-team-actions .dropdown { min-width: 200px; }
+.mlt-view-main > .mlt-invite-form { gap: 14px; }
+
+/* Nodes: was a line over the box above it, which ran through the buttons; now its own box. */
+.mlt-view-main > .mlt-nodes { display: grid; gap: 12px; }
+.mlt-nodes .list-card { background: var(--panel-2); }
+.mlt-nodes .mlt-node-code code { background: var(--panel-2); }
+.mlt-nodes > .button { justify-self: start; }
+.mlt-nodes .mlt-team-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mlt-nodes .mlt-team-actions > small { flex-basis: 100%; }
+.mlt-node-log { padding: 6px; border-radius: var(--r-md); background: var(--panel-2); }
+
+/* ---------- settings tab ---------- */
+.mlt-settings { display: grid; gap: 12px; }
+.mlt-set { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.mlt-set-text { display: grid; gap: 3px; flex: 1 1 260px; min-width: 0; }
+.mlt-set-text strong { font-size: 14px; font-weight: 600; }
+.mlt-set-text small { font-size: 12.5px; line-height: 1.45; }
+.mlt-set .mlt-rename { display: flex; align-items: center; gap: 8px; flex: 0 1 380px; min-width: 0; }
+.mlt-set .mlt-rename input { flex: 1; min-width: 0; text-align: left; }
+.mlt-set-control { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mlt-set-control .dropdown { min-width: 180px; }
+.mlt-set.danger .mlt-set-text strong { color: var(--danger); }
+
+/* ---------- side column ---------- */
+.mlt-aside-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  min-width: 0;
+}
+.mlt-aside-card h3 { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text-2); font-size: 13px; font-weight: 600; }
+.mlt-aside-card h3 b {
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--r-full); background: var(--raise);
+  color: var(--text-2); font-size: 11.5px; display: inline-grid; place-items: center; font-variant-numeric: tabular-nums;
+}
+.mlt-aside-card .mlt-empty { padding: 0; font-size: 13px; }
+.mlt-aside-card > .button { justify-self: start; }
+.mlt-facts { display: grid; gap: 8px; margin: 0; }
+.mlt-facts > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
+.mlt-facts dt { color: var(--text-3); font-size: 12.5px; }
+.mlt-facts dd { margin: 0; min-width: 0; color: var(--text); font-size: 13px; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mlt-people { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.mlt-people li { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 4px 0; font-size: 13px; }
+.mlt-people li > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mlt-people li > small { flex: none; font-size: 12px; }
+.mlt-people .mlt-avatar { width: 28px; height: 28px; font-size: 12px; }
+.mlt-people .mlt-avatar .status-dot { box-shadow: 0 0 0 2px var(--panel); }
+.mlt-activity.compact { gap: 0; }
+.mlt-activity.compact li { flex-direction: column; gap: 2px; padding: 6px 0; font-size: 12.5px; line-height: 1.4; }
+.mlt-activity.compact time { font-size: 11.5px; }
+
+@media (max-width: 1180px) {
+  .mlt-view-grid { grid-template-columns: minmax(0, 1fr); }
+  .mlt-view-aside { position: static; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+}
+@media (max-width: 860px) {
+  .mlp { grid-template-columns: minmax(0, 1fr); }
+  .mlp-side { position: static; }
+  .mlp-choices { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mlp-add { transition: none; }
+}
+
+/* ---------- 2026-11-26: one column ----------
+   No team list beside the team (a menu next to the name switches teams) and no facts column (the head says
+   the role, counts and who is online; the Activity tab has the activity). Tabs are the app's pill tabs (ui-tabs). */
+.mlp.mlp-single { grid-template-columns: minmax(0, 1fr); }
+.mlt-view-grid { grid-template-columns: minmax(0, 1fr); }
+.mlt-view-head { grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 14px; }
+.mlt-view-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.mlt-switcher {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.mlt-switcher:hover, .mlt-switcher[data-state="open"] { background: var(--raise); color: var(--text); }
+.mlt-switcher svg { width: 16px; height: 16px; }
+.mlt-view-name h2 { flex: 0 1 auto; min-width: 0; padding-right: 0; }
+.mlt-view-side { display: flex; align-items: center; gap: 12px; }
+.mlt-online { display: inline-flex; align-items: center; }
+.mlt-online > :not(small) { margin-left: -6px; box-shadow: 0 0 0 2px var(--bg); border-radius: 50%; }
+.mlt-online > :first-child { margin-left: 0; }
+.mlt-online small { margin-left: 8px; font-size: 12.5px; white-space: nowrap; }
+.mlt-view-head .mlt-tab-row { grid-column: 1 / -1; justify-self: start; margin-top: 10px; max-width: 100%; flex-wrap: wrap; }
+
+.mlt-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
+.mlt-section-head small { font-size: 12.5px; }
+.mlt-section-head .button svg { width: 14px; height: 14px; }
+
+.mlt-view-main .icon-button.on { background: var(--raise); color: var(--text); }
+.mlt-access { display: grid; margin: 4px 0 2px; border-top: 1px solid var(--line-soft); }
+.mlt-access-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--line-soft);
+  cursor: default;
+}
+.mlt-access-row:last-child { border-bottom: 0; padding-bottom: 4px; }
+label.mlt-access-row { cursor: pointer; }
+.mlt-access-text { display: grid; gap: 2px; min-width: 0; }
+.mlt-access-text strong { font-size: 13.5px; font-weight: 600; }
+.mlt-access-text small { font-size: 12.5px; line-height: 1.45; }
+
+.mlt-view-main > .mlt-settings > .mlt-nodes {
+  margin: 0;
+  padding: 14px 16px;
+  border: 0;
+  border-radius: var(--r-lg);
+  background: var(--panel);
+}
+
+/* One tab row: the team's tabs, then Activity log and Roles. Before a team is open the row is Teams, Activity log, Roles. */
+.mlt-top-tabs { align-self: flex-start; margin: 0 0 18px; }
+.mlt-home[hidden] { display: none; }
+.mlt-extra { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.mlt-extra .team-log-head strong { display: none; }
+.mlt-extra .team-log-head { margin-top: 0; }
+
+/* Members beside the tabs: online first, then offline. Avatars stay 28px whatever the picture's size. */
+.mlt-view-grid { grid-template-columns: minmax(0, 1fr) 240px; }
+.mlt-roster { display: grid; gap: 18px; padding: 14px 16px; border-radius: var(--r-lg); background: var(--panel); }
+.mlt-roster-group { display: grid; gap: 6px; }
+.mlt-roster-group h3 { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--text-3); }
+.mlt-roster-group h3 .muted { margin-left: 4px; font-weight: 500; }
+.mlt-roster .mlt-avatar { width: 28px; height: 28px; min-width: 28px; max-width: 28px; overflow: visible; }
+.mlt-roster .mlt-avatar img { width: 28px; height: 28px; max-width: 28px; max-height: 28px; }
+.mlt-online .mlt-avatar { width: 24px; height: 24px; }
+.mlt-online .mlt-avatar img { width: 24px; height: 24px; max-width: 24px; max-height: 24px; }
+.mlt-roster li.away > span { color: var(--text-3); }
+.mlt-roster li.away .mlt-avatar img { opacity: 0.55; }
+@media (max-width: 1100px) { .mlt-view-grid { grid-template-columns: minmax(0, 1fr); } }

@@ -1,0 +1,164 @@
+# Push a tag like addon-v42 (or run it by hand with the version) → builds every add-on like `npm run build:addon`
+# does locally (Paper, NeoForge and Fabric jars with Gradle on JDK 21 + 25, the Pumpkin .wasm with Rust's
+# wasm32-wasip2 target), publishes them as the GitHub Release addon-42 and rewrites the addon section of the signed
+# update list (scripts/updates-manifest.mjs → updates.json + updates.json.sig on the release tagged `updates`).
+# The app reads that list and downloads the new add-on without a new app release (docs/updates-and-stats.md §1, §6).
+# The number must already be in the repository: seAddonVersion in gradle.properties, ADDON_VERSION in
+# src-tauri/src/events.rs and VERSION in addon/pumpkin/src/lib.rs. If the tag says another number the run stops.
+# addon-<n> is created with --latest=false so releases/latest (the app updater's latest.json) keeps pointing at the app.
+# Secrets: TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD (the app updater's key; signs the list),
+# FORKS_TOKEN (read access to the private chicodev11/PumpkinMC, which the Pumpkin add-on's pumpkin-plugin-api
+# comes from as a git dependency). By hand: min_fork sets minFork on the Pumpkin .wasm (older fork builds skip it),
+# min_app the oldest app that may use it (default: the version in package.json), notes a short English line.
+name: Add-on release
+
+on:
+  push:
+    tags: ["addon-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Add-on version (a whole number, e.g. 42); must match seAddonVersion in gradle.properties"
+        required: true
+      min_fork:
+        description: "minFork for the Pumpkin .wasm (empty: none)"
+        required: false
+        default: ""
+      min_app:
+        description: "Oldest app version that may use it (empty: package.json version)"
+        required: false
+        default: ""
+      notes:
+        description: "One short English line for the update notice"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  addon:
+    if: github.repository == 'chicodev11/Monolab'
+    runs-on: ubuntu-latest
+    # updates.json is read, changed and uploaded whole; one writer at a time (fork-release.yml uses the same group).
+    concurrency:
+      group: updates-manifest
+      cancel-in-progress: false
+    env:
+      FORKS_TOKEN: ${{ secrets.FORKS_TOKEN }}
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      # Paper and NeoForge targets compile for 21, Minecraft 26.x for 25 (Fabric asks Gradle for a toolchain).
+      # The last one listed becomes JAVA_HOME and runs Gradle.
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4
+        with:
+          distribution: temurin
+          java-version: |
+            21
+            25
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: addon/pumpkin
+          shared-key: addon
+      - run: npm ci
+      - name: Pick the version and check it is the one in the repository
+        id: version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            version="$INPUT_VERSION"
+          else
+            version="${GITHUB_REF_NAME#addon-v}"
+          fi
+          if ! [[ "$version" =~ ^[0-9]+$ ]]; then
+            echo "::error::The add-on version must be a whole number (tag addon-v42 or input 42), got '$version'."
+            exit 1
+          fi
+          gradle=$(sed -n 's/^[[:space:]]*seAddonVersion[[:space:]]*=[[:space:]]*\([0-9]*\).*/\1/p' gradle.properties)
+          events=$(sed -n 's/^pub const ADDON_VERSION: u32 = \([0-9]*\);.*/\1/p' src-tauri/src/events.rs)
+          pumpkin=$(sed -n 's/^const VERSION: &str = "\([0-9]*\)";.*/\1/p' addon/pumpkin/src/lib.rs)
+          bad=0
+          for pair in "gradle.properties seAddonVersion:$gradle" "src-tauri/src/events.rs ADDON_VERSION:$events" "addon/pumpkin/src/lib.rs VERSION:$pumpkin"; do
+            if [ "${pair##*:}" != "$version" ]; then
+              echo "::error::${pair%:*} is '${pair##*:}', but this release is add-on $version. Bump the number in the repository first, then tag addon-v$version."
+              bad=1
+            fi
+          done
+          [ "$bad" = 0 ] || exit 1
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Let cargo read the private PumpkinMC fork
+        shell: bash
+        run: |
+          if [ -z "$FORKS_TOKEN" ]; then
+            echo "::error::FORKS_TOKEN is not set; the Pumpkin add-on needs pumpkin-plugin-api from chicodev11/PumpkinMC."
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${FORKS_TOKEN}@github.com/chicodev11/".insteadOf "https://github.com/chicodev11/"
+      # Gradle finds the JDK 21 toolchain through the variables setup-java sets.
+      - name: Point Gradle at both JDKs
+        shell: bash
+        run: |
+          mkdir -p ~/.gradle
+          echo "org.gradle.java.installations.fromEnv=JAVA_HOME_21_X64,JAVA_HOME_25_X64" >> ~/.gradle/gradle.properties
+          chmod +x gradlew
+      - name: Build the add-ons
+        run: npm run build:addon
+      - name: Collect the files of this version
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p addon-dist
+          node -e '
+            const { readFileSync, readdirSync, copyFileSync } = require("node:fs");
+            const v = process.env.VERSION;
+            const ids = (p) => JSON.parse(readFileSync(p, "utf8")).targets.map((t) => t.id);
+            const want = [
+              `Monolab-${v}.jar`,
+              ...ids("addon/neoforge/targets.json").map((id) => `Monolab-mod-${id}-${v}.jar`),
+              ...ids("addon/fabric/targets.json").map((id) => `Monolab-fabric-${id}-${v}.jar`),
+              ...ids("addon/pumpkin/targets.json").map((id) => `Monolab-pumpkin-${id}-${v}.wasm`),
+            ];
+            const have = new Set(readdirSync("src-tauri/resources"));
+            const missing = want.filter((name) => !have.has(name));
+            if (missing.length) { console.error("Not built: " + missing.join(", ")); process.exit(1); }
+            for (const name of want) copyFileSync("src-tauri/resources/" + name, "addon-dist/" + name);
+            console.log(want.length + " files for add-on " + v);
+          '
+          ls -l addon-dist
+      - name: Publish the release addon-${{ steps.version.outputs.version }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          tag="addon-$VERSION"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --latest=false --target "$GITHUB_SHA" --title "Monolab add-on $VERSION" --notes "Add-on $VERSION for Paper, NeoForge, Fabric and Pumpkin. The app downloads it on its own; update each server from the app."
+          gh release upload "$tag" addon-dist/* --clobber
+      - name: Update the signed list (updates.json)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VERSION: ${{ steps.version.outputs.version }}
+          MIN_FORK: ${{ inputs.min_fork }}
+          MIN_APP: ${{ inputs.min_app }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          args=(addon "$VERSION" addon-dist --notes "$NOTES")
+          [ -n "$MIN_FORK" ] && args+=(--min-fork "$MIN_FORK")
+          [ -n "$MIN_APP" ] && args+=(--min-app "$MIN_APP")
+          node scripts/updates-manifest.mjs "${args[@]}"

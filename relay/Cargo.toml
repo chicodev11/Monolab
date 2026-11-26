@@ -1,0 +1,35 @@
+[package]
+name = "monolab-relay"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+description = "Monolink account server: Discord sign-in, teams and role grants for Monolab apps"
+
+[dependencies]
+axum = { version = "0.8.9", features = ["ws", "macros"] }
+base64 = "0.23.1"
+ed25519-dalek = "3.0.0"
+getrandom = "0.4.3"
+relay-proto = { version = "0.1.0", path = "../crates/relay-proto" }
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "form", "rustls-no-provider"] }
+rusqlite = { version = "0.43.0", features = ["bundled"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal"] }
+
+
+[lib]
+name = "relay"
+path = "src/lib.rs"
+
+[[bin]]
+name = "monolab-relay"
+path = "src/main.rs"
+
+[dev-dependencies]
+futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
+base64 = "0.23.1"
+reqwest = { version = "0.13.5", default-features = false, features = ["json", "rustls-no-provider"] }
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["connect"] }

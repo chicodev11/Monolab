@@ -1,0 +1,57 @@
+# Dependencies and build output
+node_modules/
+target/
+/dist/
+dist-ssr/
+/build/
+/crates/*/Cargo.lock
+/src-tauri/gen/
+/src-tauri/forks/
+src-tauri/target/
+*.tsbuildinfo
+*.local
+
+# Add-on builds
+.gradle/
+addon/lib/
+addon/build/
+addon/*/build/
+addon/*/bin/
+addon/pumpkin/target/
+*.hprof
+
+# Releases and signing keys (keep keys outside the repository; see scripts/build.mjs)
+release/
+*.key
+*.key.pub
+
+# Tests
+test-results/
+playwright-report/
+e2e/.app.pid
+e2e/.app.log
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local working files
+scratchpad/
+tokens.css
+src-tauri/tauri.release.conf.json

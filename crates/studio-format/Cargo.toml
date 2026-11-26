@@ -1,0 +1,10 @@
+[package]
+name = "studio-format"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "The Monolab studio's file format: checks, fields and MiniMessage text, shared by the app and the Pumpkin add-on"
+publish = false
+
+[dependencies]
+serde_json = "1"

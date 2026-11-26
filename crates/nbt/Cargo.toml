@@ -1,0 +1,12 @@
+[package]
+name = "monolab-nbt"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Order-preserving Java NBT, SNBT and region (.mca) reading and writing"
+
+[dependencies]
+flate2 = "1"
+
+[dev-dependencies]
+fastnbt = "2.6.3"

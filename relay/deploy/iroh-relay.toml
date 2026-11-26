@@ -1,0 +1,23 @@
+# Installed to /etc/monolab-relay/iroh-relay.toml by install.sh. Monolink's own iroh relay: carries a
+# teammate's connection when the two machines can't reach each other directly (and helps them try).
+# Plain HTTP on loopback; Caddy serves it at https://mnlab.cc/relay (and /ping, /generate_204).
+
+enable_relay = true
+http_bind_addr = "127.0.0.1:3340"
+# Needs its own TLS on a UDP port; iroh finds addresses without it.
+enable_quic_addr_discovery = false
+enable_metrics = false
+
+# Only devices of a Monolab account (apps and nodes): the account server answers for each endpoint.
+[access.http]
+url = "http://127.0.0.1:8080/v2/relay-access"
+
+[limits]
+accept_conn_limit = 50.0
+accept_conn_burst = 100
+
+# What one endpoint may send through the relay. Direct connections have no limit; this keeps one
+# person's big upload from taking the whole machine.
+[limits.client.rx]
+bytes_per_second = 2000000
+max_burst_bytes = 4000000

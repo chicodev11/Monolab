@@ -1,0 +1,61 @@
+# Installed to /etc/caddy/Caddyfile by install.sh. Caddy gets the Let's Encrypt certificate for
+# mnlab.cc by itself (ports 80 and 443 must be open and the DNS A record must point here).
+#
+# Caddy replaces any X-Forwarded-For a visitor sends, so the account server can trust the first entry.
+#
+# mnlab.cc is two things: the account server (127.0.0.1:8080) for the paths it serves, listed below, and
+# the static website (site/ in the repository, copied to /var/www/mnlab by install.sh) for everything else.
+
+mnlab.cc {
+	encode zstd gzip
+	# Only the iroh relay on this machine asks this, straight to 127.0.0.1:8080.
+	handle /v2/relay-access {
+		respond 404
+	}
+	# Only `monolab-relay --notify-updates` on this machine calls these, straight to 127.0.0.1:8080.
+	handle /v2/admin/* {
+		respond 404
+	}
+	# Monolink's iroh relay (iroh-relay.toml): teammates' connections when no direct path works.
+	@iroh path /relay /relay/* /ping /generate_204
+	handle @iroh {
+		reverse_proxy 127.0.0.1:3340
+	}
+	# The account server (relay/src/accounts/http.rs router): the app API and its WebSockets (/v2/ws,
+	# /v2/app), Discord sign-in and its callback, invite pages, and the admin page.
+	@accounts path /v2/* /auth/* /invite/* /admin /admin/*
+	handle @accounts {
+		reverse_proxy 127.0.0.1:8080
+	}
+	# Everything else is the website.
+	handle {
+		root * /var/www/mnlab
+		header {
+			X-Content-Type-Options nosniff
+			Referrer-Policy strict-origin-when-cross-origin
+			X-Frame-Options DENY
+		}
+		try_files {path} {path}.html {path}/index.html
+		file_server
+	}
+	# A page the website doesn't have: its 404.html when there is one (otherwise Caddy's empty 404).
+	handle_errors 404 {
+		root * /var/www/mnlab
+		rewrite * /404.html
+		file_server
+	}
+	# Invite codes and sign-in codes are in these addresses (and the sign-in proof in a redirect):
+	# never written to the log. The account server keeps only hashes of them.
+	@secret path /invite/* /v2/invites/* /auth/*
+	log_skip @secret
+	log {
+		output file /var/log/caddy/mnlab.log {
+			roll_size 10MiB
+			roll_keep_for 336h
+		}
+	}
+}
+
+www.mnlab.cc {
+	redir https://mnlab.cc{uri} permanent
+}

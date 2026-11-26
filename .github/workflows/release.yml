@@ -1,0 +1,94 @@
+# Push a tag like v0.9.0 → builds the signed installer and publishes a GitHub Release with latest.json (the updater
+# reads it from releases/latest/download/latest.json). Needs the repository secret TAURI_SIGNING_PRIVATE_KEY.
+# The repository must stay public: the in-app updater (which doesn't sign in) downloads latest.json and the
+# installer from the release, and checks 4 s after start and every 10 minutes.
+# The bundled Rust forks (PumpkinMC, Horizon/Nova) are private repositories: FORKS_TOKEN is a fine-grained
+# token with read access to their contents. Without it the installer is built without the forks.
+# A tag with a dash (v2.1.0-beta.1) is a pre-release: its latest.json is also copied to the release tagged
+# `beta`, which the Beta update channel reads. The repository variable DISCORD_CLIENT_ID turns on the
+# Discord status (Settings); without it the switch says this build has none.
+# Windows code signing (Authenticode) turns on when the secret WINDOWS_CERTIFICATE (a .pfx as base64) is
+# set, with WINDOWS_CERTIFICATE_PASSWORD; scripts/sign-windows.mjs signs the exe, installer and uninstaller.
+# Without it the installer is unsigned and SmartScreen warns, as before.
+# forks.mjs writes src-tauri/forks/fork.json {"build": N} from MONOLAB_FORK_BUILD: set the repository variable
+# FORK_BUILD to the fork-<n> release this installer's PumpkinMC matches (fork-release.yml); unset it stays 0,
+# which the app treats as the oldest build, so any published fork-<n> replaces the bundled copy.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    if: github.repository == 'chicodev11/Monolab'
+    runs-on: windows-latest
+    env:
+      FORKS_TOKEN: ${{ secrets.FORKS_TOKEN }}
+      MONOLAB_DISCORD_CLIENT_ID: ${{ vars.DISCORD_CLIENT_ID }}
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      MONOLAB_FORK_BUILD: ${{ vars.FORK_BUILD || '0' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: src-tauri
+          shared-key: release
+          save-if: false
+      - run: npm ci
+      - name: Check out the PumpkinMC fork
+        if: env.FORKS_TOKEN != ''
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: chicodev11/PumpkinMC
+          token: ${{ secrets.FORKS_TOKEN }}
+          path: forks-src/PumpkinMC
+      - name: Check out the Horizon fork (Nova)
+        if: env.FORKS_TOKEN != ''
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: chicodev11/Horizon
+          token: ${{ secrets.FORKS_TOKEN }}
+          path: forks-src/Horizon
+      - name: Build the forks into src-tauri/forks
+        if: env.FORKS_TOKEN != ''
+        run: node scripts/forks.mjs --pumpkin forks-src/PumpkinMC --nova forks-src/Horizon
+      - name: Pick the build config (forks, code signing)
+        id: config
+        shell: bash
+        run: |
+          node scripts/release-config.mjs ${{ env.FORKS_TOKEN != '' && '--forks' || '' }} ${{ env.WINDOWS_CERTIFICATE != '' && '--sign' || '' }} >> "$GITHUB_OUTPUT"
+      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Monolab v__VERSION__
+          releaseBody: "See the commits since the last version for what changed."
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          includeUpdaterJson: true
+          args: ${{ steps.config.outputs.args }}
+      - name: Point the beta channel at this pre-release
+        if: contains(github.ref_name, '-')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --pattern latest.json --dir beta-channel --clobber
+          gh release view beta >/dev/null 2>&1 || gh release create beta --prerelease --title "Beta channel" --notes "Holds latest.json for the Beta update channel."
+          gh release upload beta beta-channel/latest.json --clobber

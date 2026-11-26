@@ -1,0 +1,303 @@
+/* The canvas dialog editor (StudioCanvasEditor.tsx): a drafting table. Greys only for surfaces and text; color only
+   on small marks (problem dots and icons, the orange-ish click-row band uses --warn's soft tones). No side stripes:
+   picked rows are a raised grey. Every transition is off under prefers-reduced-motion. */
+
+.scv {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: clamp(560px, calc(100vh - 210px), 1040px);
+  min-width: 0;
+  container-type: inline-size;
+  background: var(--panel);
+}
+
+/* ---------- bar ---------- */
+.scv-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; padding: 6px 8px; border-bottom: 1px solid var(--line-soft); background: var(--panel-2); }
+.scv-bar-title { display: inline-flex; align-items: baseline; gap: 8px; padding: 0 6px; }
+.scv-bar-title strong { font-size: 13px; font-weight: 600; }
+.scv-bar-title small { color: var(--text-4); font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.scv-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--line); }
+.scv-gap { flex: 1; }
+.scv-tools, .scv-views, .scv-zoom { display: inline-flex; align-items: center; gap: 2px; }
+.scv-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  list-style: none;
+}
+.scv-tool::-webkit-details-marker { display: none; }
+.scv-tool svg { flex: none; width: 15px; height: 15px; }
+.scv-tool:hover:not(:disabled) { background: var(--raise); color: var(--text); }
+.scv-tool:disabled { color: var(--text-4); cursor: default; opacity: 0.6; }
+.scv-tool[aria-pressed="true"] { border-color: var(--line-strong); background: var(--raise-hover); color: var(--text); }
+.scv-tool:focus-visible, .scv-mini:focus-visible, .scv-tile:focus-visible, .scv-layer-pick:focus-visible, .scv-preset:focus-visible, .scv-tabs button:focus-visible { outline: 2px solid var(--text-3); outline-offset: 1px; }
+.scv-tool.labeled { padding: 0 10px 0 8px; border-color: var(--line); }
+.scv-tool.flip svg { transform: scaleX(-1); }
+.scv-zoom-value { min-width: 46px; color: var(--text-2); font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
+
+.scv-keys { position: relative; }
+.scv-keys dl {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  width: 360px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--panel-2);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
+.scv-keys dt { color: var(--text); font-family: var(--mono); font-size: 11.5px; white-space: nowrap; }
+.scv-keys dd { margin: 0; color: var(--text-3); }
+
+/* ---------- three panes ---------- */
+.scv-body { display: grid; grid-template-columns: 252px minmax(0, 1fr) 320px; min-height: 0; }
+.scv-side, .scv-inspector { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; background: var(--panel); }
+.scv-side { border-right: 1px solid var(--line-soft); }
+.scv-inspector { border-left: 1px solid var(--line-soft); }
+
+.scv-tabs { position: sticky; top: 0; z-index: 2; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 6px; border-bottom: 1px solid var(--line-soft); background: var(--panel); }
+.scv-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; border: 0; border-radius: var(--r-xs); background: none; color: var(--text-3); font: inherit; font-size: 12.5px; cursor: pointer; }
+.scv-tabs button svg { width: 14px; height: 14px; }
+.scv-tabs button small { color: var(--text-4); font-family: var(--mono); font-size: 11px; }
+.scv-tabs button:hover { color: var(--text); }
+.scv-tabs button.on { background: var(--raise-hover); color: var(--text); }
+.scv-quiet { margin: 0; color: var(--text-3); font-size: 12px; line-height: 1.5; }
+.scv-side-empty { padding: 14px; }
+.scv-side-head { margin: 12px 10px 6px; color: var(--text-3); font-size: 12px; font-weight: 600; }
+
+/* Layers */
+.scv-layers { display: flex; flex-direction: column; gap: 1px; padding: 6px; }
+.scv-layer { position: relative; display: flex; align-items: center; border-radius: var(--r-xs); }
+.scv-layer:hover { background: var(--raise); }
+.scv-layer.picked { background: var(--raise-hover); }
+.scv-layer.hidden .scv-layer-pick { opacity: 0.45; }
+.scv-layer.dragging { opacity: 0.4; }
+.scv-layer.drop-above::before,
+.scv-layer.drop-below::after { content: ""; position: absolute; right: 4px; left: 4px; height: 2px; border-radius: 1px; background: var(--text-2); pointer-events: none; }
+.scv-layer.drop-above::before { top: -1px; }
+.scv-layer.drop-below::after { bottom: -1px; }
+.scv-layer-pick { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 40px; padding: 0 4px 0 6px; border: 0; border-radius: var(--r-xs); background: none; color: var(--text-2); font: inherit; text-align: left; cursor: pointer; }
+.scv-layer.picked .scv-layer-pick { color: var(--text); }
+.scv-grip { flex: none; width: 6px; height: 14px; background-image: radial-gradient(circle, var(--text-4) 1px, transparent 1.2px); background-size: 3px 4px; opacity: 0; cursor: grab; }
+.scv-layer:hover .scv-grip, .scv-layer.picked .scv-grip { opacity: 1; }
+.scv-layer-thumb { display: grid; flex: none; place-items: center; width: 28px; height: 28px; overflow: hidden; border: 1px solid var(--line); border-radius: 5px; background: #0d0d0d; }
+.scv-layer-thumb img { max-width: 24px; max-height: 24px; image-rendering: pixelated; }
+.scv-layer-thumb svg { width: 14px; height: 14px; color: var(--text-3); }
+.scv-layer-name { display: grid; flex: 1; min-width: 0; line-height: 1.25; }
+.scv-layer-name span { overflow: hidden; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.scv-layer-name small { overflow: hidden; color: var(--text-4); font-family: var(--mono); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.scv-layer-index { flex: none; color: var(--text-4); font-family: var(--mono); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.scv-layer-tools { display: inline-flex; flex: none; gap: 0; padding-right: 2px; opacity: 0; }
+.scv-layer:hover .scv-layer-tools, .scv-layer.picked .scv-layer-tools, .scv-layer.hidden .scv-layer-tools, .scv-layer-tools:focus-within { opacity: 1; }
+.scv-layers-note { padding: 8px 6px 4px; }
+.scv-chip { display: inline-flex; flex: none; align-items: center; height: 17px; padding: 0 5px; border: 1px solid var(--line-strong); border-radius: var(--r-full); color: var(--text-3); font-family: var(--mono); font-size: 10px; }
+.scv-chip svg { width: 11px; height: 11px; }
+.scv-chip.warn { border-color: var(--warn-line); color: var(--warn); }
+.scv-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--text-4); }
+.scv-dot.error { background: var(--danger); }
+.scv-dot.warn { background: var(--warn); }
+
+.scv-mini { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--r-xs); background: none; color: var(--text-3); cursor: pointer; }
+.scv-mini svg { width: 14px; height: 14px; }
+.scv-mini:hover:not(:disabled) { background: var(--raise-hover); color: var(--text); }
+.scv-mini:disabled { opacity: 0.35; cursor: default; }
+.scv-mini.danger:hover:not(:disabled) svg { color: var(--danger); }
+
+/* Pictures */
+.scv-pictures { display: grid; align-content: start; gap: 8px; padding: 8px; }
+.scv-pictures-head { display: flex; gap: 4px; }
+.scv-search { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-xs); background: var(--bg); }
+.scv-search svg { flex: none; width: 13px; height: 13px; color: var(--text-4); }
+.scv-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: 12.5px; }
+.scv-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; }
+.scv-tile { display: grid; justify-items: center; gap: 2px; min-width: 0; padding: 6px 4px 5px; border: 1px solid var(--line-soft); border-radius: var(--r-xs); background: var(--panel-2); color: var(--text-2); font: inherit; cursor: pointer; }
+.scv-tile:hover { border-color: var(--line-strong); color: var(--text); }
+.scv-tile.raw { border-style: dashed; }
+.scv-tile-art {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 46px;
+  overflow: hidden;
+  border-radius: 4px;
+  background-color: #141414;
+  background-image: conic-gradient(#1c1c1c 25%, transparent 0 50%, #1c1c1c 0 75%, transparent 0);
+  background-size: 8px 8px;
+}
+.scv-tile-art img { max-width: 100%; max-height: 42px; image-rendering: pixelated; }
+.scv-tile-art svg { width: 16px; height: 16px; color: var(--text-4); }
+.scv-tile-name { max-width: 100%; overflow: hidden; font-family: var(--mono); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.scv-tile small { color: var(--text-4); font-family: var(--mono); font-size: 10px; }
+
+/* ---------- stage ---------- */
+.scv-stage { position: relative; display: grid; grid-template-rows: minmax(0, 1fr) auto; min-width: 0; min-height: 0; background: #0b0b0b; }
+.scv-scroller { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.scv-board { display: grid; grid-template-columns: 30px max-content; grid-template-rows: 18px max-content; padding: 0 48px 48px 0; box-sizing: border-box; }
+.scv-corner { position: sticky; top: 0; left: 0; z-index: 4; grid-row: 1; grid-column: 1; background: var(--panel-2); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+
+.scv-ruler { position: sticky; z-index: 3; overflow: hidden; background-color: var(--panel-2); color: var(--text-4); font-family: var(--mono); font-size: 9.5px; font-variant-numeric: tabular-nums; user-select: none; }
+.scv-ruler.x { top: 0; grid-row: 1; grid-column: 2; height: 18px; border-bottom: 1px solid var(--line); background-image: repeating-linear-gradient(to right, var(--line-strong) 0 1px, transparent 1px var(--tick)); background-size: 100% 5px; background-position: 0 100%; background-repeat: repeat-x; }
+.scv-ruler.y { left: 0; grid-row: 2; grid-column: 1; width: 30px; border-right: 1px solid var(--line); background-image: repeating-linear-gradient(to bottom, var(--line-strong) 0 1px, transparent 1px var(--tick)); background-size: 6px 100%; background-position: 100% 0; background-repeat: repeat-y; }
+.scv-ruler-label { position: absolute; line-height: 1; pointer-events: none; }
+.scv-ruler.x .scv-ruler-label { top: 2px; padding-left: 3px; }
+.scv-ruler.y .scv-ruler-label { left: 3px; padding-top: 2px; }
+.scv-ruler-span { position: absolute; background: rgba(255, 255, 255, 0.1); }
+.scv-ruler.x .scv-ruler-span { top: 0; bottom: 0; }
+.scv-ruler.y .scv-ruler-span { left: 0; right: 0; }
+.scv-ruler-mark { position: absolute; background: var(--text); }
+.scv-ruler.x .scv-ruler-mark { top: 0; bottom: 0; width: 1px; }
+.scv-ruler.y .scv-ruler-mark { left: 0; right: 0; height: 1px; }
+.scv-ruler-end { position: absolute; background: var(--text-3); }
+.scv-ruler.x .scv-ruler-end { top: 0; bottom: 0; width: 1px; }
+.scv-ruler.y .scv-ruler-end { left: 0; right: 0; height: 1px; }
+
+.scv-surface { position: relative; grid-row: 2; grid-column: 2; margin: 0; outline: none; cursor: default; touch-action: none; user-select: none; background: #121212; }
+.scv-surface.rows { background-image: repeating-linear-gradient(to bottom, transparent 0 calc(var(--row) - 1px), rgba(255, 255, 255, 0.07) calc(var(--row) - 1px) var(--row)); }
+.scv-surface.rows.pixels { background-image: repeating-linear-gradient(to bottom, transparent 0 calc(var(--row) - 1px), rgba(255, 255, 255, 0.1) calc(var(--row) - 1px) var(--row)), repeating-linear-gradient(to right, transparent 0 calc(var(--z) - 1px), rgba(255, 255, 255, 0.025) calc(var(--z) - 1px) var(--z)), repeating-linear-gradient(to bottom, transparent 0 calc(var(--z) - 1px), rgba(255, 255, 255, 0.025) calc(var(--z) - 1px) var(--z)); }
+.scv-surface:focus-visible { box-shadow: 0 0 0 2px var(--text-3); }
+.scv-bounds { position: absolute; top: 0; left: 0; z-index: 0; outline: 1px solid rgba(255, 255, 255, 0.28); pointer-events: none; }
+.scv-spill { position: absolute; top: 0; z-index: 0; background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255, 255, 255, 0.04) 6px 12px); pointer-events: none; }
+
+.scv-surface .mc-canvas-el { cursor: grab; }
+.scv-surface .mc-canvas-el:active { cursor: grabbing; }
+.scv-surface .mc-canvas-el.locked { pointer-events: none; }
+.scv-surface .mc-canvas-el.area { background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0 4px, transparent 4px 8px); outline: 1px dashed rgba(255, 255, 255, 0.3); outline-offset: -1px; }
+.scv-surface .mc-canvas-el:hover:not(.picked) { outline: 1px solid rgba(255, 255, 255, 0.45); outline-offset: 0; }
+.scv-surface .mc-canvas-el.picked { outline: none; }
+.scv-surface .mc-canvas-el.conditional::after { content: "if"; position: absolute; top: -1px; left: -1px; padding: 0 3px; border-radius: 0 0 3px 0; background: rgba(0, 0, 0, 0.7); color: #cfcfcf; font: 600 9px/12px var(--mono); pointer-events: none; }
+
+.scv-overlay { position: absolute; inset: 0; z-index: 5000; pointer-events: none; }
+.scv-hit { position: absolute; box-sizing: border-box; }
+.scv-hit.button { outline: 1px dotted rgba(255, 255, 255, 0.35); }
+.scv-hit.area { background: var(--warn-soft); outline: 1px dashed var(--warn-line); }
+.scv-hit-asked { position: absolute; right: 0; left: 0; outline: 1px solid rgba(255, 255, 255, 0.4); }
+.scv-flag { position: absolute; width: 7px; height: 7px; margin: -3px 0 0 -3px; border: 1px solid #0b0b0b; border-radius: 50%; background: var(--text-3); }
+.scv-flag.error { background: var(--danger); }
+.scv-flag.warn { background: var(--warn); }
+.scv-pick { position: absolute; box-sizing: border-box; outline: 1px solid #ffffff; outline-offset: 0; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6); }
+.scv-pick.locked { outline-style: dashed; }
+.scv-pick-tag { position: absolute; bottom: calc(100% + 5px); left: -1px; padding: 1px 6px; border-radius: 4px; background: #f2f2f2; color: #111111; font: 600 10.5px/16px var(--mono); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.scv-handle { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; border: 1px solid #111111; background: #ffffff; pointer-events: auto; }
+.scv-handle.n { top: 0; left: 50%; cursor: ns-resize; }
+.scv-handle.s { top: 100%; left: 50%; cursor: ns-resize; }
+.scv-handle.e { top: 50%; left: 100%; cursor: ew-resize; }
+.scv-handle.w { top: 50%; left: 0; cursor: ew-resize; }
+.scv-handle.ne { top: 0; left: 100%; cursor: nesw-resize; }
+.scv-handle.sw { top: 100%; left: 0; cursor: nesw-resize; }
+.scv-handle.nw { top: 0; left: 0; cursor: nwse-resize; }
+.scv-handle.se { top: 100%; left: 100%; cursor: nwse-resize; }
+.scv-guide { position: absolute; background: rgba(255, 255, 255, 0.85); }
+.scv-guide.x { top: -4000px; bottom: -4000px; width: 1px; }
+.scv-guide.y { right: -4000px; left: -4000px; height: 1px; }
+.scv-empty { position: absolute; inset: 0; z-index: 1; display: grid; place-content: center; gap: 6px; padding: 16px; color: #8a8a8a; font-size: 12.5px; text-align: center; pointer-events: none; }
+.scv-empty strong { color: #cfcfcf; font-size: 13.5px; font-weight: 600; }
+
+/* Status and problems along the bottom of the stage */
+.scv-status { display: flex; align-items: center; gap: 12px; min-width: 0; height: 32px; padding: 0 8px; border-top: 1px solid var(--line-soft); background: var(--panel-2); color: var(--text-3); font-size: 12px; }
+.scv-status-problems { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--r-full); background: none; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
+.scv-status-problems svg { width: 13px; height: 13px; color: var(--text-3); }
+.scv-status-problems.error svg { color: var(--danger); }
+.scv-status-problems.warn svg { color: var(--warn); }
+.scv-status-problems small { color: var(--text-4); }
+.scv-status-problems[aria-expanded="true"] { background: var(--raise-hover); color: var(--text); }
+.scv-readout { color: var(--text-4); font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.scv-status-busy { color: var(--text-2); }
+.scv-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.scv-problems { position: absolute; right: 8px; bottom: 40px; left: 8px; z-index: 20; max-height: min(44%, 280px); overflow-y: auto; padding: 6px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel-2); box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5); }
+.scv-problems ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
+.scv-problems .scv-quiet { padding: 8px; }
+.scv-problem { display: grid; grid-template-columns: 14px 54px minmax(0, 1fr); align-items: start; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: var(--r-xs); background: none; color: var(--text-2); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.scv-problem:hover { background: var(--raise); color: var(--text); }
+.scv-problem svg { width: 14px; height: 14px; margin-top: 1px; color: var(--text-3); }
+.scv-problem.error svg { color: var(--danger); }
+.scv-problem.warn svg { color: var(--warn); }
+.scv-problem-where { color: var(--text-4); font-family: var(--mono); font-size: 11.5px; }
+
+/* ---------- inspector ---------- */
+.scv-inspector-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--line-soft); background: var(--panel); }
+.scv-inspector-icon { display: grid; flex: none; place-items: center; width: 30px; height: 30px; border: 1px solid var(--line); border-radius: var(--r-xs); background: var(--panel-2); }
+.scv-inspector-icon svg { width: 15px; height: 15px; color: var(--text-2); }
+.scv-inspector-title { display: grid; flex: 1; min-width: 0; }
+.scv-inspector-title strong { font-size: 13.5px; }
+.scv-inspector-title small { color: var(--text-4); font-family: var(--mono); font-size: 11px; }
+.scv-name { width: 100%; min-width: 0; height: 24px; padding: 0 4px; margin-left: -4px; border: 1px solid transparent; border-radius: 5px; background: none; color: var(--text); font: inherit; font-size: 13.5px; font-weight: 600; }
+.scv-name:hover { border-color: var(--line); }
+.scv-name:focus { border-color: var(--line-strong); outline: none; background: var(--bg); }
+.scv-name::placeholder { color: var(--text-2); }
+.scv-inspector-tools { display: inline-flex; flex: none; }
+.scv-inspector-body { display: grid; align-content: start; gap: 0; padding-bottom: 16px; }
+.scv-section { display: grid; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line-soft); }
+.scv-section header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 20px; }
+.scv-section h4 { margin: 0; color: var(--text-3); font-size: 12px; font-weight: 600; }
+.scv-aside { color: var(--text-4); font-family: var(--mono); font-size: 11px; }
+.scv-section .studio-field { min-width: 0; }
+.scv-kinds button { font-family: var(--mono); font-size: 11.5px; }
+.scv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.scv-num { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0; height: 30px; padding-left: 8px; border: 1px solid var(--line); border-radius: var(--r-xs); background: var(--bg); }
+.scv-num:focus-within { border-color: var(--line-strong); }
+.scv-num span { color: var(--text-4); font-family: var(--mono); font-size: 11px; white-space: nowrap; overflow: hidden; }
+.scv-num input { width: 100%; min-width: 0; height: 28px; padding: 0 8px 0 4px; border: 0; outline: 0; background: none; color: var(--text); font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.scv-num small { grid-column: 1 / -1; color: var(--text-4); font-size: 11px; }
+.scv-num span { padding-right: 4px; }
+.scv-size { display: flex; align-items: baseline; gap: 8px; margin: 0; padding: 0 2px; color: var(--text-2); font-family: var(--mono); font-size: 12.5px; line-height: 30px; }
+.scv-size small { color: var(--text-4); font-size: 11px; }
+.scv-text.mono input { font-family: var(--mono); }
+.scv-switch { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--text-2); font-size: 13px; }
+.scv-glyph-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.scv-glyph-row > :last-child { flex: 1; min-width: 0; }
+.scv-glyph-art { display: grid; flex: none; place-items: center; width: 34px; height: 34px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-xs); background: #0d0d0d; }
+.scv-glyph-art img { max-width: 30px; max-height: 30px; image-rendering: pixelated; }
+.scv-glyph-art svg { width: 14px; height: 14px; color: var(--text-4); }
+.scv-presets { display: flex; flex-wrap: wrap; gap: 4px; }
+.scv-preset { display: inline-flex; align-items: baseline; gap: 6px; height: 26px; padding: 0 9px; border: 1px solid var(--line); border-radius: var(--r-full); background: none; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
+.scv-preset small { color: var(--text-4); font-family: var(--mono); font-size: 10.5px; }
+.scv-preset:hover { border-color: var(--line-strong); color: var(--text); }
+.scv-preset.on { border-color: var(--line-strong); background: var(--raise-hover); color: var(--text); }
+.scv-vars { display: grid; gap: 4px; }
+.scv-var { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 26px; align-items: center; gap: 4px; }
+.scv-var input { width: 100%; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-xs); background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 12px; }
+.scv-own-problems { display: grid; gap: 4px; margin: 0; padding: 10px 14px 0; list-style: none; }
+.scv-own-problems li { display: flex; align-items: flex-start; gap: 8px; padding: 6px 9px; border: 1px solid var(--line); border-radius: var(--r-xs); background: var(--panel-2); color: var(--text-2); font-size: 12px; line-height: 1.45; }
+.scv-own-problems svg { flex: none; width: 13px; height: 13px; margin-top: 2px; color: var(--text-3); }
+.scv-own-problems li.error svg { color: var(--danger); }
+.scv-own-problems li.warn svg { color: var(--warn); }
+.scv-error { display: flex; align-items: flex-start; gap: 8px; margin: 10px 12px 0; padding: 7px 8px 7px 10px; border: 1px solid var(--danger-line); border-radius: var(--r-xs); background: var(--panel-2); color: var(--text-2); font-size: 12.5px; }
+.scv-error > svg { flex: none; width: 14px; height: 14px; margin-top: 1px; color: var(--danger); }
+.scv-error span { flex: 1; }
+.scv-error .icon-button { width: 22px; height: 22px; }
+
+/* ---------- narrow ---------- */
+@container (max-width: 1080px) {
+  .scv-body { grid-template-columns: 220px minmax(0, 1fr) 290px; }
+  .scv-tool.labeled span { display: none; }
+  .scv-tool.labeled { padding: 0 7px; }
+}
+@container (max-width: 860px) {
+  .scv { height: auto; }
+  .scv-body { grid-template-columns: minmax(0, 1fr); }
+  .scv-side { max-height: 260px; border-right: 0; border-bottom: 1px solid var(--line-soft); }
+  .scv-stage { height: 480px; }
+  .scv-inspector { border-top: 1px solid var(--line-soft); border-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scv *, .scv *::before, .scv *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}

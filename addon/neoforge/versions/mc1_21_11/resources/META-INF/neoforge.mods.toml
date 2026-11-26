@@ -1,0 +1,27 @@
+# The NeoForge mod descriptor — the counterpart of paper-plugin.yml on the Paper side.
+#
+# version is filled from seAddonVersion in gradle.properties at build time.
+# Don't write it by hand — there are nine files, and one would surely be missed.
+modLoader = "javafml"
+loaderVersion = "[3,]"
+license = "MIT"
+issueTrackerURL = "https://github.com/chicodev11/Monolab/issues"
+
+[[mods]]
+modId = "monolab"
+version = "${version}"
+displayName = "Monolab"
+authors = "Monolab"
+description = '''
+Writes server state to the server folder for the Monolab app's monitor, map and console autocomplete.
+Changes nothing in the game and is invisible to players.
+'''
+
+# Not needed by clients. It registers no blocks, items or network channels, so vanilla
+# NeoForge clients can join a server running this mod as is.
+[[dependencies.monolab]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.11,21.12)"
+ordering = "NONE"
+side = "SERVER"

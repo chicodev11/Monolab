@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "monolab",
+  "version": "${version}",
+  "name": "Monolab",
+  "description": "Writes server state (TPS, memory, player positions) and the command list for the Monolab app's monitor. Changes nothing in the game and is invisible to players.",
+  "authors": ["Monolab"],
+  "contact": {
+    "issues": "https://github.com/chicodev11/Monolab/issues"
+  },
+  "license": "MIT",
+  "environment": "server",
+  "entrypoints": {
+    "server": ["com.github.chicodev11.monolab.addon.MonolabFabric"]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "fabric-api": "*",
+    "minecraft": "${mc}"
+  }
+}

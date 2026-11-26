@@ -1,0 +1,13 @@
+/* Players page → Permissions (LuckPerms). Base rows and group list are .integ-* / .lp-* in App.css. */
+.lp-page { display: grid; gap: 12px; }
+.lp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.lp-perm-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-3); font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.integ-rows .list-title { display: inline-flex; align-items: center; gap: 6px; }
+.integ-rows .list-title code { font-size: 13.5px; font-weight: var(--weight-normal); }
+.lp-user .list-actions { flex-wrap: wrap; justify-content: flex-end; }
+.lp-user .icon-button[aria-expanded] svg { transition: transform 140ms var(--ease); }
+.lp-user.open .icon-button[aria-expanded="true"] svg { transform: rotate(180deg); }
+.lp-user-own { display: grid; gap: 8px; padding: 4px 0 6px 12px; }
+@media (prefers-reduced-motion: reduce) {
+  .lp-user .icon-button[aria-expanded] svg { transition: none; }
+}

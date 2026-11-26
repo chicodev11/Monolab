@@ -1,0 +1,15 @@
+{
+  "minecraft": [
+    { "id": "Vanilla", "sizeBytes": 60000000, "create": true, "java": true, "versions": true, "addons": null, "proxy": false, "pregen": false },
+    { "id": "Paper", "sizeBytes": 120000000, "create": true, "java": true, "versions": true, "addons": "plugin", "proxy": false, "pregen": true },
+    { "id": "Purpur", "sizeBytes": 130000000, "create": true, "java": true, "versions": true, "addons": "plugin", "proxy": false, "pregen": true },
+    { "id": "Leaf", "sizeBytes": 140000000, "create": true, "java": true, "versions": true, "addons": "plugin", "proxy": false, "pregen": true },
+    { "id": "Folia", "sizeBytes": 120000000, "create": true, "java": true, "versions": true, "addons": "plugin", "proxy": false, "pregen": true },
+    { "id": "Fabric", "sizeBytes": 80000000, "create": true, "java": true, "versions": true, "addons": "mod", "proxy": false, "pregen": true },
+    { "id": "Forge", "sizeBytes": 250000000, "create": true, "java": true, "versions": true, "addons": "mod", "proxy": false, "pregen": true },
+    { "id": "NeoForge", "sizeBytes": 250000000, "create": true, "java": true, "versions": true, "addons": "mod", "proxy": false, "pregen": true },
+    { "id": "Velocity", "sizeBytes": 20000000, "create": true, "java": true, "versions": false, "addons": "plugin", "proxy": true, "pregen": false },
+    { "id": "BungeeCord", "sizeBytes": 15000000, "create": false, "java": true, "versions": false, "addons": "plugin", "proxy": true, "pregen": false },
+    { "id": "Pumpkin", "sizeBytes": 40000000, "create": true, "java": false, "versions": true, "addons": "wasm", "proxy": false, "pregen": false }
+  ]
+}

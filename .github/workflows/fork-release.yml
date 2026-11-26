@@ -1,0 +1,176 @@
+# Push a tag like fork-v3 (or run it by hand with the build number and a fork ref) → builds the PumpkinMC fork
+# (chicodev11/PumpkinMC, private) for Windows, Linux and macOS with scripts/forks.mjs (cargo build --release --locked
+# -p pumpkin, the same as the copy bundled in the installer), publishes the GitHub Release fork-3 with
+# pumpkin-windows-x86_64.exe, pumpkin-linux-x86_64, pumpkin-linux-aarch64, pumpkin-macos-aarch64 and
+# pumpkin-macos-x86_64, and rewrites the fork section of the signed update list (scripts/updates-manifest.mjs →
+# updates.json + updates.json.sig on the release tagged `updates`). The app downloads the new fork without a new app
+# release and swaps it in when no server runs on it (docs/updates-and-stats.md §1, §2, §6).
+# Build numbers only go up (the manifest script refuses a lower one). A tag push builds the fork's main branch.
+# fork-<build> is created with --latest=false so releases/latest (the app updater's latest.json) keeps pointing at the app.
+# Secrets: FORKS_TOKEN (fine-grained token with read access to chicodev11/PumpkinMC's contents),
+# TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD (the app updater's key; signs the list).
+# The binaries come out of an artifact zip without the executable bit; the app sets it when it installs them.
+name: Fork release
+
+on:
+  push:
+    tags: ["fork-v*"]
+  workflow_dispatch:
+    inputs:
+      build:
+        description: "Fork build number (a whole number, higher than the last fork-<n> release)"
+        required: true
+      ref:
+        description: "PumpkinMC branch, tag or commit to build"
+        required: false
+        default: main
+      min_app:
+        description: "Oldest app version that may use it (empty: package.json version)"
+        required: false
+        default: ""
+      notes:
+        description: "One short English line for the update notice"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    if: github.repository == 'chicodev11/Monolab'
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.pick.outputs.build }}
+      ref: ${{ steps.pick.outputs.ref }}
+    steps:
+      - name: Pick the build number and the fork ref
+        id: pick
+        shell: bash
+        env:
+          INPUT_BUILD: ${{ inputs.build }}
+          INPUT_REF: ${{ inputs.ref }}
+          FORKS_TOKEN: ${{ secrets.FORKS_TOKEN }}
+        run: |
+          if [ -z "$FORKS_TOKEN" ]; then
+            echo "::error::FORKS_TOKEN is not set; chicodev11/PumpkinMC is private."
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            build="$INPUT_BUILD"
+            ref="${INPUT_REF:-main}"
+          else
+            build="${GITHUB_REF_NAME#fork-v}"
+            ref=main
+          fi
+          if ! [[ "$build" =~ ^[0-9]+$ ]]; then
+            echo "::error::The fork build must be a whole number (tag fork-v3 or input 3), got '$build'."
+            exit 1
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    name: ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { runner: windows-latest, os: windows, arch: x86_64, exe: ".exe" }
+          - { runner: ubuntu-latest, os: linux, arch: x86_64, exe: "" }
+          - { runner: ubuntu-24.04-arm, os: linux, arch: aarch64, exe: "" }
+          - { runner: macos-latest, os: macos, arch: aarch64, exe: "" }
+          # Intel macOS: macos-13 was retired by GitHub; macos-15-intel is the x86_64 image that replaced it.
+          - { runner: macos-15-intel, os: macos, arch: x86_64, exe: "" }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - name: Check out the PumpkinMC fork
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: chicodev11/PumpkinMC
+          token: ${{ secrets.FORKS_TOKEN }}
+          ref: ${{ needs.prepare.outputs.ref }}
+          path: forks-src/PumpkinMC
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: forks-src/PumpkinMC
+          shared-key: fork-${{ matrix.os }}-${{ matrix.arch }}
+      # forks.mjs builds only PumpkinMC here (no Horizon checkout) and lays it out in src-tauri/forks.
+      - name: Build the fork
+        run: node scripts/forks.mjs --pumpkin forks-src/PumpkinMC --build ${{ needs.prepare.outputs.build }}
+      - name: Name the binary for its platform
+        shell: bash
+        run: |
+          mkdir -p fork-dist
+          cp "src-tauri/forks/pumpkin${{ matrix.exe }}" "fork-dist/pumpkin-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.exe }}"
+          ls -l fork-dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pumpkin-${{ matrix.os }}-${{ matrix.arch }}
+          path: fork-dist/
+          if-no-files-found: error
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    # updates.json is read, changed and uploaded whole; one writer at a time (addon-release.yml uses the same group).
+    concurrency:
+      group: updates-manifest
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # TODO: pin actions/download-artifact by SHA like the others.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pumpkin-*
+          path: fork-dist
+          merge-multiple: true
+      # The fork is GPL-3.0: its licence goes with the binaries.
+      - name: Fetch the fork licence
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: chicodev11/PumpkinMC
+          token: ${{ secrets.FORKS_TOKEN }}
+          ref: ${{ needs.prepare.outputs.ref }}
+          path: forks-src/PumpkinMC
+          sparse-checkout: LICENSE
+          sparse-checkout-cone-mode: false
+      - name: Publish the release fork-${{ needs.prepare.outputs.build }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILD: ${{ needs.prepare.outputs.build }}
+          REF: ${{ needs.prepare.outputs.ref }}
+        run: |
+          cp forks-src/PumpkinMC/LICENSE fork-dist/PumpkinMC-LICENSE.txt
+          ls -l fork-dist
+          tag="fork-$BUILD"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --latest=false --target "$GITHUB_SHA" --title "PumpkinMC fork build $BUILD" --notes "PumpkinMC fork build $BUILD (chicodev11/PumpkinMC at $REF). The app downloads it on its own."
+          gh release upload "$tag" fork-dist/* --clobber
+      - name: Update the signed list (updates.json)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          BUILD: ${{ needs.prepare.outputs.build }}
+          MIN_APP: ${{ inputs.min_app }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          args=(fork "$BUILD" fork-dist --notes "$NOTES")
+          [ -n "$MIN_APP" ] && args+=(--min-app "$MIN_APP")
+          node scripts/updates-manifest.mjs "${args[@]}"

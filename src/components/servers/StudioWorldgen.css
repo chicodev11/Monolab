@@ -1,0 +1,26 @@
+/* Studio custom world generator (StudioWorldgenFields). Grey only, no side stripes; the map shows block colors. */
+
+.studio-worldgen { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+.studio-worldgen-form { display: grid; gap: 12px; min-width: 0; }
+.studio-worldgen-head { margin: 8px 0 0; color: var(--text-2); font-size: 13px; font-weight: 600; }
+.studio-worldgen-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--text-3); font-size: 12.5px; }
+.studio-worldgen-map { position: sticky; top: 0; display: grid; gap: 8px; }
+.studio-worldgen-canvas { position: relative; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--raise); aspect-ratio: 1; }
+.studio-worldgen-canvas canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+.studio-worldgen-mark { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border: 1px solid var(--text); border-radius: var(--r-full); pointer-events: none; }
+.studio-worldgen-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.studio-worldgen-tools .icon-button { width: 28px; height: 28px; }
+.studio-worldgen-tools .icon-button svg { width: 15px; height: 15px; }
+.studio-worldgen-tools .button { margin-left: auto; }
+.studio-worldgen-problem { margin: 0; color: var(--danger); font-size: 12.5px; }
+.studio-worldgen-view { justify-self: start; }
+.studio-worldgen-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 0; padding: 0; list-style: none; color: var(--text-2); font-family: var(--mono); font-size: 11.5px; }
+.studio-worldgen-legend li { display: inline-flex; align-items: center; gap: 5px; }
+.studio-worldgen-swatch { width: 9px; height: 9px; border-radius: 3px; }
+.studio-worldgen-nodes { height: 440px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--raise); }
+.studio-worldgen-nodes .studio-nodes-panel { margin: 8px 8px 8px 0; }
+
+@media (max-width: 900px) {
+  .studio-worldgen { grid-template-columns: minmax(0, 1fr); }
+  .studio-worldgen-map { position: static; max-width: 360px; }
+}

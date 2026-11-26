@@ -1,0 +1,34 @@
+[package]
+name = "monolab-pumpkin"
+# The addon version (`ADDON_VERSION` in `events.rs`) lives in `VERSION` in `src/lib.rs`.
+# This number is the crate's own and never shows on screen.
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# **Must match the server release.** The WIT ABI changes between releases, so on a
+# server of another release it won't load at all. Which release it targets is written
+# in `targets.json`, and the app installs by that table. This is the user's fork
+# (`dev`), which adds the plugin API the studio needs; it runs only on the fork's server.
+pumpkin-plugin-api = { git = "https://github.com/chicodev11/PumpkinMC", rev = "af4f2cc4e4470a5d55b62a3fc769067b057cbebc" }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+serde_json = "1"
+studio-format = { path = "../../crates/studio-format" }
+tracing = "0.1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+
+[workspace]
+
+# Debug builds of the SDK's v0.2 export glue exceed wasm's local variable limit, so the
+# server can't compile them. Optimizing just the SDK keeps debug builds loadable.
+[profile.dev.package.pumpkin-plugin-api]
+opt-level = 1

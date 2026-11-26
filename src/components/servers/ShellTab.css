@@ -1,0 +1,8 @@
+.shell-tab { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 8px; padding: 12px 14px; }
+.shell-tab-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--text-2); font-size: 13px; }
+.shell-tab-head strong { color: var(--text); }
+.shell-tab-head .button { margin-left: auto; }
+.shell-tab-ended { margin: 0; color: var(--text-2); font-size: 13px; }
+/* The terminal's size never follows its own content (fit would grow it forever): the box is sized by the window. */
+.shell-tab-term { position: relative; flex: 1 0 auto; height: calc(100dvh - 300px); min-height: 240px; overflow: hidden; border-radius: 12px; background: var(--raise); }
+.shell-tab-term .xterm { position: absolute; inset: 8px; }

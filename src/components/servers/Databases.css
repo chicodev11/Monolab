@@ -1,0 +1,75 @@
+/* Databases tab and the database hosts dialog. Greys only; colour stays in the chips. */
+
+/* Every section of the tab is a card; App.css loads after this file, so these sit one class deeper. */
+.pt-page > .pt-body > .pt-head.db-head {
+  min-height: 0;
+  padding: 12px 14px 12px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--panel-2);
+}
+.pt-page > .pt-body > .pt-head.db-head > p { color: var(--text-2); }
+.db-head-icon { display: inline-grid; flex: none; place-items: center; width: 34px; height: 34px; border-radius: var(--r-md); background: var(--raise); color: var(--text-2); }
+.db-head-icon svg { width: 17px; height: 17px; }
+.pt-page > .pt-body > .card {
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--panel-2);
+}
+.pt-page > .pt-body > .card > .card-head { margin-bottom: 10px; }
+.pt-page > .pt-body > .card > p.muted { margin: 0; font-size: 13px; line-height: 1.55; }
+.pt-page > .pt-body > .card > p.muted + p.muted { margin-top: 8px; }
+.pt-page > .pt-body > .card > .pt-list + p.muted { margin-top: 10px; }
+.pt-page > .pt-body > .pt-form { border-color: var(--line-soft); border-radius: var(--r-lg); }
+.pt-page > .pt-body > .tool-empty { border: 1px solid var(--line-soft); border-radius: var(--r-lg); background: var(--panel-2); }
+.pt-page .db-browser-head {
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--panel-2);
+}
+
+.db-row .list-title { font-size: 15px; }
+.db-row .pt-kv { margin-top: 2px; padding-bottom: 4px; }
+.pt-copy .icon { width: 13px; height: 13px; margin-left: 6px; vertical-align: -2px; color: var(--text-4); }
+
+.db-form-row { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 10px; }
+.db-form-row:nth-of-type(2) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.db-form-row input { width: 100%; min-width: 0; }
+
+.db-browser { display: grid; gap: 12px; min-width: 0; }
+.db-browser-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.db-browser-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.db-browser-pick { width: min(280px, 40vw); }
+
+.db-grid-wrap {
+  max-height: min(62vh, 640px); overflow: auto; min-width: 0;
+  border: 1px solid var(--line); border-radius: var(--r-md); background: var(--inset);
+}
+.db-grid { width: max-content; min-width: 100%; border-collapse: collapse; font-family: var(--code); font-size: 12.5px; }
+.db-grid th, .db-grid td {
+  max-width: 320px; padding: 6px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border-bottom: 1px solid var(--line); text-align: left;
+}
+.db-grid th { position: sticky; top: 0; z-index: 1; background: var(--panel); color: var(--text-3); font-weight: 600; }
+.db-grid td { color: var(--text-2); }
+.db-grid tbody tr:hover td { background: var(--panel-2); }
+.db-grid td.db-null { color: var(--text-4); font-style: italic; }
+.db-grid-empty { margin: 0; padding: 18px; text-align: center; }
+
+.db-pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.db-pager > span { flex: 1; font-size: 13px; }
+
+.db-hosts { display: grid; gap: 12px; min-width: 0; }
+.db-orphans { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.db-orphans > p { margin: 0 0 4px; font-size: 13px; }
+.modal-backdrop.roomy .add-modal.db-hosts-dialog { width: min(640px, 100%); gap: 14px; }
+.add-modal.db-hosts-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.add-modal.db-hosts-dialog header h3 { margin: 0; }
+
+@media (max-width: 640px) {
+  .db-form-row, .db-form-row:nth-of-type(2) { grid-template-columns: minmax(0, 1fr); }
+  .db-row { flex-wrap: wrap; }
+  .db-row .list-actions { flex-basis: 100%; flex-wrap: wrap; justify-content: flex-start; }
+}

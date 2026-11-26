@@ -1,0 +1,4 @@
+# Shell scripts and server files run on Linux; keep them LF even on Windows checkouts.
+*.sh text eol=lf
+relay/deploy/** text eol=lf
+node/deploy/** text eol=lf

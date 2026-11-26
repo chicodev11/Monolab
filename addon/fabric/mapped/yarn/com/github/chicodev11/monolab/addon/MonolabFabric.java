@@ -1,0 +1,195 @@
+package com.github.chicodev11.monolab.addon;
+
+import java.util.ArrayList;
+import java.util.List;
+import net.fabricmc.api.DedicatedServerModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.entity.Entity;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public final class MonolabFabric implements DedicatedServerModInitializer {
+    private static final Logger LOGGER = LoggerFactory.getLogger("Monolab");
+
+    private final EventSink sink = new EventSink();
+    private MapRender map;
+    private YarnChunks liveChunks;
+    private final ChunkWatch chunks = new ChunkWatch();
+    private boolean inventoriesBroken;
+
+    @Override
+    public void onInitializeServer() {
+        ServerLifecycleEvents.SERVER_STARTED.register(this::onStarted);
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+            sink.stop();
+            if (map != null) {
+                map.stop();
+                map = null;
+                liveChunks = null;
+            }
+        });
+        ServerTickEvents.START_SERVER_TICK.register(server -> JvmStats.tickStart());
+        ServerTickEvents.END_SERVER_TICK.register(this::onTick);
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents.CHUNK_LOAD.register((world, chunk) ->
+                chunks.load(Bridge.worldIdOf(world), chunk.getPos().getStartX() >> 4, chunk.getPos().getStartZ() >> 4));
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents.CHUNK_UNLOAD.register((world, chunk) ->
+                chunks.unload(Bridge.worldIdOf(world), chunk.getPos().getStartX() >> 4, chunk.getPos().getStartZ() >> 4));
+    }
+
+    private void onStarted(MinecraftServer server) {
+        var folder = FabricLoader.getInstance().getConfigDir().resolve("monolab");
+        sink.start(folder, LOGGER::warn);
+        LOGGER.info("Starting the Monolab monitor: {}", folder);
+        MonolabApi.serverThread(server::execute);
+        dumpCommands(server, folder);
+        try {
+            map = startMap(folder);
+            liveChunks = new YarnChunks(server);
+        } catch (Throwable trouble) {
+            LOGGER.warn("Couldn't start the map", trouble);
+        }
+    }
+
+    private MapRender startMap(java.nio.file.Path folder) {
+        MapRender map = new MapRender(
+                java.nio.file.Path.of("").toAbsolutePath(),
+                folder.resolve("map"),
+                (message, error) -> LOGGER.warn(message, error));
+        for (net.minecraft.block.Block block : net.minecraft.registry.Registries.BLOCK) {
+            for (net.minecraft.block.BlockState state : block.getStateManager().getStates()) {
+                try {
+                    map.color(state.toString(),
+                            state.getMapColor(net.minecraft.world.EmptyBlockView.INSTANCE, net.minecraft.util.math.BlockPos.ORIGIN).color);
+                } catch (Throwable skipped) {
+                    // A modded block that needs a world to know its color — it's simply left off the map.
+                }
+            }
+        }
+        map.game(net.fabricmc.loader.api.FabricLoader.getInstance().getModContainer("minecraft")
+                .map(one -> one.getMetadata().getVersion().getFriendlyString()).orElse(""));
+        map.start();
+        return map;
+    }
+
+    private void dumpCommands(MinecraftServer server, java.nio.file.Path folder) {
+        try {
+            CommandDump.write(
+                    folder,
+                    "nodes",
+                    CommandTree.read(
+                            server.getCommandManager().getDispatcher(),
+                            server.getCommandSource()),
+                    (message, trouble) -> LOGGER.warn(message, trouble));
+        } catch (Throwable trouble) {
+            LOGGER.warn("Couldn't read the command list", trouble);
+        }
+    }
+
+    private void onTick(MinecraftServer server) {
+        JvmStats.tickEnd();
+        if (map != null && liveChunks != null) {
+            map.live().tick(liveChunks);
+        }
+        if (sink.off()) {
+            return;
+        }
+        long ticks = sink.tick();
+        if (ticks % EventSink.LIVE_TICKS == 0) {
+            snapshot(server);
+        }
+        if (ticks % EventSink.PERF_TICKS == 0) {
+            EntityTally tally = tallyEntities(server);
+            sink.perf(
+                    server.getAverageTickTime(),
+                    server.getPlayerManager().getPlayerList().size(),
+                    loadedChunks(server),
+                    tally.total());
+        }
+    }
+
+    private void snapshot(MinecraftServer server) {
+        if (chunks.due()) {
+            sink.loaded(chunks.json(name -> null));
+            if (!inventoriesBroken && AddonConfig.on("inventories")) {
+                try {
+                    sink.inventories(inventories(server));
+                } catch (Throwable trouble) {
+                    inventoriesBroken = true;
+                    LOGGER.warn("Couldn't read player inventories; skipping them.", trouble);
+                }
+            }
+        }
+        EntityTally tally = tallyEntities(server);
+        List<EventSink.Spot> people = new ArrayList<>();
+        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            people.add(new EventSink.Spot(
+                    Bridge.nameOf(player),
+                    Bridge.worldIdOf(player),
+                    player.getX(),
+                    player.getY(),
+                    player.getZ(),
+                    Math.round(player.getHealth()),
+                    player.getHungerManager().getFoodLevel(),
+                    player.networkHandler.getLatency()));
+        }
+        sink.live(server.getAverageTickTime(), loadedChunks(server), tally, people);
+    }
+
+private static String itemId(net.minecraft.item.ItemStack stack) {
+        Object key = net.minecraft.registry.Registries.ITEM.getId(stack.getItem());
+        return key == null ? null : key.toString();
+    }
+
+    private static String inventories(MinecraftServer server) {
+        Inventories all = new Inventories();
+        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            all.player(Bridge.nameOf(player), player.getUuid().toString());
+            var bag = player.getInventory();
+            for (int at = 0; at < bag.size(); at++) {
+                var stack = bag.getStack(at);
+                if (!stack.isEmpty()) {
+                    all.bag(at, itemId(stack), stack.getCount(), stack.getDamage());
+                }
+            }
+            var ender = player.getEnderChestInventory();
+            for (int at = 0; at < ender.size(); at++) {
+                var stack = ender.getStack(at);
+                if (!stack.isEmpty()) {
+                    all.ender(at, itemId(stack), stack.getCount(), stack.getDamage());
+                }
+            }
+        }
+        return all.json();
+    }
+
+    private static long loadedChunks(MinecraftServer server) {
+        long chunks = 0;
+        for (ServerWorld world : server.getWorlds()) {
+            chunks += world.getChunkManager().getLoadedChunkCount();
+        }
+        return chunks;
+    }
+
+    private static EntityTally tallyEntities(MinecraftServer server) {
+        EntityTally tally = new EntityTally();
+        for (ServerWorld world : server.getWorlds()) {
+            String name = Bridge.worldIdOf(world);
+            long before = tally.total();
+            for (Entity entity : world.iterateEntities()) {
+                Object key = net.minecraft.registry.Registries.ENTITY_TYPE.getId(entity.getType());
+                tally.add(
+                        name,
+                        key == null ? null : key.toString(),
+                        ((int) Math.floor(entity.getX())) >> 4,
+                        ((int) Math.floor(entity.getZ())) >> 4);
+            }
+            tally.world(name, world.getChunkManager().getLoadedChunkCount(), tally.total() - before);
+        }
+        return tally;
+    }
+}

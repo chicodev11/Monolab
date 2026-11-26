@@ -1,0 +1,30 @@
+# Monolab node config. After changing it: sudo systemctl restart monolab-node
+# Check it first with: monolab-node check --config /etc/monolab-node/config.toml
+
+# The account server's grant keys, "kid:hex". On mnlab.cc, `monolab-relay --data … --grant-pin`
+# prints "1 <hex>"; write it as "1:<hex>". Replace the line below.
+grant_keys = ["1:put-the-grant-key-here"]
+
+# How many console lines a teammate gets at most.
+console_lines = 500
+
+# The tmux socket the servers run under. With `start` below, teammates start the server from the
+# app; without it, start it yourself in this socket, as the service user:
+#   tmux -S /var/lib/monolab-node/tmux.sock new -d -s survival -c /srv/minecraft/survival 'java -Xmx4G -jar server.jar nogui'
+tmux_socket = "/var/lib/monolab-node/tmux.sock"
+
+# One block per server. `id` is what grants name; `tmux` is the session (default: the id);
+# `log` is the console log inside the folder (default: logs/latest.log).
+# `start`: what starts it (run by `sh -c` in the folder); `stop`: what is typed to stop it (default: stop).
+[[servers]]
+id = "survival"
+name = "Survival"
+path = "/srv/minecraft/survival"
+start = "java -Xmx4G -jar server.jar nogui"
+
+# One block per team (its id on the account server) and the servers attached to it.
+# `admin_only`: console commands only from the team's Admins and Owner.
+[[teams]]
+id = "01TEAMID"
+servers = ["survival"]
+admin_only = []

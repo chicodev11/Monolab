@@ -1,0 +1,27 @@
+/* Studio maker M2: canvas dialogs as the game draws them (StudioCanvas.tsx, for previews and the editor's stage) and
+   glyph images (StudioFontFields.tsx). Grey only. No side stripes. The editor's own look is StudioCanvasEditor.css. */
+
+/* The game's canvas: GUI pixels drawn at 2×. */
+.mc-canvas { position: relative; flex: none; margin: 0 auto; outline: 1px dashed rgba(255, 255, 255, 0.25); user-select: none; }
+.mc-canvas-el { position: absolute; box-sizing: border-box; }
+.mc-canvas-el img { display: block; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
+.mc-canvas-el.text { white-space: nowrap; color: #fff; line-height: 18px; }
+.mc-canvas-el.text .mc-line { display: block; }
+.mc-canvas-text { display: block; transform-origin: 0 0; pointer-events: none; }
+.mc-canvas-el.area { background: rgba(255, 255, 255, 0.06); outline: 1px dashed rgba(255, 255, 255, 0.35); }
+.mc-canvas-el.empty { display: grid; place-items: center; overflow: hidden; outline: 1px dashed rgba(255, 255, 255, 0.4); color: #bbb; font-size: 11px; }
+
+/* The dialog preview with a canvas body. */
+.mc-dialog.canvas { width: auto; max-width: 100%; }
+.mc-dialog-canvas { overflow: auto; max-width: 100%; }
+
+/* Glyph images: the font form and its preview. */
+.studio-glyph-picture { display: flex; align-items: center; gap: 12px; }
+.studio-glyph-picture img { width: 48px; height: 48px; border: 1px solid var(--line-soft); border-radius: 8px; background: #1b1b1b; object-fit: contain; image-rendering: pixelated; }
+.studio-glyph-picture small { color: var(--text-3); font-size: 12px; }
+.mc-glyph-scene { display: grid; gap: 10px; }
+.mc-glyph-line { display: flex; align-items: flex-end; height: 18px; color: #fff; white-space: nowrap; }
+.mc-glyph-line .mc-line { display: inline-block; }
+.mc-glyph { position: relative; display: inline-block; flex: none; height: 18px; }
+.mc-glyph img { position: absolute; left: 0; image-rendering: pixelated; }
+.mc-glyph-name { color: #aaa; font-size: 12px; }

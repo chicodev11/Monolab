@@ -1,0 +1,39 @@
+/* History (auto saves): a slim bar on top instead of the old banner, and the compare picker sized for a head row.
+   App.css loads after this file, so rules are scoped under .rewind-page. */
+
+.git-page.rewind-page > .rewind-bar {
+  display: grid;
+  flex: none;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+}
+.rewind-page .rewind-bar-line { display: flex; align-items: center; gap: 10px; min-height: 30px; min-width: 0; }
+.rewind-page .rewind-bar-line > svg { flex: none; width: 15px; height: 15px; color: var(--text-3); }
+.rewind-page .rewind-bar-text { flex: 1; min-width: 0; overflow: hidden; color: var(--text-2); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.rewind-page .rewind-bar-more {
+  flex: none;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.rewind-page .rewind-bar-more:hover,
+.rewind-page .rewind-bar-more[aria-expanded="true"] { background: var(--raise); color: var(--text); }
+.rewind-page .rewind-bar-switch { display: inline-flex; flex: none; align-items: center; gap: 8px; margin-left: 4px; color: var(--text-3); font-size: 12.5px; }
+.rewind-page .rewind-bar-about { margin: 0 0 4px 25px; max-width: 72ch; color: var(--text-3); font-size: 12.5px; line-height: 1.55; }
+.rewind-page .rewind-loading { margin: 0; padding: 14px 16px; border: 1px solid var(--line-soft); border-radius: var(--r-md); background: var(--panel-2); font-size: 13.5px; }
+
+.rewind-page .git-main-head .dropdown.rewind-compare-pick { width: 196px; flex: none; }
+.rewind-page .git-main-head .rewind-compare-pick .dropdown-trigger { height: 30px; padding: 0 8px 0 10px; font-size: 13px; }
+
+@media (max-width: 640px) {
+  .rewind-page .rewind-bar-switch > span { display: none; }
+}

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monolab: Privacy</title>
+<meta name="description" content="What the Monolab app and mnlab.cc send, store and never collect, and how to turn the usage counts off.">
+<meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e0e0e" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/shots/app-icon.png">
+<link rel="preload" href="/fonts/inter-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/site.css">
+</head>
+<body>
+<a class="skip" href="#main"><span data-t>Skip to content</span></a>
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="/"><img src="/shots/app-icon.png" alt="" width="28" height="28">Monolab</a>
+    <ul class="links">
+      <li><a href="/privacy"><span data-t>Privacy</span></a></li>
+      <li><a href="https://github.com/chicodev11/Monolab"><span data-t>GitHub</span></a></li>
+    </ul>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-head">
+    <div class="wrap">
+      <h1><span data-t>What Monolab sends</span></h1>
+      <p><span data-t>Monolab runs your servers on your own machines. Your worlds, files, console output and commands stay there. This page lists everything the app sends to mnlab.cc, what is kept, and how to turn it off.</span></p>
+      <p class="updated"><span data-t>Updated November 26, 2026</span></p>
+    </div>
+  </section>
+
+  <div class="wrap prose">
+    <nav aria-label="On this page">
+      <ol>
+        <li><a href="#counts"><span data-t>Anonymous usage counts</span></a></li>
+        <li><a href="#never"><span data-t>What is never sent</span></a></li>
+        <li><a href="#off"><span data-t>Turning it off</span></a></li>
+        <li><a href="#monolink"><span data-t>Monolink accounts</span></a></li>
+        <li><a href="#crash"><span data-t>Crash reports</span></a></li>
+        <li><a href="#server"><span data-t>Our server and this website</span></a></li>
+        <li><a href="#contact"><span data-t>Contact</span></a></li>
+      </ol>
+    </nav>
+    <article>
+      <section id="counts">
+        <h2><span data-t>Anonymous usage counts</span></h2>
+        <p><span data-t>The app keeps a connection to mnlab.cc so it hears right away when a new Monolab add-on or PumpkinMC build is out. On that connection it sends:</span></p>
+        <dl class="table">
+          <div><dt><span data-t>Install ID</span></dt><dd><span data-t>A random number made on your PC the first time counts are on. It isn't tied to your name, your Discord account or your hardware. It lets us count each install once a day.</span></dd></div>
+          <div><dt><span data-t>Versions</span></dt><dd><span data-t>The app version, the add-on version and the PumpkinMC fork build in the app.</span></dd></div>
+          <div><dt><span data-t>Operating system</span></dt><dd><span data-t>The system and processor type, such as <code>windows-x86_64</code>.</span></dd></div>
+        </dl>
+        <p><span data-t>From this we see how many installs were used today, this week and this month, and which versions and systems are in use, so we know which ones still need fixes. Each day an install was seen is kept for 400 days and then deleted.</span></p>
+      </section>
+
+      <section id="never">
+        <h2><span data-t>What is never sent</span></h2>
+        <ul>
+          <li><span data-t>Server names, addresses, ports, worlds, files, plugins, console output or commands.</span></li>
+          <li><span data-t>Your account details on this PC, SSH logins, game panel keys or web panel accounts.</span></li>
+          <li><span data-t>Your IP address is not stored. The server holds it in memory only to limit how often one address can connect, and forgets it after that.</span></li>
+        </ul>
+      </section>
+
+      <section id="off">
+        <h2><span data-t>Turning it off</span></h2>
+        <p><span data-t>Open <span class="path">Settings</span> in the app and switch off <span class="path">Send anonymous usage counts</span>. The app tells you about this once, the first time it starts.</span></p>
+        <p><span data-t>With the switch off, no install ID is sent. The app still connects to mnlab.cc to hear about add-on and fork updates and sends the versions and system it needs for that, but the server can't tell your install apart from any other, so you aren't counted.</span></p>
+      </section>
+
+      <section id="monolink">
+        <h2><span data-t>Monolink accounts</span></h2>
+        <p><span data-t>If you sign in to Monolink with Discord, the account server stores:</span></p>
+        <ul>
+          <li><span data-t>Your Discord user ID, your Monolab handle and your avatar.</span></li>
+          <li><span data-t>The devices you signed in on, with their names and when each was last seen.</span></li>
+          <li><span data-t>The teams you are in and your role in each.</span></li>
+        </ul>
+        <p><span data-t>Teammates' apps connect straight to each other, encrypted. The account server never receives files, console output or commands. If you never sign in, none of this exists.</span></p>
+      </section>
+
+      <section id="crash">
+        <h2><span data-t>Crash reports</span></h2>
+        <p><span data-t>Crash reports are only sent when you choose to send one. Nothing is sent on its own when the app crashes.</span></p>
+      </section>
+
+      <section id="server">
+        <h2><span data-t>Our server and this website</span></h2>
+        <ul>
+          <li><span data-t>The web server at mnlab.cc keeps access logs for 14 days. Invite codes and sign-in codes are left out of them.</span></li>
+          <li><span data-t>This website sets no cookies and has no analytics. The download buttons ask GitHub which release is the newest, so your browser talks to <code>api.github.com</code> when a page opens.</span></li>
+          <li><span data-t>App updates, add-ons and PumpkinMC builds are downloaded from GitHub releases, and GitHub's own privacy terms apply to those downloads.</span></li>
+        </ul>
+      </section>
+
+      <section id="contact">
+        <h2><span data-t>Contact</span></h2>
+        <p><span data-t>Questions about this page, or a request to remove your Monolink account: open an issue at <a href="https://github.com/chicodev11/Monolab/issues">github.com/chicodev11/Monolab/issues</a>.</span></p>
+      </section>
+    </article>
+  </div>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-row">
+    <p class="legal"><span data-t>Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft.</span></p>
+    <ul class="foot-links">
+      <li><a href="https://github.com/chicodev11/Monolab/releases"><span data-t>All releases</span></a></li>
+      <li><a href="/privacy"><span data-t>Privacy</span></a></li>
+      <li><a href="https://github.com/chicodev11/Monolab/issues"><span data-t>Report a problem</span></a></li>
+    </ul>
+  </div>
+</footer>
+<script src="/site.js"></script>
+</body>
+</html>

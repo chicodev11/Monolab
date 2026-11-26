@@ -1,0 +1,93 @@
+[package]
+name = "monolab"
+version = "1.0.1"
+description = "Minecraft server management desktop application"
+authors = ["chicodev11"]
+license = "GPL-3.0-or-later"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "monolab_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+ammonia = "4"
+tauri = { version = "2", features = ["tray-icon", "unstable"] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+semver = "1.0.28"
+specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json"] }
+specta-typescript = "=0.0.12"
+tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
+zip = "9"
+crc32fast = "1"
+sysinfo = "0.33"
+reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "json", "multipart", "query", "rustls"] }
+sha2 = "0.10.9"
+sha1 = "0.10.6"
+md-5 = "0.10.6"
+tauri-plugin-dialog = "2.7.2"
+fastnbt = "2.6.3"
+monolab-nbt = { path = "../crates/nbt" }
+studio-format = { path = "../crates/studio-format" }
+flate2 = "1.1.9"
+tar = "0.4"
+image = "0.25.10"
+base64 = "0.23.1"
+# No `zip` feature: updates are the NSIS setup .exe itself (createUpdaterArtifacts: true), and zip 4.6.1 has advisories.
+tauri-plugin-updater = { version = "2.10.1", default-features = false, features = ["rustls-tls"] }
+tauri-plugin-process = "2.3.1"
+minisign-verify = "0.2.5"
+tauri-plugin-notification = "2.3.3"
+tauri-plugin-single-instance = "2"
+tauri-plugin-autostart = "2"
+argon2 = "0.6.0"
+include_dir = "0.7.4"
+shell-words = "1.1"
+sevenz-rust2 = "0.24"
+regex = "1.13"
+getrandom = "0.4"
+mysql_async = { version = "0.37", default-features = false, features = ["default-rustls"] }
+rusqlite = { version = "0.43", features = ["bundled"] }
+toml_edit = "0.25"
+portable-pty = "0.9.0"
+russh = { version = "0.63.3", default-features = false, features = ["ring", "rsa", "flate2"] }
+russh-sftp = "3.0.0"
+tokio = { version = "1.53.1", features = ["rt", "time", "net", "io-util", "sync", "macros"] }
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-native-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
+rustls-platform-verifier = "0.7"
+rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "crypto"] }
+time = "0.3"
+netdev = "0.46"
+futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
+relay-proto = { version = "0.1.0", path = "../crates/relay-proto" }
+ed25519-dalek = "3"
+iroh = { version = "1.4", default-features = false, features = ["portmapper", "tls-aws-lc-rs"] }
+tauri-plugin-deep-link = "2"
+
+# Line tables only: full debug info made PDBs big enough to hit LNK1318.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.release]
+opt-level = 2
+codegen-units = 256
+lto = false
+incremental = true
+strip = true
+
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security", "Win32_Security_Cryptography", "Win32_System_JobObjects", "Win32_System_Threading"] }

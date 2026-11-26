@@ -1,0 +1,8 @@
+[Unit]
+Description=Back up the Monolab relay data
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/monolab-relay-backup
+Nice=10
+IOSchedulingClass=idle
