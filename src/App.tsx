@@ -174,7 +174,7 @@ import { RolePicker, RolesEditor } from "./components/settings/RolesEditor";
 import { roleName, rolesChanged, useRoles } from "./lib/roles";
 import { AccountSettings, MonolinkTeams } from "./components/settings/MonolinkTeams";
 import { askWords, TeamAgentAsks } from "./components/dialogs/TeamAgentAsks";
-import { FILE_COLUMNS, FileRows } from "./components/files/FileRows";
+import { FILE_ACTIONS_W, FILE_COLUMNS, FileRows } from "./components/files/FileRows";
 import { TextureView } from "./components/files/TextureView";
 import { NbtEditor, isNbtEditable } from "./components/files/NbtEditor";
 import { ClientHome } from "./components/client/ClientHome";
@@ -9855,7 +9855,7 @@ ${payload.plugin}`;
           ) : (
           <>
             <div className="file-list" ref={fileListBox}>
-              <List variant="plain" columns={FILE_COLUMNS} className="file-head-list file-cols">
+              <List variant="plain" columns={FILE_COLUMNS} actionsWidth={FILE_ACTIONS_W} className="file-head-list file-cols">
                 <ListHeader
                   className="file-head"
                   leading={
@@ -9874,7 +9874,7 @@ ${payload.plugin}`;
                   }
                   title={head("name", tr("Name"))}
                   meta={[head("size", tr("Size")), head("date", tr("Modified"))]}
-                  actions={<span />}
+                  actions={<span className="file-head-actions">{tr("Actions")}</span>}
                 />
               </List>
               {pickedFiles.size > 0 && (
@@ -12907,6 +12907,7 @@ ${payload.plugin}`;
                     onClick={() => openManage(one)}
                   >
                     <CoreIcon core={one.core} />
+                    <span>{one.name}</span>
                     <b className={`status-dot wb-rail-status status-${shownStatus(one)}`} aria-hidden />
                   </button>
                 ))}

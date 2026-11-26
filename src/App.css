@@ -12429,3 +12429,90 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .log-level:hover { border-color: var(--text-4); color: var(--text); }
 .log-level.on { border-color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
 @media (prefers-reduced-motion: reduce) { .log-level { transition: none; } }
+
+
+/* 2026-11-26: the rail sits at the window edge in and out of a server, so its line never moves.
+   In a server only the page (and the status panel) is the rounded card, right of the rail. */
+@media (min-width: 761px) {
+  .app-shell.wb.in-server .wb-body { margin: 0 12px 12px 0; border-radius: 0; background: transparent; overflow: visible; }
+  /* The rail runs up past the server tab row to the title bar, as on the main menu, so its line and
+     its first icon sit at the same spot in and out of a server. The tab row starts right of it. */
+  .app-shell.wb.in-server .wb-rail { margin-top: calc(-1 * var(--wb-top-h)); margin-bottom: -12px; }
+  .app-shell.wb.in-server .wb-top { padding-left: 84px; }
+  .app-shell.wb.in-server .wb-body > :not(.wb-rail) { background: var(--panel); }
+  .app-shell.wb.in-server .wb-body > .wb-rail + * { margin-left: 12px; border-radius: 20px 0 0 20px; }
+  .app-shell.wb.in-server .wb-body > :last-child { border-top-right-radius: 20px; border-bottom-right-radius: 20px; overflow: hidden; }
+
+  /* Main menu rail: the same fold-out as the server rail. Icons only, and the names slide out over the
+     page while the pointer rests on it. Both rails share one layout, so the icons line up between them. */
+  .app-shell.wb .wb-homerail {
+    position: relative;
+    z-index: 40;
+    align-items: stretch;
+    padding-left: 12px;
+    padding-right: 12px;
+    overflow-x: hidden;
+    transition: flex-basis 180ms var(--ease), margin-right 180ms var(--ease), box-shadow 180ms var(--ease), background-color 180ms var(--ease);
+  }
+  .app-shell.wb .wb-homerail button {
+    display: flex;
+    width: auto;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 14px;
+    padding: 0 0 0 11.5px;
+    overflow: hidden;
+  }
+  .app-shell.wb .wb-homerail button > svg,
+  .app-shell.wb .wb-homerail button > img { flex: none; }
+  .app-shell.wb .wb-homerail button > span:not(.wb-count) {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: hidden;
+    clip-path: none;
+    color: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+  .app-shell.wb .wb-homerail .wb-dot { right: auto; left: 30px; }
+  .app-shell.wb .wb-homerail .wb-count { right: auto; left: 26px; }
+  .app-shell.wb .wb-homerail .wb-homerail-line { flex: none; align-self: flex-start; margin-left: 8px; }
+  .app-shell.wb .wb-homerail-servers { align-items: stretch; }
+  .app-shell.wb .wb-homerail-servers button { padding-left: 11px; }
+  .app-shell.wb .wb-homerail-servers .wb-rail-status { right: auto; left: 25px; }
+  .app-shell.wb .wb-homerail:hover {
+    flex-basis: 212px;
+    margin-right: -144px;
+    background: var(--bg);
+    box-shadow: 12px 0 32px rgb(0 0 0 / 35%);
+    transition-delay: 220ms;
+  }
+  /* Both rails keep the window's own colour when they fold out; only the shadow lifts them off the page. */
+  .app-shell.wb .wb-rail:hover { background: var(--bg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.wb .wb-homerail { transition: none; }
+}
+
+/* Files: one table in a bordered card, like a file manager. Plain line icons, a line between rows,
+   full dates, and an Actions column. */
+.app-shell.wb .file-page .file-list { border: 1px solid var(--line-soft); background: var(--panel-2); }
+.app-shell.wb .file-head-list { border-bottom: 1px solid var(--line-soft); background: var(--panel-2); }
+.app-shell.wb .file-head-list .file-head { min-height: 48px; }
+.app-shell.wb .file-head .file-sort,
+.app-shell.wb .file-head-actions { color: var(--text-2); font-size: 13.5px; font-weight: 600; }
+.app-shell.wb .file-head .file-sort.on { color: var(--text); }
+.app-shell.wb .file-head-actions { display: block; width: 100%; padding-right: 12px; text-align: right; white-space: nowrap; }
+.app-shell.wb .file-cols .list-actions { justify-content: flex-end; }
+.app-shell.wb .file-virtual > .file-row { min-height: 60px; padding-block: 8px; border-bottom: 1px solid var(--line-soft); border-radius: 0; }
+.app-shell.wb .file-cols .list-lead { width: 58px; gap: 16px; }
+.app-shell.wb .file-row .file-mark,
+.app-shell.wb .file-row:hover .file-mark { width: 22px; height: 22px; border-radius: 0; background: none; color: var(--text-3); }
+.app-shell.wb .file-row .file-mark svg { width: 18px; height: 18px; }
+.app-shell.wb .file-row:hover .file-mark { color: var(--text); }
+.app-shell.wb .file-row .list-title { font-size: 14.5px; font-weight: 500; }
+.app-shell.wb .file-row .list-meta { color: var(--text-3); font-size: 13.5px; }
+.app-shell.wb .file-row .file-more-menu { margin-right: 12px; }

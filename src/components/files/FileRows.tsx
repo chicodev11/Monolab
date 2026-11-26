@@ -8,22 +8,33 @@ import { Icon } from "../ui/Icon";
 import { List, ListRow } from "../primitives";
 
 /** Size and Modified columns, shared with the header in App.tsx. */
-export const FILE_COLUMNS = "84px 96px";
+export const FILE_COLUMNS = "132px 180px";
+/** The Actions column: the header's word and the rows' menu button share it. */
+export const FILE_ACTIONS_W = "76px";
 
 export type Entry = Sent<BrowseEntry>;
 
 function fileIcon(entry: Entry): string {
-  if (entry.isDir) return "folder";
   const name = entry.name.toLowerCase();
-  if (name.endsWith(".jar")) return "archive";
+  if (entry.isDir) {
+    if (name === "logs" || name === "crash-reports") return "logs";
+    if (name === "plugins" || name === "mods") return "puzzle";
+    if (name === "config" || name === "configs") return "file-cog";
+    if (name === "backups") return "backup";
+    if (name === "libraries" || name === "versions" || name === "cache") return "library";
+    if (name === "world" || name.startsWith("world_") || name === "saves") return "globe";
+    return "folder";
+  }
+  if (name.endsWith(".jar")) return "package";
   if (name.endsWith(".zip") || name.endsWith(".mrpack")) return "archive";
-  if (name.endsWith(".log")) return "console";
+  if (name.endsWith(".log") || name.endsWith(".log.gz")) return "logs";
+  if (/\.(json|ya?ml|toml|properties|conf|cfg|ini)$/.test(name)) return "file-cog";
   if (isImage(entry.name)) return "image";
   if (entry.editable) return "file";
   return "list";
 }
 
-const ROW_ESTIMATE = 57;
+const ROW_ESTIMATE = 61;
 
 const UNKNOWN_COUNT = 4294967295;
 
@@ -96,6 +107,7 @@ export function FileRows({ entries, activeFile, scroll, picked, onPick, onPickSe
     <List
       variant="plain"
       columns={FILE_COLUMNS}
+      actionsWidth={FILE_ACTIONS_W}
       className="file-virtual file-cols"
       style={{ height: virtualizer.getTotalSize() }}
       onPointerDown={startDrag}
@@ -151,10 +163,10 @@ export function FileRows({ entries, activeFile, scroll, picked, onPick, onPickSe
               entry.isDir
                 ? entry.itemCount === UNKNOWN_COUNT
                   ? "—"
-                  : tr("count.items", [entry.itemCount])
+                  : tr("{0, plural, one {# item} other {# items}}", [entry.itemCount])
                 : fileSize(entry.sizeBytes),
-              <span key="when" title={entry.modifiedAt ? date(entry.modifiedAt) : ""}>
-                {entry.modifiedAt ? relativeTime(entry.modifiedAt) : "—"}
+              <span key="when" title={entry.modifiedAt ? relativeTime(entry.modifiedAt) : ""}>
+                {entry.modifiedAt ? date(entry.modifiedAt) : "—"}
               </span>,
             ]}
             actions={
