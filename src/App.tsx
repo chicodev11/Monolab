@@ -11873,6 +11873,19 @@ ${payload.plugin}`;
               <>
               <div className="wb-head player-head">
                 <h1>{tr("Players")}</h1>
+              </div>
+              <div className="list-toolbar">
+                {playerTab !== "permissions" ? (
+                  <SearchField className="list-search" value={playerQuery} onChange={setPlayerQuery} placeholder={tr("Find a player")} />
+                ) : (
+                  <span className="live-spacer" />
+                )}
+                <button type="button" className={`button wb-pill ${playerAdding ? "secondary" : "primary"}`} aria-expanded={playerAdding} onClick={() => setPlayerAdding((now) => !now)}>
+                  <Icon name={playerAdding ? "close" : "plus"} />
+                  {playerAdding ? tr("Cancel") : tr("Add player")}
+                </button>
+              </div>
+              <div className="list-filters">
                 <FilterTabs
                   value={playerTab}
                   onChange={setPlayerTab}
@@ -11880,13 +11893,9 @@ ${payload.plugin}`;
                   options={tabs.map((one) => ({ value: one.id, label: one.label, count: one.count, tone: one.id === "ban" && one.count ? ("danger" as const) : undefined }))}
                 />
                 <span className="live-spacer" />
-                {playerTab !== "permissions" && <SearchField value={playerQuery} onChange={setPlayerQuery} placeholder={tr("Find a player")} />}
-                <button className="wb-icon" aria-label={tr("Refresh")} data-tip={tr("Refresh")} onClick={() => void loadTool("players")}>
+                <button type="button" className="button ghost small" onClick={() => void loadTool("players")}>
                   <Icon name="refresh" />
-                </button>
-                <button type="button" className={`button wb-pill ${playerAdding ? "secondary" : "primary"}`} aria-expanded={playerAdding} onClick={() => setPlayerAdding((now) => !now)}>
-                  <Icon name={playerAdding ? "close" : "plus"} />
-                  {playerAdding ? tr("Cancel") : tr("Add player")}
+                  {tr("Refresh")}
                 </button>
               </div>
               {playerAdding && (

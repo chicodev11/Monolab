@@ -12657,3 +12657,11 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .summary-kinds { flex-wrap: wrap; }
 @media (prefers-reduced-motion: reduce) { .summary-days button { transition: none; } }
 @media (max-width: 900px) { .log-view.events.with-days { grid-template-columns: minmax(0, 1fr); } }
+
+/* Summary fills the page: both columns start on the same line and run to the bottom. */
+.log-page .log-view.events.with-days { flex: 1 1 0; grid-template-rows: minmax(0, 1fr); align-content: stretch; align-items: stretch; overflow: hidden; }
+.log-view.events.with-days > * { min-height: 0; margin: 0; }
+.log-view.events.with-days > .timeline-panel { height: auto; }
+/* Players: same toolbar as Plugins. */
+.player-page .list-toolbar, .player-page .list-filters { margin: 0; }
+.app-shell.wb.in-server :is(.player-head, .addon-bar):has(> h1:only-child) { display: none; }
