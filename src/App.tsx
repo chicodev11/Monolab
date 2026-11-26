@@ -109,14 +109,12 @@ import { PlayerPermissions } from "./components/panels/PlayerPermissions";
 import { PanelStartupCard } from "./components/panels/PanelStartupCard";
 import { addonKind, coreLabel, has, kindOf, minecraftCores, PUMPKIN_FORK, versionLabel } from "./lib/kinds";
 import { SshHosts } from "./components/panels/SshHosts";
-import { CommandPalette } from "./components/dialogs/CommandPalette";
 import { ShellTab } from "./components/servers/ShellTab";
 import { EditingChip } from "./components/servers/EditingChip";
 import { isSavedOver, sha256Hex } from "./lib/hash";
 import { VpsTunnelCard } from "./components/servers/VpsTunnelCard";
 import { TeamStorage } from "./components/panels/TeamStorage";
 import { ProposalsPanel } from "./components/servers/ProposalsPanel";
-import { rankPalette, readRecent, rememberRecent, type PaletteEntry } from "./lib/palette";
 import { MarksPanel } from "./components/panels/MarksPanel";
 import { CrashPanel } from "./components/panels/CrashPanel";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
@@ -831,7 +829,7 @@ function App() {
   const [closeBlockedBy, setCloseBlockedBy] = useState<Instance[]>([]);
   const [startingServer, setStartingServer] = useState<{ id: string; name: string; at: number; done?: boolean } | null>(null);
   const [history, setHistory] = useState<ResourceSample[]>([]);
-  const [useRcon, setUseRcon] = useState(false);
+  const [useRcon] = useState(false);
   const [playerSnapshot, setPlayerSnapshot] = useState<PlayerSnapshot | null>(
     null,
   );
@@ -1120,11 +1118,6 @@ function App() {
   settingsRef.current = settings;
   const navRef = useRef<HTMLElement>(null);
   const [navMark, setNavMark] = useState({ top: 0, height: 0, ready: false });
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [paletteQuery, setPaletteQuery] = useState("");
-  const [paletteIndex, setPaletteIndex] = useState(0);
-  const [paletteScope, setPaletteScope] = useState<string | null>(null);
-  const [paletteRecent, setPaletteRecent] = useState<string[]>(readRecent);
   const [trashEntries, setTrashEntries] = useState<TrashEntry[]>([]);
   const [filter, setFilter] = useState("");
   /** Why the server list couldn't load, kept on the empty screen (a toast alone is easy to miss in a team view). */
@@ -3855,22 +3848,6 @@ ${payload.plugin}`;
       return;
     }
     void loadTool(tool ?? (instance.status === "running" || instance.status === "stopping" ? "console" : "overview"), instance);
-  }
-  async function openConsole(instance: Instance) {
-    setSelectedId(instance.id);
-    setPage("instance");
-    setModal("none");
-    void loadTool("console", instance);
-    void commands.getRconStatus(instance.id)
-      .then((status) => {
-        setUseRcon(
-          status.enabled &&
-            status.hasPassword &&
-            instance.status !== "running",
-        );
-      })
-      .catch(() => setUseRcon(false));
-    await loadConsoleLogs(instance);
   }
   async function loadConsoleLogs(instance: Instance) {
     try {
@@ -7046,204 +7023,6 @@ ${payload.plugin}`;
       document.removeEventListener("keydown", close);
       document.removeEventListener("keydown", fromTerminal, true);
     };
-  }, []);
-  async function backupFromPalette(instance: Instance) {
-    if (
-      instance.status === "running" &&
-      !(await confirmAction(
-        tr("The server is running. Back up anyway?"),
-        tr("World files may still be saving, so the last few minutes of a restored backup could be inconsistent. Stop the server before backing up for a reliable backup."),
-        tr("Back up as is"),
-      ))
-    ) {
-      return;
-    }
-    await call(() => commands.createBackup(instance.id, "Manual", false, []), tr("Backed up {0}!", [instance.name]));
-  }
-  /** Waits until the server reports stopped (up to two minutes). */
-  async function waitStopped(id: string) {
-    for (let tries = 0; tries < 120; tries += 1) {
-      const now = (await commands.listInstances()).find((one) => one.id === id);
-      if (!now || now.status === "stopped") return true;
-      await new Promise((done) => window.setTimeout(done, 1000));
-    }
-    return false;
-  }
-  /** Palette, several steps in one: stop (saving the world), back up the whole folder, start again. */
-  async function stopBackupStart(instance: Instance) {
-    if (
-      !(await confirmAction(
-        tr("Stop, back up and start {0}?", [instance.name]),
-        tr("Stops the server so the backup is consistent, backs up the whole folder, then starts it again. Players are disconnected meanwhile."),
-        tr("Do it"),
-      ))
-    )
-      return;
-    if (instance.status !== "stopped") {
-      if (!(await call(() => commands.stopInstance(instance.id)))) return;
-      if (!(await waitStopped(instance.id))) {
-        setError(tr("{0} didn't stop within two minutes, so nothing was backed up.", [instance.name]));
-        return;
-      }
-    }
-    if (!(await call(() => commands.createBackup(instance.id, "Manual", false, []), tr("Backed up {0}!", [instance.name])))) return;
-    await call(() => commands.startInstance(instance.id), tr("Starting {0}.", [instance.name]));
-  }
-  /** Palette, a whole home group at once: start, stop or restart every server in it. */
-  async function groupAction(group: string, action: "start" | "stop" | "restart") {
-    const members = instancesRef.current.filter((one) => one.group === group);
-    const live = (one: Instance) => one.status === "running" || one.status === "starting";
-    const picked = members.filter((one) => (action === "start" ? !live(one) : live(one)));
-    if (!picked.length) {
-      setNotice(tr("Nothing to do in {0}.", [group]));
-      return;
-    }
-    if (
-      action !== "start" &&
-      !(await confirmAction(
-        action === "stop" ? tr("Stop {0} servers in {1}?", [picked.length, group]) : tr("Restart {0} servers in {1}?", [picked.length, group]),
-        tr("Players on them are disconnected. The worlds are saved first."),
-        action === "stop" ? tr("Stop") : tr("Restart"),
-      ))
-    )
-      return;
-    for (const one of picked) {
-      if (action === "start") await call(() => commands.startInstance(one.id));
-      else if (action === "stop") await call(() => commands.stopInstance(one.id));
-      else await call(() => commands.restartInstance(one.id));
-    }
-    setNotice(
-      action === "start"
-        ? tr("Starting {0} servers in {1}.", [picked.length, group])
-        : action === "stop"
-          ? tr("Stopping {0} servers in {1}.", [picked.length, group])
-          : tr("Restarting {0} servers in {1}.", [picked.length, group]),
-    );
-  }
-  const paletteRun = useRef({ openCreate, openManage, openConsole, toggle, openServerFolder, restartInstance, backupFromPalette, createFromJar, setTheme, goHome, stopBackupStart, groupAction });
-  paletteRun.current = { openCreate, openManage, openConsole, toggle, openServerFolder, restartInstance, backupFromPalette, createFromJar, setTheme, goHome, stopBackupStart, groupAction };
-  const paletteItems = useMemo(() => {
-    const run = () => paletteRun.current;
-    const items: PaletteEntry[] = [
-      ...(webAdmin
-        ? [
-            { id: "app-create", group: "app" as const, icon: "plus", label: tr("New server"), hint: tr("Pick a core and version"), run: () => void run().openCreate() },
-            { id: "app-import", group: "app" as const, icon: "import", label: tr("Import an existing server"), hint: tr("Folder or zip"), run: () => setModal("import") },
-          ]
-        : []),
-      { id: "app-home", group: "app", icon: "home", label: tr("My servers"), hint: tr("Server list"), keywords: "home", run: () => run().goHome() },
-    ];
-    if (!onWeb) {
-      items.push(
-        { id: "app-jar", group: "app", icon: "file", label: tr("New server from a jar file"), hint: tr("Your own core file"), keywords: "custom core", run: () => void run().createFromJar() },
-        { id: "app-settings", group: "app", icon: "settings", label: tr("Settings"), hint: tr("App settings"), keywords: "preferences options", run: () => setModal("settings") },
-      );
-    }
-    for (const [value, label, icon] of [
-      ["dark", tr("Dark"), "moon"],
-      ["light", tr("Light"), "sun"],
-      ["oled", tr("Black"), "moon"],
-      ["system", tr("Follow the system"), "monitor"],
-    ] as const) {
-      items.push({ id: `theme-${value}`, group: "app", icon, label: tr("Theme: {0}", [label]), hint: tr("Appearance"), keywords: "theme color", run: () => run().setTheme(value) });
-    }
-    for (const instance of instances) {
-      const name = instance.name;
-      const on = instance.status === "running" || instance.status === "starting";
-      const panel = !!instance.panelHost;
-      items.push({
-        id: `server-${instance.id}`,
-        group: "server",
-        icon: "server",
-        label: name,
-        hint: `${instance.core} ${instance.version}${instance.group ? ` · #${instance.group}` : ""}`.trim(),
-        keywords: instance.group ? `#${instance.group}` : undefined,
-        serverId: instance.id,
-        scopes: instance.id,
-        run: () => run().openManage(instance),
-      });
-      const tabs = panel ? panelNav : [{ id: "console" as Tool, label: tr("Console"), icon: "console" }, ...instanceNav];
-      for (const one of tabs) {
-        if (!panel && !toolAllowed(instance.core, one.id)) continue;
-        if (one.id === "rewind" && instance.remoteHost && onWeb) continue;
-        // Database logins stay in the app, so the web panel has no Databases tab of its own.
-        if (one.id === "databases" && onWeb && !panel) continue;
-        if ((one.id === "shell" && onWeb) || (one.id === "storage" && !(onMonolink && monolinkTeam))) continue;
-        items.push({
-          id: `tab-${instance.id}-${one.id}`,
-          group: "tab",
-          icon: one.icon,
-          label: `${name} › ${one.label}`,
-          hint: tr("Open tab"),
-          serverId: instance.id,
-          run: () => (one.id === "console" ? void run().openConsole(instance) : run().openManage(instance, one.id)),
-        });
-      }
-      items.push({
-        id: `toggle-${instance.id}`,
-        group: "action",
-        icon: on ? "stop" : "play",
-        label: on ? tr("Stop {0}", [name]) : tr("Start {0}", [name]),
-        hint: on ? tr("Stop server") : tr("Start server"),
-        keywords: on ? "stop shutdown" : "start run launch",
-        serverId: instance.id,
-        run: () => void run().toggle(instance),
-      });
-      if (instance.status === "running") {
-        items.push({ id: `restart-${instance.id}`, group: "action", icon: "refresh", label: tr("Restart {0}", [name]), hint: tr("Stop, then start again"), keywords: "reboot", serverId: instance.id, run: () => void run().restartInstance(instance) });
-      }
-      if (!panel && webAdmin) {
-        items.push({ id: `cycle-${instance.id}`, group: "action", icon: "backup", label: tr("Stop, back up and start {0}", [name]), hint: tr("Several steps in one"), keywords: "backup restart safe", serverId: instance.id, run: () => void run().stopBackupStart(instance) });
-      }
-      if (!panel) {
-        items.push({ id: `backup-${instance.id}`, group: "action", icon: "backup", label: tr("Back up {0} now", [name]), hint: tr("Whole server folder"), keywords: "backup snapshot save", serverId: instance.id, run: () => void run().backupFromPalette(instance) });
-      }
-      if (!onWeb && !panel && !instance.remoteHost) {
-        items.push({ id: `folder-${instance.id}`, group: "action", icon: "folder", label: tr("Open {0} folder", [name]), hint: instance.path, keywords: "explorer", serverId: instance.id, run: () => void run().openServerFolder(instance) });
-      }
-    }
-    // "#group": every server in a home group at once.
-    for (const group of [...new Set(instances.map((one) => one.group).filter(Boolean))]) {
-      const count = instances.filter((one) => one.group === group).length;
-      const hint = tr("{0} servers in #{1}", [count, group]);
-      items.push(
-        { id: `group-start-${group}`, group: "action", icon: "play", label: tr("Start all in #{0}", [group]), hint, keywords: `#${group} start run`, run: () => void run().groupAction(group, "start") },
-        { id: `group-stop-${group}`, group: "action", icon: "stop", label: tr("Stop all in #{0}", [group]), hint, keywords: `#${group} stop shutdown`, run: () => void run().groupAction(group, "stop") },
-        { id: `group-restart-${group}`, group: "action", icon: "refresh", label: tr("Restart all in #{0}", [group]), hint, keywords: `#${group} restart reboot`, run: () => void run().groupAction(group, "restart") },
-      );
-    }
-    return items;
-  }, [instances, webAdmin]);
-  const paletteScopeName = paletteScope ? instances.find((one) => one.id === paletteScope)?.name ?? null : null;
-  const paletteMatches = useMemo(() => {
-    // "@name" lists servers to scope to.
-    if (!paletteScope && paletteQuery.startsWith("@")) {
-      return rankPalette(paletteItems.filter((one) => one.scopes), paletteQuery.slice(1), { limit: 40 });
-    }
-    // "#group" lists the servers in that group and the group-wide actions.
-    if (!paletteScope && paletteQuery.startsWith("#")) {
-      const tagged = paletteItems.filter((one) => one.id.startsWith("group-") || (one.scopes && one.keywords?.startsWith("#")));
-      return rankPalette(tagged, paletteQuery, { limit: 40 });
-    }
-    return rankPalette(paletteItems, paletteQuery, {
-      scope: paletteScopeName ? paletteScope : null,
-      recent: paletteRecent,
-      current: page === "instance" ? selectedId : null,
-    });
-  }, [paletteItems, paletteQuery, paletteScope, paletteScopeName, paletteRecent, page, selectedId]);
-  useEffect(() => {
-    const shortcut = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      if ((event.ctrlKey || event.metaKey) && (key === "k" || key === " " || event.code === "Space")) {
-        event.preventDefault();
-        setPaletteQuery("");
-        setPaletteIndex(0);
-        setPaletteScope(null);
-        setPaletteOpen((previous) => !previous);
-      }
-    };
-    document.addEventListener("keydown", shortcut);
-    return () => document.removeEventListener("keydown", shortcut);
   }, []);
   useEffect(() => {
     if (page !== "instance") return;
@@ -12616,12 +12395,6 @@ ${payload.plugin}`;
       <DragScroll />
       <TitleBar
         title={onMonolink ? `${monolinkHost || "Monolink"} · Monolink` : "Monolab"}
-        onSearch={() => {
-          setPaletteQuery("");
-          setPaletteIndex(0);
-          setPaletteScope(null);
-          setPaletteOpen(true);
-        }}
         nav={{
           back: navState.back,
           forward: navState.forward,
@@ -15102,37 +14875,6 @@ ${payload.plugin}`;
             if (desktopAlertsEnabled)
               sendNotification({ title: `Monolab · ${tr("A teammate's agent is waiting")}`, body: tr("{0}'s agent wants to {1}", [ask.who, askWords(ask)]) });
           }}
-        />
-      )}
-      {paletteOpen && (
-        <CommandPalette
-          query={paletteQuery}
-          activeIndex={paletteIndex}
-          matches={paletteMatches}
-          scopeName={paletteScopeName}
-          onQuery={(value) => {
-            setPaletteQuery(value);
-            setPaletteIndex(0);
-          }}
-          onIndex={setPaletteIndex}
-          onScope={(server) => {
-            setPaletteScope(server);
-            setPaletteQuery("");
-            setPaletteIndex(0);
-          }}
-          onPick={(item) => {
-            // A server picked from the "@" list scopes the palette; otherwise run the entry.
-            if (item.scopes && paletteQuery.startsWith("@")) {
-              setPaletteScope(item.scopes);
-              setPaletteQuery("");
-              setPaletteIndex(0);
-              return;
-            }
-            setPaletteOpen(false);
-            setPaletteRecent((was) => rememberRecent(item.id, was));
-            item.run?.();
-          }}
-          onClose={() => setPaletteOpen(false)}
         />
       )}
 

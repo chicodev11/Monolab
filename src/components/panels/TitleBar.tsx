@@ -5,11 +5,8 @@ import type { Window } from "@tauri-apps/api/window";
 export function TitleBar({
   title,
   nav,
-  onSearch,
 }: {
   title: string;
-  /** Opens the command palette (Ctrl K) from the search field in the middle of the bar. */
-  onSearch?: () => void;
   nav?: {
     back: boolean;
     forward: boolean;
@@ -77,16 +74,6 @@ export function TitleBar({
           </button>
         </div>
       )}
-      {onSearch && (
-        <button type="button" className="titlebar-search" onClick={onSearch} aria-keyshortcuts="Control+K">
-          <svg viewBox="0 0 16 16" aria-hidden>
-            <circle cx="7" cy="7" r="4.5" />
-            <path d="m10.5 10.5 3 3" />
-          </svg>
-          <span>{tr("Search or jump to…")}</span>
-          <kbd>Ctrl K</kbd>
-        </button>
-      )}
       {appWindow && (
         <div className="window-controls">
           <button
@@ -94,8 +81,8 @@ export function TitleBar({
             aria-label={tr("Minimize")}
             onClick={() => void appWindow.minimize()}
           >
-            <svg viewBox="0 0 12 12" aria-hidden>
-              <path d="M2 6h8" />
+            <svg viewBox="0 0 16 16" aria-hidden>
+              <path d="M3.5 8h9" />
             </svg>
           </button>
           <button
@@ -104,13 +91,13 @@ export function TitleBar({
             onClick={() => void appWindow.toggleMaximize()}
           >
             {maximized ? (
-              <svg viewBox="0 0 12 12" aria-hidden>
-                <path d="M3.5 3.5h5v5h-5z" />
-                <path d="M2 8.5v-5h5" />
+              <svg viewBox="0 0 16 16" aria-hidden>
+                <rect x="3" y="5" width="8" height="8" rx="2" />
+                <path d="M5.5 3h5A2.5 2.5 0 0 1 13 5.5v5" />
               </svg>
             ) : (
-              <svg viewBox="0 0 12 12" aria-hidden>
-                <path d="M2.5 2.5h7v7h-7z" />
+              <svg viewBox="0 0 16 16" aria-hidden>
+                <rect x="3.5" y="3.5" width="9" height="9" rx="2.25" />
               </svg>
             )}
           </button>
@@ -120,8 +107,8 @@ export function TitleBar({
             aria-label={tr("Close")}
             onClick={() => void appWindow.close()}
           >
-            <svg viewBox="0 0 12 12" aria-hidden>
-              <path d="M3 3l6 6M9 3l-6 6" />
+            <svg viewBox="0 0 16 16" aria-hidden>
+              <path d="m4.5 4.5 7 7m0-7-7 7" />
             </svg>
           </button>
         </div>

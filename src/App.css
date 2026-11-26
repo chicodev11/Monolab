@@ -12781,27 +12781,15 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 /* Virtual lists place each row with an inline transform; an entering animation would replace it and stack the rows. */
 .file-virtual > *, [style*="transform"]:is(.list-row, li, div) { animation: none !important; }
 
-/* ── Title bar (2026-11-26): one surface with the rail, a mark beside the name, a search field in the middle, rounded window buttons. ── */
-.titlebar { position: relative; gap: 6px; padding-left: 16px; border-bottom: 0; background: var(--bg-rail); }
+/* ── Title bar (2026-11-26): one surface with the rail, a mark beside the name, rounded window buttons. ── */
+.titlebar { gap: 6px; padding-left: 16px; border-bottom: 0; background: var(--bg-rail); }
 .titlebar-name { display: inline-flex; align-items: center; gap: 9px; color: var(--text-2); font-size: 14px; font-weight: 650; letter-spacing: 0; }
 .titlebar-mark { width: 20px; height: 20px; flex: none; }
 .titlebar-mark rect { fill: var(--text); }
 .titlebar-mark path { fill: none; stroke: var(--bg-rail); stroke-width: 2.8; stroke-linecap: round; }
 .titlebar-nav { gap: 2px; margin-left: 12px; padding: 2px; border-radius: 10px; background: color-mix(in srgb, var(--text) 4%, transparent); }
 .titlebar-nav button { width: 28px; height: 26px; border-radius: 8px; }
-.titlebar-search {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  display: flex; align-items: center; gap: 9px; width: min(420px, 36vw); height: 32px; padding: 0 6px 0 12px;
-  border: 1px solid var(--line-soft); border-radius: 10px; background: color-mix(in srgb, var(--text) 4%, transparent);
-  color: var(--text-3); font: inherit; font-size: 13px; cursor: pointer;
-  transition: background var(--fast), border-color var(--fast), color var(--fast);
-}
-.titlebar-search:hover { border-color: var(--line); background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text-2); }
-.titlebar-search:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.titlebar-search svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
-.titlebar-search span { flex: 1; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
-.titlebar-search kbd { padding: 2px 6px; border: 1px solid var(--line-soft); border-radius: 6px; background: var(--bg-rail); color: var(--text-3); font: inherit; font-size: 11px; }
-@media (max-width: 900px) { .titlebar-search { display: none; } }
 .window-controls { gap: 2px; height: auto; padding-right: 8px; }
 .window-controls button { width: 40px; height: 32px; border-radius: 8px; color: var(--text-3); }
-.window-controls svg { width: 11px; height: 11px; stroke-width: 1.3; }
+.window-controls svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.window-controls button:hover { color: var(--text); }
