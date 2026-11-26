@@ -12291,3 +12291,17 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .log-filter-range { display: flex; align-items: center; gap: 8px; }
 .log-filters > .console-levels { min-width: 0; }
 .toast.error { cursor: pointer; }
+
+/* Server list head: a bigger title with the place tabs under it; the Java and session buttons sit with the actions. */
+.app-shell.wb:not(.in-server) .topbar:has(> .home-title) { align-items: flex-start; }
+.app-shell.wb:not(.in-server) .topbar-title.home-title { flex-direction: column; align-items: flex-start; gap: 12px; }
+.app-shell.wb:not(.in-server) .topbar-title.home-title h1 { font-size: 28px; line-height: 1.15; }
+.topbar-actions > .place-actions.in-top .button { width: 36px; height: 36px; padding: 0; justify-content: center; }
+.topbar-actions > .place-actions.in-top .button svg { width: 17px; height: 17px; }
+
+/* Server tool pages: the tool's name on top, since the rail has no words; the pages' own titles step aside. */
+.instance-body > .tool-page-title { flex: none; margin: 0 0 14px; color: var(--text); font-size: 24px; font-weight: 650; letter-spacing: -.01em; line-height: 1.2; }
+.instance-body .wb-head > h1 { display: none; }
+.instance-body:has(> .tool-page-title) { flex-direction: column; align-items: stretch; }
+.instance-body:has(> .tool-page-title) > .tool-content { flex: 1 1 auto; min-width: 0; min-height: 0; }
+.instance-body > .tool-page-title { margin-top: 6px; }

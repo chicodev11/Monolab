@@ -13103,6 +13103,13 @@ ${payload.plugin}`;
                   
                 }}
               >
+                {!browseOpen && (() => {
+                  // The rail shows only icons, so each tool page says what it is at the top.
+                  const item = tool === "console" ? { label: tr("Console") } : (selected.panelHost ? panelNav : instanceNav).find((one) => one.id === tool);
+                  if (!item) return null;
+                  const label = tool === "addons" ? (addonKind(selected.core) === "mod" ? tr("Mods") : tr("Plugins")) : item.label;
+                  return <h1 className="tool-page-title">{label}</h1>;
+                })()}
                 {browseOpen ? browsePage : manage}
                 {depAsk && (
                   <DependencyDialog
@@ -13187,41 +13194,41 @@ ${payload.plugin}`;
               ))}
             </div>
           )}
-            {(!onWeb || webAdmin) && (
-              <div className="place-actions in-title">
-                {webAdmin && (
-                  <button
-                    className="button ghost small place-java"
-                    type="button"
-                    aria-label={tr("Java processes")}
-                    data-tip={javaProcs.some((proc) => proc.orphan) ? tr("Java processes · some are left over") : tr("Java processes")}
-                    onClick={() => {
-                      void refreshJavaProcs();
-                      setModal("java");
-                    }}
-                  >
-                    <Icon name={javaProcs.some((proc) => proc.orphan) ? "alert" : "java"} />
-                    {javaProcs.some((proc) => proc.orphan) && <b className="wb-dot warn" aria-hidden />}
-                  </button>
-                )}
-                {!onWeb && (
-                <button
-                  className="button ghost small place-sessions"
-                  type="button"
-                  aria-label={tr("Manage sessions")}
-                  data-tip={tr("Manage sessions")}
-                  onClick={() =>
-                    setSessionOpen({ tab: remotePlaces.length || !Object.keys(panelHosts).length ? "ssh" : "panel", adding: false })
-                  }
-                >
-                  <Icon name="settings" />
-                </button>
-                )}
-              </div>
-            )}
           </div>
           {(
           <div className="topbar-actions">
+              {(!onWeb || webAdmin) && (
+                <div className="place-actions in-top">
+                  {webAdmin && (
+                    <button
+                      className="button ghost small place-java"
+                      type="button"
+                      aria-label={tr("Java processes")}
+                      data-tip={javaProcs.some((proc) => proc.orphan) ? tr("Java processes · some are left over") : tr("Java processes")}
+                      onClick={() => {
+                        void refreshJavaProcs();
+                        setModal("java");
+                      }}
+                    >
+                      <Icon name={javaProcs.some((proc) => proc.orphan) ? "alert" : "java"} />
+                      {javaProcs.some((proc) => proc.orphan) && <b className="wb-dot warn" aria-hidden />}
+                    </button>
+                  )}
+                  {!onWeb && (
+                  <button
+                    className="button ghost small place-sessions"
+                    type="button"
+                    aria-label={tr("Manage sessions")}
+                    data-tip={tr("Manage sessions")}
+                    onClick={() =>
+                      setSessionOpen({ tab: remotePlaces.length || !Object.keys(panelHosts).length ? "ssh" : "panel", adding: false })
+                    }
+                  >
+                    <Icon name="settings" />
+                  </button>
+                  )}
+                </div>
+              )}
             <SearchField value={filter} onChange={setFilter} placeholder={t("top.search")} />
             {serverGroups.length > 0 && (
               <Dropdown
