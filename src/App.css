@@ -12490,6 +12490,9 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
     box-shadow: 12px 0 32px rgb(0 0 0 / 35%);
     transition-delay: 220ms;
   }
+  /* Web panel, Monolink, SFTP and Tasks open as a panel (z-index 70) right of the main menu rail; the rail
+     goes over it so its names aren't cut off. Not when a real dialog is up on top. */
+  .app-frame:has(.modal-backdrop.as-panel):not(:has(.modal-backdrop:not(.as-panel))) .app-shell.wb .wb-homerail { z-index: 75; }
   /* Both rails keep the window's own colour when they fold out; only the shadow lifts them off the page. */
   .app-shell.wb .wb-rail:hover { background: var(--bg); }
 }
@@ -12516,3 +12519,109 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .app-shell.wb .file-row .list-title { font-size: 14.5px; font-weight: 500; }
 .app-shell.wb .file-row .list-meta { color: var(--text-3); font-size: 13.5px; }
 .app-shell.wb .file-row .file-more-menu { margin-right: 12px; }
+
+
+/* 2026-11-26, Modrinth as a reference (mono kept): Settings is a dialog in the middle of the window with
+   its sections listed on the left, for the app and for each server. */
+.modal-backdrop.settings-dialog { display: grid; place-items: center; padding: 32px; background: rgb(0 0 0 / 55%); backdrop-filter: blur(6px); }
+.modal-backdrop.settings-dialog > .add-modal.modal-settings {
+  position: relative;
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(1040px, 100%);
+  max-width: none;
+  height: min(760px, 100%);
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 20px;
+  background: var(--panel);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 45%);
+}
+.modal-settings > .close { position: absolute; top: 14px; right: 14px; z-index: 2; }
+.modal-settings .settings-dialog-title {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 18px 64px 18px 24px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.modal-settings .settings-dialog-title svg { flex: none; width: 15px; height: 15px; color: var(--text-4); transform: rotate(-90deg); }
+.settings-dialog-crumb { overflow: hidden; color: var(--text-3); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.settings-dialog-nav { display: flex; min-height: 0; flex-direction: column; gap: 2px; padding: 12px; border-right: 1px solid var(--line-soft); overflow-y: auto; }
+.settings-nav-head { margin: 14px 12px 4px; color: var(--text-4); font-size: 12px; font-weight: 600; }
+.settings-nav-head:first-child { margin-top: 4px; }
+.settings-nav-gap { flex: 1; min-height: 12px; }
+.settings-dialog-nav button {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-3);
+  font: 500 14px var(--sans);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--fast), color var(--fast);
+}
+.settings-dialog-nav button svg { flex: none; width: 17px; height: 17px; }
+.settings-dialog-nav button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-dialog-nav button:hover { background: var(--raise); color: var(--text); }
+.settings-dialog-nav button.on { background: var(--raise-hover); color: var(--text); font-weight: 600; }
+.settings-nav-count { margin-left: auto; color: var(--text-3); font-size: 12px; font-weight: 500; }
+.settings-dialog-body { display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: 14px; padding: 20px 24px 24px; overflow-y: auto; }
+.settings-dialog-body.config-shell { padding: 0; overflow: hidden; }
+.settings-dialog-body .settings-list { gap: 18px; }
+.app-frame .settings-dialog-body .settings-group { padding: 0; border-radius: 0; background: transparent; }
+.app-frame .settings-dialog-body .settings-group-title { margin: 0 0 4px; }
+.settings-dialog-body.app-settings .settings-group-title { display: none; }
+.app-frame .settings-dialog-body .settings-group .setting-row + .setting-row { border-top: 1px solid var(--line-soft); }
+.settings-dialog-body .panel-head { margin-bottom: 12px; }
+.settings-dialog-body .panel-head h2 { margin: 0; font-size: 18px; }
+@media (prefers-reduced-motion: reduce) {
+  .settings-dialog-nav button { transition: none; }
+}
+@media (max-width: 760px) {
+  .modal-backdrop.settings-dialog { padding: 0; }
+  .modal-backdrop.settings-dialog > .add-modal.modal-settings { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); width: 100%; height: 100%; border: 0; border-radius: 0; }
+  .settings-dialog-nav { flex-direction: row; padding: 8px; border-right: 0; border-bottom: 1px solid var(--line-soft); overflow-x: auto; }
+  .settings-nav-head, .settings-nav-gap { display: none; }
+}
+
+/* Main menu rail, Modrinth-style: round tiles, every server as its own icon, then + for a new one. */
+.app-shell.wb .wb-homerail button,
+.app-shell.wb .wb-rail button { border-radius: 999px; }
+.app-shell.wb .wb-homerail .rail-server-img { flex: none; width: 24px; height: 24px; border-radius: 7px; object-fit: cover; }
+.app-shell.wb .wb-homerail-add { flex: none; margin-top: 4px; }
+
+/* Lists (Plugins/Mods first): a wide search box with the add buttons on its right, then a row with sort,
+   filter chips and Refresh; the list itself is a bordered table. */
+.list-toolbar { display: flex; flex: none; align-items: center; gap: 8px; min-width: 0; }
+.app-shell.wb .list-toolbar .list-search { flex: 1 1 auto; width: auto; min-width: 0; height: 40px; }
+.list-toolbar .list-search input { width: 100%; }
+.app-shell.wb .list-toolbar .button.ghost { height: 40px; border-radius: var(--r-full); }
+.list-toolbar .addon-note { flex: 1; min-width: 0; margin: 0; }
+.list-filters { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.list-filters .addon-sort { flex: none; }
+.list-filters .ui-tabs:has(> .ui-tab:only-child) { display: none; }
+.app-shell.wb .addon-page .addon-list { border: 1px solid var(--line-soft); }
+.app-shell.wb .addon-list .addon-row + .addon-row { margin-top: 0; border-top: 1px solid var(--line-soft); border-radius: 0; }
+
+/* Dropdowns stay dropdowns (2026-11-26, the short-choices-become-pills rule is dropped). Like Modrinth, the button can
+   say what it picks before the value ("Sort by  Name"), with an icon in front. */
+.dropdown-trigger > svg:first-child:not(:last-child) { flex: none; width: 15px; height: 15px; color: var(--text-3); }
+.dropdown-trigger .dropdown-label { flex: none; color: var(--text-3); font-weight: 500; }
+.dropdown-trigger .dropdown-value { min-width: 0; overflow: hidden; color: var(--text); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }

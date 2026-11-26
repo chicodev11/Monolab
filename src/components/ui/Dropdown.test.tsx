@@ -34,13 +34,8 @@ test("shows a placeholder without a value", () => {
   expect(screen.getByRole("button", { expanded: false })).toHaveTextContent("Pick one");
 });
 
-test("two or three short choices show as pills", async () => {
-  const user = userEvent.setup();
-  const onChange = vi.fn();
-  render(<Dropdown value="21" options={options.slice(0, 2)} onChange={onChange} />);
-
-  const pills = screen.getAllByRole("radio");
-  expect(pills.map((one) => one.getAttribute("aria-checked"))).toEqual(["false", "true"]);
-  await user.click(pills[0]);
-  expect(onChange).toHaveBeenCalledWith("8");
+test("two or three short choices stay a dropdown, with a label before the value", () => {
+  render(<Dropdown value="21" options={options.slice(0, 2)} onChange={() => {}} label="Sort by" />);
+  expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { expanded: false })).toHaveTextContent("Sort byJava 21");
 });

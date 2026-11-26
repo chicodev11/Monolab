@@ -284,7 +284,7 @@ const modalShell: Record<Modal, string> = {
   tasks: "as-panel",
   web: "as-panel",
   monolink: "as-panel",
-  settings: "as-panel",
+  settings: "settings-dialog",
   hydro: "as-panel",
   sftp: "as-panel",
   trash: "as-panel",
@@ -1140,7 +1140,7 @@ function App() {
   const [modal, setModal] = useState<Modal>("none");
   const [accountOpen, setAccountOpen] = useState(false);
   const openAccount = useCallback(() => setAccountOpen(true), []);
-  const [settingsTab, setSettingsTab] = useState<"general" | "server" | "trash">("general");
+  const [settingsTab, setSettingsTab] = useState<"display" | "app" | "privacy" | "notify" | "server" | "data" | "trash" | "about">("display");
   const [createStep, setCreateStep] = useState<"core" | "version" | "modpack">("core");
   const [createPage, setCreatePage] = useState<"core" | "finish" | "confirm">("core");
   const [createVersionQuery, setCreateVersionQuery] = useState("");
@@ -1166,6 +1166,8 @@ function App() {
   const [monolinkView, setMonolinkView] = useState<"teams" | "log" | "roles">("teams");
   /** The server Settings page's tab: live settings, history, backups or the shell. */
   const [configTab, setConfigTab] = useState<"live" | "history" | "backups" | "shell">("live");
+  // The server's Settings open as a dialog over the current tab (like the app's own Settings).
+  const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
   const [historyView, setHistoryViewState] = useState<"auto" | "git">(() => {
     try {
       return localStorage.getItem("monolab.historyView") === "git" ? "git" : "auto";
@@ -1863,6 +1865,7 @@ function App() {
     if (tool !== "rewind") setHistoryFile("");
   }, [tool]);
   useEffect(() => setHistoryFile(""), [selectedId]);
+  useEffect(() => setServerSettingsOpen(false), [selectedId, page]);
   const addonShown = addon !== null;
   useEffect(() => {
     if (!selectedId || !addonShown) return;
@@ -3508,6 +3511,10 @@ ${payload.plugin}`;
     if (next === "shell") {
       setConfigTab("shell");
       next = "config";
+    }
+    if (next === "config") {
+      setServerSettingsOpen(true);
+      return;
     }
     if (page === "instance" && tool === "files" && (next !== "files" || instance.id !== selected?.id) && !(await leaveEditor())) return false;
     if (!keepBrowse) {
@@ -10137,9 +10144,7 @@ ${payload.plugin}`;
               }
               placeholder={tr("Log file")}
             />
-            <SearchField className="console-search" value={logQuery} onChange={setLogQuery} placeholder={tr("Search logs")}>
-              <SavedSearches query={logQuery} onPick={setLogQuery} />
-            </SearchField>
+            <SearchField className="console-search" value={logQuery} onChange={setLogQuery} placeholder={tr("Search logs")} />
             <button
               className="button secondary small"
               disabled={sharingLog}
@@ -10160,7 +10165,6 @@ ${payload.plugin}`;
                 <strong>{tr("Audit log")}</strong>
                 <p>{tr("Records starts, stops, settings and file saves, backups and upgrades.")}</p>
               </div>
-              <span>{auditEntries.length}{tr("suffix.count")}</span>
             </div>
             {auditEntries.length ? (
               <div className="audit-list">
@@ -10238,7 +10242,6 @@ ${payload.plugin}`;
           )}
           <LogFilters
             filter={{ ...logNarrow, query: logQuery, levels: logLevelView }}
-            askName={(current) => askText(tr("Save filters"), tr("Name"), current, tr("Save"))}
             onChange={(next) => {
               setLogQuery(next.query);
               setLogLevelView(next.levels);
@@ -10297,7 +10300,6 @@ ${payload.plugin}`;
                   (kind) => ({ value: kind, label: tr(kind) }),
                 )}
               />
-              <span>{timeline.length}{tr("suffix.items")}</span>
             </div>
             {timeline.length ? (
               <div className="timeline-list">
@@ -10320,7 +10322,7 @@ ${payload.plugin}`;
           </div>
         </div>
       )}
-      {!toolLoading && tool === "config" && (() => {
+      {serverSettingsOpen && (() => {
         // The server's own settings page: things that change how the app treats this server.
         const tabs = [
           ...(!selected.panelHost ? [{ value: "live" as const, label: tr("Live settings") }] : []),
@@ -10330,11 +10332,31 @@ ${payload.plugin}`;
         ];
         const shown = tabs.some((one) => one.value === configTab) ? configTab : "backups";
         return (
-        <div className={`tool-content config-page ${shown === "shell" ? "config-shell" : ""}`}>
-          <div className="wb-head">
-            <h1>{tr("Settings")}</h1>
-            <FilterTabs value={shown} onChange={setConfigTab} label={tr("Settings")} options={tabs} />
-          </div>
+        <div className="modal-backdrop settings-dialog" onClick={() => setServerSettingsOpen(false)}>
+        <section className="add-modal modal-settings server-settings" role="dialog" aria-modal="true" aria-label={tr("Settings")} onClick={(event) => event.stopPropagation()}>
+          <button aria-label={tr("Close")} className="close" data-tip={tr("Close")} onClick={() => setServerSettingsOpen(false)}>
+            <Icon name="close" />
+          </button>
+          <h2 className="settings-dialog-title">
+            <span className="settings-dialog-crumb">{selected.name}</span>
+            <Icon name="chevron" />
+            {tr("Settings")}
+          </h2>
+          <nav className="settings-dialog-nav" aria-label={tr("Settings")}>
+            {tabs.map((one) => (
+              <button
+                key={one.value}
+                type="button"
+                className={shown === one.value ? "on" : ""}
+                aria-current={shown === one.value ? "page" : undefined}
+                onClick={() => setConfigTab(one.value)}
+              >
+                <Icon name={{ live: "sliders", history: "history", backups: "backup", shell: "terminal" }[one.value]} />
+                <span>{one.label}</span>
+              </button>
+            ))}
+          </nav>
+        <div className={`settings-dialog-body config-page ${shown === "shell" ? "config-shell" : ""}`}>
           {shown === "shell" ? (
             <ShellTab key={selected.id} serverId={selected.id} remote={!!selected.remoteHost} onError={setError} />
           ) : (
@@ -10453,6 +10475,8 @@ ${payload.plugin}`;
           )}
           </div>
           )}
+        </div>
+        </section>
         </div>
         );
       })()}
@@ -12144,55 +12168,11 @@ ${payload.plugin}`;
           )}
           <div className="wb-head addon-bar">
             <h1>{addonKind(selected.core) === "mod" ? tr("Mods") : tr("Plugins")}</h1>
-          {tabAddons.length > 0 && (
-          <>
-            <FilterTabs
-              value={addonFilter}
-              onChange={setAddonFilter}
-              label={tr("Filter")}
-              options={[
-                { id: "all", label: tr("All"), count: tabAddons.length },
-                ...Object.entries(addonCounts.kinds).map(([kind, count]) => ({
-                  id: kind,
-                  label: kind === "plugin" ? tr("Plugins") : tr("Mods"),
-                  count,
-                })),
-                ...Object.entries(addonGroupCounts)
-                  .sort(([a], [b]) => a.localeCompare(b, "en"))
-                  .map(([group, count]) => ({ id: `group:${group}`, label: group, count })),
-                { id: "update", label: tr("Update"), count: addonCounts.update },
-                { id: "off", label: tr("Off"), count: addonCounts.off },
-                {
-                  id: "client",
-                  label: tr("Client only"),
-                  count: addonCounts.client,
-                },
-              ]
-                .filter(
-                  (chip) =>
-                    chip.id === "all" ||
-                    (chip.count > 0 &&
-                      !(
-                        Object.keys(addonCounts.kinds).length < 2 &&
-                        chip.id in addonCounts.kinds
-                      )),
-                )
-                .map((chip) => ({ value: chip.id, label: chip.label, count: chip.count }))}
-            />
-            {addonCounts.update > 0 && (
-              <button
-                className="button ghost small"
-                data-tip={selected.status !== "stopped" && !selected.panelHost ? tr("Downloads now and applies when the server restarts.") : undefined}
-                onClick={openUpdatePlan}
-              >
-                <Icon name="import" />
-                {selected.status === "stopped" || selected.remoteHost ? tr("Update all") : tr("Download and queue")}{" "}
-                {addonCounts.update}
-              </button>
+          </div>
+          <div className="list-toolbar">
+            {tabAddons.length > 0 && (
+              <SearchField className="addon-search list-search" value={addonQuery} onChange={setAddonQuery} placeholder={tr("Search {0, plural, one {# item} other {# items}}…", [tabAddons.length])} />
             )}
-          </>
-          )}
-            <span className="live-spacer" />
             {!addonKind(selected.core) && tabAddons.length === 0 && (
               <p className="muted addon-note">
                 {isNative(selected.core)
@@ -12202,32 +12182,7 @@ ${payload.plugin}`;
                   : tr("This core doesn't support automatic installation. Add the file manually.")}
               </p>
             )}
-            {tabAddons.length > 0 && (
-              <SearchField className="addon-search" value={addonQuery} onChange={setAddonQuery} placeholder={tr("Search {0, plural, one {# item} other {# items}}…", [tabAddons.length])} />
-            )}
-            {tabAddons.length > 0 && (
-              <Dropdown
-                className="addon-sort"
-                value={addonSort}
-                onChange={setAddonSort}
-                options={[
-                  { value: "name", label: "A → Z" },
-                  { value: "name-desc", label: "Z → A" },
-                  { value: "kind", label: tr("By type") },
-                ]}
-              />
-            )}
-            {tabAddons.length > 0 && (
-              <button
-                className="wb-icon"
-                disabled={checkingUpdates}
-                aria-label={checkingUpdates ? tr("Checking…") : tr("Refresh")}
-                data-tip={checkingUpdates ? tr("Checking…") : tr("Refresh")}
-                onClick={() => void loadTool("addons")}
-              >
-                <Icon name="refresh" />
-              </button>
-            )}
+            {tabAddons.length === 0 && <span className="live-spacer" />}
             <button
               className="button ghost small"
               disabled={selected.status !== "stopped"}
@@ -12275,6 +12230,79 @@ ${payload.plugin}`;
             </>
             )}
           </div>
+          {tabAddons.length > 0 && (
+          <div className="list-filters">
+            {tabAddons.length > 0 && (
+              <Dropdown
+                className="addon-sort"
+                value={addonSort}
+                onChange={setAddonSort}
+                options={[
+                  { value: "name", label: "A → Z" },
+                  { value: "name-desc", label: "Z → A" },
+                  { value: "kind", label: tr("By type") },
+                ]}
+              />
+            )}
+            <FilterTabs
+              value={addonFilter}
+              onChange={setAddonFilter}
+              label={tr("Filter")}
+              options={[
+                { id: "all", label: tr("All"), count: tabAddons.length },
+                ...Object.entries(addonCounts.kinds).map(([kind, count]) => ({
+                  id: kind,
+                  label: kind === "plugin" ? tr("Plugins") : tr("Mods"),
+                  count,
+                })),
+                ...Object.entries(addonGroupCounts)
+                  .sort(([a], [b]) => a.localeCompare(b, "en"))
+                  .map(([group, count]) => ({ id: `group:${group}`, label: group, count })),
+                { id: "update", label: tr("Update"), count: addonCounts.update },
+                { id: "off", label: tr("Off"), count: addonCounts.off },
+                {
+                  id: "client",
+                  label: tr("Client only"),
+                  count: addonCounts.client,
+                },
+              ]
+                .filter(
+                  (chip) =>
+                    chip.id === "all" ||
+                    (chip.count > 0 &&
+                      !(
+                        Object.keys(addonCounts.kinds).length < 2 &&
+                        chip.id in addonCounts.kinds
+                      )),
+                )
+                .map((chip) => ({ value: chip.id, label: chip.label, count: chip.count }))}
+            />
+            <span className="live-spacer" />
+            {addonCounts.update > 0 && (
+              <button
+                className="button ghost small"
+                data-tip={selected.status !== "stopped" && !selected.panelHost ? tr("Downloads now and applies when the server restarts.") : undefined}
+                onClick={openUpdatePlan}
+              >
+                <Icon name="import" />
+                {selected.status === "stopped" || selected.remoteHost ? tr("Update all") : tr("Download and queue")}{" "}
+                {addonCounts.update}
+              </button>
+            )}
+            {tabAddons.length > 0 && (
+              <button
+                className="button ghost small"
+                disabled={checkingUpdates}
+                aria-label={checkingUpdates ? tr("Checking…") : tr("Refresh")}
+                data-tip={checkingUpdates ? tr("Checking…") : tr("Refresh")}
+                onClick={() => void loadTool("addons")}
+              >
+                <Icon name="refresh" />
+                {checkingUpdates ? tr("Checking…") : tr("Refresh")}
+              </button>
+            )}
+          </div>
+          )}
 
           {marketUpdates.length > 0 && selected.core === "Pumpkin" && !onWeb && (
             <div className="addon-waiting">
@@ -12486,7 +12514,7 @@ ${payload.plugin}`;
                 }
                 title={tr("Project")}
                 meta={tr("Version")}
-                actions={<span className="addon-head-tasks">{tr("Tasks")}</span>}
+                actions={<span className="addon-head-tasks">{tr("Actions")}</span>}
               />
               {shownAddons.map((one, index) => {
                 const card = addonCards[one.fileName];
@@ -12884,20 +12912,10 @@ ${payload.plugin}`;
                 <span>{panelsName(panelHostViews)}</span>
               </button>
             )}
-            <button
-              data-tip={tr("Tasks")}
-              data-tip-side="right"
-              type="button"
-              className={modal === "tasks" ? "on" : ""}
-              onClick={() => setModal("tasks")}
-            >
-              <Icon name="schedule" />
-              <span>{tr("Tasks")}</span>
-            </button>
             {recentServers.length > 0 && <i className="wb-homerail-line" aria-hidden />}
             {recentServers.length > 0 && (
               <div className="wb-homerail-servers" aria-label={tr("Recent servers")}>
-                {recentServers.slice(0, 6).map((one) => (
+                {recentServers.map((one) => (
                   <button
                     key={one.id}
                     type="button"
@@ -12906,13 +12924,23 @@ ${payload.plugin}`;
                     aria-label={one.name}
                     onClick={() => openManage(one)}
                   >
-                    <CoreIcon core={one.core} />
+                    {serverIcons[one.id] ? <img className="rail-server-img" src={serverIcons[one.id]} alt="" /> : <CoreIcon core={one.core} />}
                     <span>{one.name}</span>
                     <b className={`status-dot wb-rail-status status-${shownStatus(one)}`} aria-hidden />
                   </button>
                 ))}
               </div>
             )}
+            <button
+              data-tip={tr("New server")}
+              data-tip-side="right"
+              type="button"
+              className={`wb-homerail-add ${modal === "create" ? "on" : ""}`}
+              onClick={() => void openCreate()}
+            >
+              <Icon name="plus" />
+              <span>{tr("New server")}</span>
+            </button>
             <span className="wb-homerail-gap" />
             {!onWeb && (
               <button
@@ -12982,10 +13010,10 @@ ${payload.plugin}`;
                   {section && !first && group !== "app" && <span className="wb-homerail-line" role="separator" aria-label={section} />}
                   <button
                     type="button"
-                    className={`${tool === slot.id ? "selected" : ""} ${locked ? "locked" : ""} ${group === "app" ? "rail-bottom" : ""}`}
+                    className={`${(slot.id === "config" ? serverSettingsOpen : tool === slot.id) ? "selected" : ""} ${locked ? "locked" : ""} ${group === "app" ? "rail-bottom" : ""}`}
                     data-tool={slot.id}
                     disabled={locked}
-                    aria-current={tool === slot.id ? "page" : undefined}
+                    aria-current={(slot.id === "config" ? serverSettingsOpen : tool === slot.id) ? "page" : undefined}
                     data-tip={
                       locked
                         ? selected.panelHost
@@ -14098,21 +14126,43 @@ ${payload.plugin}`;
             )}
             {modal === "settings" && (
               <>
-                <h2>{tr("Settings")}</h2>
-                <FilterTabs
-                  className="settings-tabs"
-                  value={settingsTab}
-                  onChange={setSettingsTab}
-                  label={tr("Settings")}
-                  options={[
-                    { value: "general", label: tr("General") },
-                    { value: "server", label: tr("Server") },
-                    { value: "trash", label: tr("Trash"), count: trashEntries.length || null },
-                  ]}
-                />
+                <h2 className="settings-dialog-title">{tr("Settings")}</h2>
+                <nav className="settings-dialog-nav" aria-label={tr("Settings")}>
+                  {[
+                    { head: tr("General"), items: [
+                      { id: "display" as const, icon: "sparkles", label: tr("Display") },
+                      ...(!onWeb ? [{ id: "app" as const, icon: "power", label: tr("App") }, { id: "privacy" as const, icon: "shield", label: tr("Privacy") }] : []),
+                      { id: "notify" as const, icon: "bell", label: tr("Notifications & updates") },
+                    ] },
+                    { head: tr("Servers"), items: [
+                      { id: "server" as const, icon: "server", label: tr("Server") },
+                      { id: "data" as const, icon: "import", label: tr("Data") },
+                      { id: "trash" as const, icon: "trash", label: tr("Trash"), count: trashEntries.length || null },
+                    ] },
+                    { head: "", items: [{ id: "about" as const, icon: "info", label: tr("About") }] },
+                  ].map((group, at) => (
+                    <Fragment key={at}>
+                      {group.head ? <span className="settings-nav-head">{group.head}</span> : <span className="settings-nav-gap" />}
+                      {group.items.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={settingsTab === item.id ? "on" : ""}
+                          aria-current={settingsTab === item.id ? "page" : undefined}
+                          onClick={() => setSettingsTab(item.id)}
+                        >
+                          <Icon name={item.icon} />
+                          <span>{item.label}</span>
+                          {"count" in item && item.count ? <b className="settings-nav-count">{item.count}</b> : null}
+                        </button>
+                      ))}
+                    </Fragment>
+                  ))}
+                </nav>
+                <div className="settings-dialog-body app-settings">
                 {settingsTab !== "trash" && (
                 <div className="settings-list">
-                  {settingsTab === "general" && (
+                  {settingsTab === "display" && (
                   <section className="settings-group">
                     <h3 className="settings-group-title"><Icon name="sparkles" />{tr("Display")}</h3>
                     <div className="settings-group-rows">
@@ -14187,7 +14237,7 @@ ${payload.plugin}`;
                     </div>
                   </section>
                   )}
-                  {!onWeb && settingsTab === "general" && (
+                  {!onWeb && settingsTab === "app" && (
                   <section className="settings-group">
                     <h3 className="settings-group-title"><Icon name="power" />{tr("App")}</h3>
                     <div className="settings-group-rows">
@@ -14249,7 +14299,7 @@ ${payload.plugin}`;
                     </div>
                   </section>
                   )}
-                  {!onWeb && settingsTab === "general" && (
+                  {!onWeb && settingsTab === "privacy" && (
                   <section className="settings-group">
                     <h3 className="settings-group-title"><Icon name="shield" />{tr("Privacy")}</h3>
                     <div className="settings-group-rows">
@@ -14361,7 +14411,7 @@ ${payload.plugin}`;
                     </div>
                   </section>
                   )}
-                  {settingsTab === "general" && (
+                  {settingsTab === "notify" && (
                   <section className="settings-group">
                     <h3 className="settings-group-title"><Icon name="bell" />{tr("Notifications & updates")}</h3>
                     <div className="settings-group-rows">
@@ -14494,7 +14544,7 @@ ${payload.plugin}`;
                     </div>
                   </section>
                   )}
-                  {settingsTab === "server" && (
+                  {settingsTab === "data" && (
                   <section className="settings-group">
                     <h3 className="settings-group-title"><Icon name="import" />{tr("Data")}</h3>
                     <div className="settings-group-rows">
@@ -14520,7 +14570,7 @@ ${payload.plugin}`;
                     </div>
                   </section>
                   )}
-                  {settingsTab === "general" && (
+                  {settingsTab === "about" && (
                   <section className="settings-group">
                     <h3 className="settings-group-title"><Icon name="info" />{tr("About")}</h3>
                     <div className="settings-group-rows">
@@ -14623,6 +14673,7 @@ ${payload.plugin}`;
                     )}
                   </>
                 )}
+                </div>
                 </div>
               </>
             )}

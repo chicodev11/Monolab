@@ -3,7 +3,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { commands, type TeamLogEntry } from "../../lib/bindings";
 import { dateTimeSeconds } from "../../lib/format";
 import { tr } from "../../lib/i18n";
-import { EmptyState, SearchField } from "../primitives";
+import { DropdownMenu, EmptyState, SearchField } from "../primitives";
 import { Dropdown } from "../ui/Dropdown";
 import { Icon } from "../ui/Icon";
 import "./TeamLog.css";
@@ -115,17 +115,18 @@ export function TeamLog({
           <p>{tr("Everything Monolink teammates and web panel accounts did on this PC's servers, with what they sent. Only this PC keeps it and can clear it.")}</p>
         </div>
         <div className="team-log-tools">
-          <button type="button" className="button secondary small" onClick={load}>
-            <Icon name="refresh" />
-            {tr("Refresh")}
-          </button>
-          <button type="button" className="button secondary small" onClick={() => void exportCsv()} disabled={!entries?.length}>
-            <Icon name="import" />
-            {tr("Export CSV")}
-          </button>
-          <button type="button" className="button secondary small" onClick={() => void clear()}>
-            {tr("Clear log")}
-          </button>
+          <DropdownMenu
+            trigger={
+              <button type="button" className="wb-icon ghost team-log-more" aria-label={tr("More")} data-tip={tr("More")}>
+                <Icon name="dots" />
+              </button>
+            }
+            items={[
+              { label: tr("Refresh"), icon: "refresh", onSelect: load },
+              { label: tr("Export CSV"), icon: "import", disabled: !entries?.length, onSelect: () => void exportCsv() },
+              { label: tr("Clear log"), icon: "trash", danger: true, onSelect: () => void clear() },
+            ]}
+          />
         </div>
       </div>
       <div className="team-log-filters">
