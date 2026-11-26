@@ -12427,5 +12427,5 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
   transition: background-color 140ms var(--ease), border-color 140ms var(--ease), color 140ms var(--ease);
 }
 .log-level:hover { border-color: var(--text-4); color: var(--text); }
-.log-level.on { border-color: var(--ok-line); background: var(--ok-soft); color: var(--ok); }
+.log-level.on { border-color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
 @media (prefers-reduced-motion: reduce) { .log-level { transition: none; } }
