@@ -1138,7 +1138,7 @@ function App() {
     null,
   );
   const [modal, setModal] = useState<Modal>("none");
-  const [settingsTab, setSettingsTab] = useState<"account" | "general" | "server" | "updates" | "privacy" | "data" | "trash" | "about">("general");
+  const [settingsTab, setSettingsTab] = useState<"general" | "server" | "account" | "trash">("general");
   const [createStep, setCreateStep] = useState<"core" | "version" | "modpack">("core");
   const [createPage, setCreatePage] = useState<"core" | "finish" | "confirm">("core");
   const [createVersionQuery, setCreateVersionQuery] = useState("");
@@ -14092,14 +14092,10 @@ ${payload.plugin}`;
                   onChange={setSettingsTab}
                   label={tr("Settings")}
                   options={[
-                    { value: "account", label: tr("Account") },
                     { value: "general", label: tr("General") },
                     { value: "server", label: tr("Server") },
-                    { value: "updates", label: tr("Notifications & updates") },
-                    { value: "privacy", label: tr("Privacy") },
-                    { value: "data", label: tr("Data") },
+                    { value: "account", label: tr("Account") },
                     { value: "trash", label: tr("Trash"), count: trashEntries.length || null },
-                    { value: "about", label: tr("About") },
                   ]}
                 />
                 {settingsTab !== "trash" && (
@@ -14242,7 +14238,7 @@ ${payload.plugin}`;
                     </div>
                   </section>
                   )}
-                  {!onWeb && settingsTab === "privacy" && (
+                  {!onWeb && settingsTab === "account" && (
                   <section className="settings-group">
                     <h3 className="settings-group-title"><Icon name="shield" />{tr("Privacy")}</h3>
                     <div className="settings-group-rows">
@@ -14351,7 +14347,7 @@ ${payload.plugin}`;
                     </div>
                   </section>
                   )}
-                  {settingsTab === "updates" && (
+                  {settingsTab === "general" && (
                   <section className="settings-group">
                     <h3 className="settings-group-title"><Icon name="bell" />{tr("Notifications & updates")}</h3>
                     <div className="settings-group-rows">
@@ -14485,7 +14481,7 @@ ${payload.plugin}`;
                     </div>
                   </section>
                   )}
-                  {settingsTab === "data" && (
+                  {settingsTab === "server" && (
                   <section className="settings-group">
                     <h3 className="settings-group-title"><Icon name="import" />{tr("Data")}</h3>
                     <div className="settings-group-rows">
@@ -14511,7 +14507,7 @@ ${payload.plugin}`;
                     </div>
                   </section>
                   )}
-                  {settingsTab === "about" && (
+                  {settingsTab === "general" && (
                   <section className="settings-group">
                     <h3 className="settings-group-title"><Icon name="info" />{tr("About")}</h3>
                     <div className="settings-group-rows">

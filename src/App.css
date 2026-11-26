@@ -12220,3 +12220,8 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .settings-tabs { align-self: flex-start; flex-wrap: wrap; margin: 4px 0 18px; }
 .settings-trash .panel-head h2 { display: none; }
 .settings-trash .panel-head { margin-top: 0; }
+/* A button next to an input or a dropdown takes that control's height instead of the shorter small-button height. */
+.discord-url { align-items: stretch; }
+.discord-url > .button { height: auto; min-height: 0; }
+.setting-buttons:has(> .dropdown) { align-items: stretch; }
+.setting-buttons:has(> .dropdown) > .button { height: auto; min-height: 0; }
