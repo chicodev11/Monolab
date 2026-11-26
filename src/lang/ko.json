@@ -4662,6 +4662,13 @@
     "Find a setting": "설정 찾기",
     "If the server stops unexpectedly, its report from crash-reports shows up here.": "서버가 갑자기 멈추면 crash-reports의 보고서가 여기 나와요.",
     "Only you": "나만",
-    "{0, plural, one {# member} other {# members}}": "멤버 {0}명"
+    "{0, plural, one {# member} other {# members}}": "멤버 {0}명",
+    "Back up": "백업",
+    "Back up now?": "지금 백업할까요?",
+    "Back up part": "일부만 백업",
+    "Choose files…": "파일 고르기…",
+    "The whole {0} server folder is compressed and kept with its backups.": "{0} 서버 폴더 전체를 압축해 백업에 보관해요.",
+    "The worlds of {0} are compressed and kept with its backups.": "{0}의 월드를 압축해 백업에 보관해요.",
+    "{0, plural, one {# picked item} other {# picked items}} from {1} are compressed and kept with its backups.": "{1}에서 고른 {0}개를 압축해 백업에 보관해요."
   }
 }

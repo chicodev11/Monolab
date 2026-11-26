@@ -73,3 +73,7 @@
   .db-row { flex-wrap: wrap; }
   .db-row .list-actions { flex-basis: 100%; flex-wrap: wrap; justify-content: flex-start; }
 }
+
+.modal-backdrop.roomy .add-modal.db-form-dialog { display: grid; gap: 14px; width: min(560px, 100%); }
+.add-modal.db-form-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.add-modal.db-form-dialog header h3 { margin: 0; }

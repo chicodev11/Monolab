@@ -12770,3 +12770,8 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
   .agent-side-scroll > .agent-group:nth-child(3) { animation-delay: 90ms; }
   .agent-side-scroll > .agent-group:nth-child(n+4) { animation-delay: 120ms; }
 }
+
+/* Backups › Choose files: a dialog like Disk usage. */
+.modal-backdrop.roomy .add-modal.backup-pick-dialog { display: grid; gap: 14px; width: min(720px, 100%); max-height: min(80vh, 720px); grid-template-rows: auto minmax(0, 1fr) auto; }
+.add-modal.backup-pick-dialog .backup-pick-grid { overflow-y: auto; align-content: start; }
+.add-modal.backup-pick-dialog .backup-pick-foot { display: flex; align-items: center; gap: 8px; }

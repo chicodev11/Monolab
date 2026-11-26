@@ -4462,16 +4462,20 @@ ${payload.plugin}`;
   async function makeBackup(worldsOnly = false, paths: string[] = []) {
     if (!selected) return;
     const instance = selected;
-    if (
-      instance.status === "running" &&
-      !(await confirmAction(
-        tr("The server is running. Back up anyway?"),
-        tr("World files may still be saving, so the last few minutes of a restored backup could be inconsistent. Stop the server before backing up for a reliable backup."),
-        tr("Back up as is"),
-      ))
-    ) {
-      return;
-    }
+    const what = paths.length
+      ? tr("{0, plural, one {# picked item} other {# picked items}} from {1} are compressed and kept with its backups.", [paths.length, instance.name])
+      : worldsOnly
+        ? tr("The worlds of {0} are compressed and kept with its backups.", [instance.name])
+        : tr("The whole {0} server folder is compressed and kept with its backups.", [instance.name]);
+    const sure =
+      instance.status === "running"
+        ? await confirmAction(
+            tr("The server is running. Back up anyway?"),
+            tr("World files may still be saving, so the last few minutes of a restored backup could be inconsistent. Stop the server before backing up for a reliable backup."),
+            tr("Back up as is"),
+          )
+        : await confirmAction(tr("Back up now?"), what, tr("Back up"));
+    if (!sure) return;
     setBackupBusy(true);
     await call(
       async () => {
@@ -10471,45 +10475,6 @@ ${payload.plugin}`;
       {!toolLoading && tool === "backups" && !backupOpen && (
         <div className="tool-content backup-page">
           <div className="page-body">
-          {backupPick && (
-            <Card
-              className="backup-pick"
-              title={tr("Choose what to back up")}
-              aside={
-                <button type="button" className="wb-icon" aria-label={tr("Close")} data-tip={tr("Close")} onClick={() => setBackupPick(null)}>
-                  <Icon name="close" />
-                </button>
-              }
-            >
-              <div className="backup-pick-grid">
-                {backupPick.entries.map((one) => (
-                  <label key={one.name} className={`backup-pick-item ${backupPick.picked.includes(one.name) ? "on" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={backupPick.picked.includes(one.name)}
-                      onChange={() =>
-                        setBackupPick((was) =>
-                          was && { ...was, picked: was.picked.includes(one.name) ? was.picked.filter((name) => name !== one.name) : [...was.picked, one.name] },
-                        )
-                      }
-                    />
-                    <Icon name={one.isDir ? "folder" : "file"} />
-                    <span>{one.name}</span>
-                  </label>
-                ))}
-              </div>
-              <div className="backup-pick-foot">
-                <button type="button" className="button ghost small" onClick={() => setBackupPick((was) => was && { ...was, picked: was.picked.length === was.entries.length ? [] : was.entries.map((one) => one.name) })}>
-                  {backupPick.picked.length === backupPick.entries.length ? tr("Deselect") : tr("Select all")}
-                </button>
-                <span className="live-spacer" />
-                <button type="button" className="button primary small" disabled={!backupPick.picked.length || backupBusy} onClick={() => void makeBackup(false, backupPick.picked)}>
-                  <Icon name="archive" />
-                  {tr("Back up {0, plural, one {# item} other {# items}}", [backupPick.picked.length])}
-                </button>
-              </div>
-            </Card>
-          )}
           {(() => {
             const total = backupList.reduce((sum, one) => sum + (one.sizeMib ?? 0), 0);
             const kindOf = (one: (typeof backupList)[number]) => (one.worldsOnly ? "worlds" : /picked$/.test(one.note) ? "picked" : "full");
@@ -10520,29 +10485,23 @@ ${payload.plugin}`;
               const day = new Date(one.createdAt * 1000).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric", weekday: "short" });
               byDay.set(day, [...(byDay.get(day) ?? []), one]);
             }
+            const worldsOk = !selected.panelHost && has(selected.core, "worlds");
             const actions = (
               <div className="bk-actions">
-                {!selected.panelHost && has(selected.core, "worlds") && (
-                  <button
-                    className="button secondary"
-                    data-tip={tr("Stores only the world folders. Smaller and faster; restoring replaces only those worlds.")}
-                    disabled={backupBusy}
-                    onClick={() => void makeBackup(true)}
-                  >
-                    <Icon name="map" />
-                    {tr("Worlds only")}
-                  </button>
-                )}
                 {!selected.panelHost && (
-                  <button
-                    className="button secondary"
-                    data-tip={tr("Pick the folders and files to put in the backup.")}
-                    disabled={backupBusy}
-                    onClick={() => (backupPick ? setBackupPick(null) : void openBackupPick())}
-                  >
-                    <Icon name="check" />
-                    {tr("Choose files")}
-                  </button>
+                  <DropdownMenu
+                    trigger={
+                      <button type="button" className="button secondary" disabled={backupBusy}>
+                        <Icon name="check" />
+                        {tr("Back up part")}
+                        <Icon name="chevron" />
+                      </button>
+                    }
+                    items={[
+                      ...(worldsOk ? [{ label: tr("Worlds only"), icon: "map", hint: tr("Stores only the world folders. Smaller and faster; restoring replaces only those worlds."), onSelect: () => void makeBackup(true) }] : []),
+                      { label: tr("Choose files…"), icon: "check", hint: tr("Pick the folders and files to put in the backup."), onSelect: () => void openBackupPick() },
+                    ]}
+                  />
                 )}
                 <button
                   className="button primary"
@@ -10769,7 +10728,8 @@ ${payload.plugin}`;
             <h1>{tr("Databases")}</h1>
           </div>
           <DatabasesPage
-            key={`${selected.id}-${dbHostsSeen}`}
+            key={selected.id}
+            hostsSeen={dbHostsSeen}
             serverId={selected.id}
             remoteHost={selected.remoteHost}
             onOpenHosts={() => setDbHostsOpen(true)}
@@ -15339,6 +15299,52 @@ ${payload.plugin}`;
               </div>
             </div>
           </section>
+        </div>
+      )}
+      {backupPick && selected && (
+        <div className="modal-backdrop roomy" onClick={() => !backupBusy && setBackupPick(null)} role="presentation">
+          <div className="add-modal backup-pick-dialog" role="dialog" aria-modal="true" aria-label={tr("Choose what to back up")} onClick={(event) => event.stopPropagation()}>
+            <div className="tool-top">
+              <p>
+                <strong>{tr("Choose what to back up")}</strong> · {selected.name}
+              </p>
+              <div className="modal-top-actions">
+                <button className="close in-flow" aria-label={tr("Close")} disabled={backupBusy} onClick={() => setBackupPick(null)}>
+                  <Icon name="close" />
+                </button>
+              </div>
+            </div>
+            <div className="backup-pick-grid">
+              {backupPick.entries.map((one) => (
+                <label key={one.name} className={`backup-pick-item ${backupPick.picked.includes(one.name) ? "on" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={backupPick.picked.includes(one.name)}
+                    onChange={() =>
+                      setBackupPick((was) =>
+                        was && { ...was, picked: was.picked.includes(one.name) ? was.picked.filter((name) => name !== one.name) : [...was.picked, one.name] },
+                      )
+                    }
+                  />
+                  <Icon name={one.isDir ? "folder" : "file"} />
+                  <span>{one.name}</span>
+                </label>
+              ))}
+            </div>
+            <div className="backup-pick-foot">
+              <button type="button" className="button ghost small" onClick={() => setBackupPick((was) => was && { ...was, picked: was.picked.length === was.entries.length ? [] : was.entries.map((one) => one.name) })}>
+                {backupPick.picked.length === backupPick.entries.length ? tr("Deselect") : tr("Select all")}
+              </button>
+              <span className="live-spacer" />
+              <button type="button" className="button secondary small" disabled={backupBusy} onClick={() => setBackupPick(null)}>
+                {tr("Cancel")}
+              </button>
+              <button type="button" className="button primary small" disabled={!backupPick.picked.length || backupBusy} onClick={() => void makeBackup(false, backupPick.picked)}>
+                <Icon name="archive" />
+                {backupBusy ? tr("Backing up…") : tr("Back up {0, plural, one {# item} other {# items}}", [backupPick.picked.length])}
+              </button>
+            </div>
+          </div>
         </div>
       )}
       {dbHostsOpen && (

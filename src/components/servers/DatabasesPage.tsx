@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { onWeb } from "../../lib/bridge";
 import { commands, type DbHostView, type ServerDb, type SshHostView } from "../../lib/bindings";
 import { tr } from "../../lib/i18n";
@@ -16,6 +17,7 @@ const isLoopback = (address: string) => ["localhost", "127.0.0.1", "::1"].includ
 export function DatabasesPage({
   serverId,
   remoteHost,
+  hostsSeen = 0,
   onOpenHosts,
   onError,
   onNotice,
@@ -23,6 +25,8 @@ export function DatabasesPage({
 }: {
   serverId: string;
   remoteHost: string;
+  /** Goes up each time the hosts dialog closes; the host list is read again in place, without redrawing the page. */
+  hostsSeen?: number;
   onOpenHosts: () => void;
   onError: (message: string) => void;
   onNotice: (message: string) => void;
@@ -49,6 +53,11 @@ export function DatabasesPage({
       onError(String(cause));
     }
   }, [serverId, onError]);
+  const firstSeen = useRef(hostsSeen);
+  useEffect(() => {
+    if (onWeb || hostsSeen === firstSeen.current) return;
+    void commands.dbHosts().then(setHosts).catch(() => {});
+  }, [hostsSeen]);
   useEffect(() => {
     void load();
     if (!onWeb) void commands.listSshHosts().then(setSshHosts).catch(() => {});
@@ -142,7 +151,7 @@ export function DatabasesPage({
         </div>
 
         {form === "create" && (
-          <div className="pt-form">
+          <Popup title={tr("Add database")} onClose={() => !busy && setForm(null)}>
             <div className="field-block">
               <span className="field-label">{tr("Database host")}</span>
               <Dropdown value={newHost} options={hosts.map((one) => ({ value: one.id, label: one.name, hint: `${one.address}:${one.port}` }))} onChange={setNewHost} />
@@ -166,11 +175,11 @@ export function DatabasesPage({
                 {tr("Create")}
               </Button>
             </div>
-          </div>
+          </Popup>
         )}
 
         {form === "link" && (
-          <div className="pt-form">
+          <Popup title={tr("Add existing database")} onClose={() => !busy && setForm(null)}>
             <label className="field-block">
               <span className="field-label">{tr("Database name")}</span>
               <input autoFocus value={link.database} onChange={(event) => setLink({ ...link, database: event.target.value })} />
@@ -194,7 +203,7 @@ export function DatabasesPage({
                 {tr("Add")}
               </Button>
             </div>
-          </div>
+          </Popup>
         )}
 
         {!rows.length ? (
@@ -305,5 +314,23 @@ export function DatabasesPage({
         <SqliteFiles serverId={serverId} far={!!remoteHost} onOpen={(path) => setOpen({ kind: "sqlite", path })} />
       </div>
     </div>
+  );
+}
+
+/** A form over the page, like the other dialogs, instead of a grey box pushed into the list. */
+function Popup({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  return createPortal(
+    <div className="modal-backdrop roomy" onClick={onClose} role="presentation">
+      <div className="add-modal db-form-dialog" role="dialog" aria-modal="true" aria-label={title} onClick={(event) => event.stopPropagation()}>
+        <header>
+          <h3>{title}</h3>
+          <button className="close" aria-label={tr("Close")} onClick={onClose}>
+            <Icon name="close" />
+          </button>
+        </header>
+        {children}
+      </div>
+    </div>,
+    document.body,
   );
 }
