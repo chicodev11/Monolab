@@ -1,21 +1,17 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { tr } from "../../lib/i18n";
 import { EMPTY_FILTER, isEmptyFilter, readSavedFilters, sameFilter, withSaved, writeSavedFilters, type LogFilter } from "../../lib/logFilter";
-import { DropdownMenu } from "../primitives";
-import { Dropdown } from "../ui/Dropdown";
+import { DropdownMenu, SegmentedControl } from "../primitives";
 import { Icon } from "../ui/Icon";
 import { TimePicker } from "../ui/TimePicker";
 
-/** Narrowing a log file by plugin and time, and saving the whole search under a name. */
+/** Narrowing a log file by level and time, and saving the whole search under a name. */
 export function LogFilters({
   filter,
-  sources,
   onChange,
   askName,
 }: {
   filter: LogFilter;
-  /** Plugins and loggers seen in the open file. */
-  sources: string[];
   onChange: (next: LogFilter) => void;
   askName: (current: string) => Promise<string | null>;
 }) {
@@ -26,8 +22,26 @@ export function LogFilters({
   };
   const timed = filter.from !== "" || filter.to !== "";
   const picked = saved.find((one) => sameFilter(one, filter));
-  const options = [{ value: "", label: tr("Every plugin") }, ...sources.map((one) => ({ value: one, label: one }))];
-  if (filter.source && !sources.includes(filter.source)) options.push({ value: filter.source, label: filter.source });
+  const [timeOpen, setTimeOpen] = useState(false);
+  const timeBox = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!timeOpen) return;
+    const away = (event: MouseEvent) => {
+      const target = event.target as Element | null;
+      // The hour and minute lists open in the page body, outside this box.
+      if (timeBox.current?.contains(target) || target?.closest?.('[role="listbox"]')) return;
+      setTimeOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTimeOpen(false);
+    };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [timeOpen]);
   async function save() {
     const name = await askName(picked?.name ?? filter.name ?? "");
     if (!name) return;
@@ -52,31 +66,51 @@ export function LogFilters({
   ];
   return (
     <div className="log-filters" role="group" aria-label={tr("Log filters")}>
-      <Dropdown
-        value={filter.source}
-        options={options}
-        search={sources.length > 8 ? tr("Find a plugin") : undefined}
-        onChange={(source) => onChange({ ...filter, source })}
+      <SegmentedControl
+        className="console-levels"
+        value={filter.level}
+        onChange={(level) => onChange({ ...filter, level })}
+        options={[
+          { value: "all", label: tr("All") },
+          { value: "error", label: tr("Errors") },
+          { value: "warn", label: tr("Warnings") },
+          { value: "info", label: tr("Info") },
+        ]}
       />
-      <label className="log-filters-time">
-        <span className="switch">
-          <input
-            type="checkbox"
-            aria-label={tr("Only between")}
-            checked={timed}
-            onChange={(event) => onChange({ ...filter, from: event.target.checked ? "00:00" : "", to: event.target.checked ? "23:59" : "" })}
-          />
-          <span />
-        </span>
-        <span>{tr("Only between")}</span>
-      </label>
-      {timed && (
-        <>
-          <TimePicker value={filter.from || "00:00"} onChange={(from) => onChange({ ...filter, from })} />
-          <span className="muted">{tr("and")}</span>
-          <TimePicker value={filter.to || "23:59"} onChange={(to) => onChange({ ...filter, to })} />
-        </>
-      )}
+      <div className="log-filter-time" ref={timeBox}>
+        <button
+          type="button"
+          className={`button ghost small${timed ? " chosen" : ""}`}
+          aria-expanded={timeOpen}
+          onClick={() => setTimeOpen((open) => !open)}
+        >
+          <Icon name="filter" />
+          {timed ? `${filter.from} – ${filter.to}` : tr("Filter")}
+        </button>
+        {timeOpen && (
+          <div className="log-filter-pop" role="dialog" aria-label={tr("Filter")}>
+            <label className="log-filters-time">
+              <span>{tr("Only between")}</span>
+              <span className="switch">
+                <input
+                  type="checkbox"
+                  aria-label={tr("Only between")}
+                  checked={timed}
+                  onChange={(event) => onChange({ ...filter, from: event.target.checked ? "00:00" : "", to: event.target.checked ? "23:59" : "" })}
+                />
+                <span />
+              </span>
+            </label>
+            {timed && (
+              <div className="log-filter-range">
+                <TimePicker value={filter.from || "00:00"} onChange={(from) => onChange({ ...filter, from })} />
+                <span className="muted">{tr("and")}</span>
+                <TimePicker value={filter.to || "23:59"} onChange={(to) => onChange({ ...filter, to })} />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       <span className="live-spacer" />
       <DropdownMenu
         trigger={

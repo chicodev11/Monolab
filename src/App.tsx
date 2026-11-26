@@ -152,7 +152,7 @@ import { QrCode } from "./components/panels/QrCode";
 import { ConsoleLevels, ConsoleOutput, LogLines, type ConsoleLevel } from "./components/console/ConsoleOutput";
 import { SavedSearches } from "./components/console/SavedSearches";
 import { LogFilters } from "./components/console/LogFilters";
-import { lineMatches, sourcesIn } from "./lib/logFilter";
+import { lineMatches } from "./lib/logFilter";
 import { DiscordAlerts } from "./components/settings/DiscordAlerts";
 import { TeamNoticeSettings } from "./components/settings/TeamNoticeSettings";
 import { readSwitches, wantsNotice, type TeamNotice } from "./lib/teamNotice";
@@ -1277,7 +1277,6 @@ function App() {
     () => parsedLogs.map((entry) => ({ serverId: "", line: entry.line, stream: "stdout", noise: false, ansi: "" })),
     [parsedLogs],
   );
-  const logSources = useMemo(() => sourcesIn(parsedLogs.map((entry) => entry.line)), [parsedLogs]);
   const narrowedLogLines = useMemo(
     () => (logNarrow.source || logNarrow.from || logNarrow.to ? logLines.filter((log) => lineMatches(log.line, { query: "", ...logNarrow })) : logLines),
     [logLines, logNarrow],
@@ -10120,17 +10119,6 @@ ${payload.plugin}`;
             {logTabs}
             {logView === "read" && (
             <>
-            <SegmentedControl
-              className="console-levels"
-              value={logLevelView}
-              onChange={setLogLevelView}
-              options={[
-                { value: "all", label: tr("All") },
-                { value: "error", label: tr("Errors") },
-                { value: "warn", label: tr("Warnings") },
-                { value: "info", label: tr("Info") },
-              ]}
-            />
             <span className="live-spacer" />
             <Dropdown
               value={readLogFile}
@@ -10250,7 +10238,6 @@ ${payload.plugin}`;
           )}
           <LogFilters
             filter={{ ...logNarrow, query: logQuery, level: logLevelView }}
-            sources={logSources}
             askName={(current) => askText(tr("Save filters"), tr("Name"), current, tr("Save"))}
             onChange={(next) => {
               setLogQuery(next.query);
@@ -15810,12 +15797,9 @@ ${payload.plugin}`;
           </button>
         )}
         {error && (
-          <div className={`toast error ${errorLeaving ? "leaving" : ""}`} role="alert">
+          <div className={`toast error ${errorLeaving ? "leaving" : ""}`} role="alert" onClick={() => dismissError()}>
             <Icon name="alert" />
             <span>{trBack(error)}</span>
-            <button className="toast-close" aria-label={tr("Close")} data-tip={tr("Close")} onClick={() => dismissError()}>
-              <Icon name="close" />
-            </button>
           </div>
         )}
       </div>

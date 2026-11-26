@@ -12269,3 +12269,25 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
   .studio-side-card, .studio-home-card, .pregen-install, .pregen-progress, .addon-version,
   .disk-stats > div, .adv-stats > div, .task-warn, .plugin-config-note, .bk-foot, .status-strip > div
 ) { background: var(--bg); }
+
+/* More server boxes on the dark fill, and none of them with an outline (some had a faint one, some none). */
+.app-shell.wb.in-server .wb-body :is(.memo-rail, .git-list, .git-detail, .git-note, .timeline-panel, .daily-stats, .studio-runs, .studio-test) { background: var(--bg); }
+.app-shell.wb.in-server .wb-body :is(
+  .setting-card, .memo-pane, .memo-rail, .memo-grid > .card, .tool-empty, .empty-block, .file-list,
+  .pt-head, .card, .addon-strip, .list-card, .settings-group, .audit-center, .player-add-card, .msmp-bar,
+  .msmp-card .msmp-body, .cmp-table, .cmp-file-view, .studio-side-card, .studio-home-card, .bk-foot,
+  .git-list, .git-detail, .git-note, .timeline-panel, .daily-stats, .studio-runs, .studio-preview, .studio-nodes-panel
+) { border-color: transparent; }
+
+/* Studio start: kind cards as soft tiles on the dark box, no outlines. */
+.app-shell.wb .studio-page .studio-start-card { border: 0; background: var(--panel); }
+.app-shell.wb .studio-page .studio-start-card:hover { background: var(--raise); }
+.app-shell.wb .studio-page .studio-start-card .studio-mark { border: 0; background: var(--raise); }
+
+/* Logs: level pills first, the time range behind a Filter button. */
+.log-filter-time { position: relative; }
+.log-filter-pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; display: grid; gap: 12px; min-width: 260px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow-pop, 0 12px 32px rgb(0 0 0 / 45%)); }
+.log-filter-pop .log-filters-time { justify-content: space-between; color: var(--text-2); }
+.log-filter-range { display: flex; align-items: center; gap: 8px; }
+.log-filters > .console-levels { min-width: 0; }
+.toast.error { cursor: pointer; }
