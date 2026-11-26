@@ -4851,7 +4851,8 @@ ${payload.plugin}`;
                     : tr("playit is off — starting a server turns it back on.")
                 : tr("Public access is off. Enable it to get an address for friends to join.");
           // playit's error is a raw log line ("2026-…Z ERROR playit_agent_core::…: text"); show the text on its own line.
-          const playitError = (playit?.error ?? "").replace(/^\S*\d{4}-\d\d-\d\dT\S+\s+/, "").replace(/^(ERROR|WARN|INFO|DEBUG)\s+[\w:]+:?\s*/, "");
+          const playitRaw = (playit?.error ?? "").replace(/^\S*\d{4}-\d\d-\d\dT\S+\s+/, "").replace(/^(ERROR|WARN|INFO|DEBUG)\s+[\w:]+:?\s*/, "");
+          const playitError = !playitRaw ? "" : /ping|connect|timed? ?out|unreachable|dns/i.test(playitRaw) ? tr("Couldn't reach playit.gg. Check the internet connection.") : playitRaw.charAt(0).toUpperCase() + playitRaw.slice(1);
           return (
             <div className="setting-row playit-row">
               <div>
@@ -6446,7 +6447,8 @@ ${payload.plugin}`;
         level,
       });
     } catch (cause) {
-      setError(String(cause));
+      // An empty map already shows its own note on the page; it isn't an error.
+      if (!String(cause).includes("No map drawn yet")) setError(String(cause));
     } finally {
       setMapBusy(false);
     }
@@ -7049,8 +7051,19 @@ ${payload.plugin}`;
       const popups = [...document.querySelectorAll<HTMLElement>(".modal-backdrop:not(.as-panel)")];
       popups.at(-1)?.click();
     };
+    // A terminal swallows Escape, so Escape typed in one is caught on the way down and still closes its dialog.
+    const fromTerminal = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !(event.target instanceof Element) || !event.target.closest(".xterm")) return;
+      if (document.querySelector(".ask-backdrop, .dropdown-menu, .context-menu")) return;
+      const popups = [...document.querySelectorAll<HTMLElement>(".modal-backdrop:not(.as-panel)")];
+      popups.at(-1)?.click();
+    };
     document.addEventListener("keydown", close);
-    return () => document.removeEventListener("keydown", close);
+    document.addEventListener("keydown", fromTerminal, true);
+    return () => {
+      document.removeEventListener("keydown", close);
+      document.removeEventListener("keydown", fromTerminal, true);
+    };
   }, []);
   async function backupFromPalette(instance: Instance) {
     if (
@@ -9297,7 +9310,7 @@ ${payload.plugin}`;
                   {tr("Applies on the next start.")}
                 </span>
               )}
-              <SearchField className="props-search" value={propertyQuery} onChange={setPropertyQuery} placeholder={tr("Find a setting — label, key or description")} />
+              <SearchField className="props-search" value={propertyQuery} onChange={setPropertyQuery} placeholder={tr("Find a setting")} />
               <button type="button" className="button secondary small props-compare" data-tip={tr("Compare with another server or a backup")} onClick={() => setCompareOpen(true)}>
                 <Icon name="layers" />
                 {tr("Compare")}
@@ -10229,7 +10242,7 @@ ${payload.plugin}`;
                     <span>{tr("Deaths")} <b>{day.deaths}</b></span>
                     <span className={day.errors ? "has-errors" : ""}>{tr("Errors")} <b>{day.errors}</b></span>
                   </span>
-                  {day.busiestPlayer && <small className="summary-day-busy">{tr("Most active: {0}", [day.busiestPlayer])}</small>}
+                  {/^[\w.*-]{1,20}$/.test(day.busiestPlayer) && <small className="summary-day-busy">{tr("Most active: {0}", [day.busiestPlayer])}</small>}
                 </button>
               ))}
             </nav>
@@ -10546,7 +10559,6 @@ ${payload.plugin}`;
               <>
                 <header className="bk-head">
                   <div className="bk-summary">
-                    <h2>{tr("Backups")}</h2>
                     <p>
                       {tr("{0, plural, one {# backup} other {# backups}}", [backupList.length])}
                       {backupList.length > 0 && (
@@ -11053,7 +11065,7 @@ ${payload.plugin}`;
         const proto = "TCP";
         const tunnel = playit?.tunnels.find((one) => one.localPort === selected.port);
         const rows = [
-          { key: "local", icon: "monitor", label: tr("This PC"), who: tr("This PC only"), value: `localhost:${selected.port}` },
+          { key: "local", icon: "monitor", label: tr("This PC"), who: tr("Only you"), value: `localhost:${selected.port}` },
           { key: "lan", icon: "home", label: tr("Same Wi-Fi"), who: tr("Friends on your Wi-Fi"), value: lanIp ? `${lanIp}:${selected.port}` : "" },
           { key: "playit", icon: "cloud", label: "playit.gg", who: tr("Friends anywhere"), value: tunnel?.address ?? "" },
         ];
@@ -14187,7 +14199,7 @@ ${payload.plugin}`;
                   </div>
                   <div className="setting-row">
                     <div>
-                      <strong>{tr("Console history size (lines)")}</strong>
+                      <strong>{tr("Console history size")}</strong>
                     </div>
                     <div className="setting-input">
                       <input
@@ -14620,7 +14632,7 @@ ${payload.plugin}`;
                             subtitle={
                               <>
                                 {entry.instance ? `${coreLabel(entry.instance.core, entry.instance.version)} · ` : ""}
-                                {tr("Delete {0}", [relativeTime(entry.deletedAt)])}
+                                {tr("Deleted {0}", [relativeTime(entry.deletedAt)])}
                               </>
                             }
                             actions={

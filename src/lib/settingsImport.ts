@@ -8,7 +8,7 @@ export function settingLabel(key: string): string {
     defaultMemoryMib: tr("Default memory for new servers"),
     keepBackupDays: tr("Keep backups for"),
     keepAutoBackups: tr("Scheduled backups to keep"),
-    consoleLineLimit: tr("Console history size (lines)"),
+    consoleLineLimit: tr("Console history size"),
     backupRoot: tr("Backup location"),
     backupWorldsOnly: tr("Scheduled backups: worlds only"),
     backupIncludeGit: tr("Include git history in backups"),

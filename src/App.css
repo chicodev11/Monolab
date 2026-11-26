@@ -12665,3 +12665,76 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 /* Players: same toolbar as Plugins. */
 .player-page .list-toolbar, .player-page .list-filters { margin: 0; }
 .app-shell.wb.in-server :is(.player-head, .addon-bar):has(> h1:only-child) { display: none; }
+
+/* ── Audit fixes (2026-11-26) ── */
+/* Server tool pages: the scroll gutter sits in the card's padding, so cards end where the top button row ends. */
+.tool-content > .page-body { margin-right: -22px; }
+/* Home pages keep room for the scrollbar all the time, so nothing moves sideways when one appears. */
+.app-frame .modal-backdrop.as-panel .add-modal:not(.modal-create):not(.modal-session) { scrollbar-gutter: stable; padding-right: 22px; }
+/* Short windows: the server rail keeps its last icon (settings) on screen. */
+@media (max-height: 820px) {
+  .app-shell.wb .wb-rail { gap: 1px; padding-top: 8px; padding-bottom: 8px; }
+  .app-shell.wb .wb-rail button { height: 36px; }
+  .app-shell.wb .wb-rail .wb-rail-gap, .app-shell.wb .wb-rail hr { margin-block: 4px; }
+}
+.audit-heading p { margin: 2px 0 0; color: var(--text-3); font-size: 13px; }
+/* Two server cards side by side only when each still has room for its subtitle. */
+.server-layout.cards.wb-live { grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); }
+@media (max-width: 1200px) {
+  .log-view.events.with-days { grid-template-columns: 230px minmax(0, 1fr); }
+  .summary-kinds { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .summary-kinds::-webkit-scrollbar { display: none; }
+}
+
+/* ── Motion (2026-11-26): short fades and slides when things appear. All off with reduced motion. ── */
+@keyframes mx-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes mx-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mx-slide-in { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+@keyframes mx-pop { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: no-preference) {
+  /* Going into a server: the tool rail slides in, the tabs and the page rise. */
+  .app-shell.wb.in-server .wb-rail { animation: mx-slide-in 260ms var(--ease) backwards; }
+  .app-shell.wb.in-server .wb-top { animation: mx-fade 260ms var(--ease) backwards; }
+  .app-shell.wb.in-server .wb-body > :not(.wb-rail) { animation: mx-rise 320ms var(--ease) backwards; }
+  /* Each tool page and each home page fades up when it opens. */
+  .tool-content { animation: mx-rise 240ms var(--ease) backwards; }
+  .app-frame .modal-backdrop.as-panel > .add-modal > * { animation: mx-rise 260ms var(--ease) backwards; }
+  /* Tabs inside a page: the new view fades in. */
+  .log-view, .settings-dialog-body > *, .monolink-page > :not(.monolink-head) { animation: mx-fade 200ms var(--ease) backwards; }
+  /* Centered dialogs pop in over a fading backdrop. */
+  .modal-backdrop:not(.as-panel) { animation: mx-fade 180ms var(--ease) backwards; }
+  .modal-backdrop:not(.as-panel) > section { animation: mx-pop 220ms var(--ease) backwards; }
+  /* Lists: the first rows come in one after another. */
+  :is(.list-row, .summary-days button, .server-layout > *) { animation: mx-rise 260ms var(--ease) backwards; }
+  :is(.list-row, .summary-days button, .server-layout > *):nth-child(2) { animation-delay: 30ms; }
+  :is(.list-row, .summary-days button, .server-layout > *):nth-child(3) { animation-delay: 60ms; }
+  :is(.list-row, .summary-days button, .server-layout > *):nth-child(4) { animation-delay: 90ms; }
+  :is(.list-row, .summary-days button, .server-layout > *):nth-child(5) { animation-delay: 120ms; }
+  :is(.list-row, .summary-days button, .server-layout > *):nth-child(n+6) { animation-delay: 150ms; }
+  /* Buttons and rail tiles give a little when pressed. */
+  :is(.button, .wb-rail button, .wb-homerail button, .wb-icon):active:not(:disabled) { transform: scale(0.96); }
+  :is(.button, .wb-rail button, .wb-homerail button, .wb-icon) { transition-property: background-color, color, border-color, box-shadow, transform; }
+}
+
+/* One title size and one left edge on every home page (Library, Server list, Web panel, Monolink, SFTP). */
+.app-frame .modal-backdrop.as-panel .add-modal:not(.modal-create):not(.modal-session) { padding-left: 23px; }
+.app-shell.wb .ch-heading,
+.app-frame .modal-backdrop.as-panel .panel-head h2,
+.monolink-page > .monolink-head h1 { font-size: 28px; line-height: 1.15; }
+/* Server settings › History: the row sits on the dialog like the other tabs, no dark slab. */
+.app-frame .settings-dialog-body section.settings-group { padding: 0; border: 0; border-radius: 0; background: transparent; }
+/* Server settings › Shell: the same edges as the other tabs, with room under the terminal. */
+.app-frame .settings-dialog-body.config-shell { padding: 12px 10px 14px; }
+/* Studio › Assets: the Pictures/Models/Sounds tabs are as wide as their labels. */
+.studio-assets > .segmented { justify-self: start; width: auto; max-width: 100%; }
+
+.app-shell.wb.in-server .wb-body .settings-dialog-body section.settings-group.settings-group { background: transparent; }
+/* Shell tab in server settings: one header line, the terminal fills the rest and stops above the dialog edge. */
+.app-frame .settings-dialog-body.config-shell { display: flex; flex-direction: column; padding: 14px 24px 24px; }
+.settings-dialog-body.config-shell > .shell-tab { display: flex; flex: 1 1 0; min-height: 0; flex-direction: column; gap: 10px; padding: 0; }
+.settings-dialog-body.config-shell .shell-tab-head { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; }
+.settings-dialog-body.config-shell .shell-tab-head .muted { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-dialog-body.config-shell .shell-tab-head .button { flex: none; }
+.settings-dialog-body.config-shell .shell-tab-term { flex: 1 1 0; min-height: 0; }
+.settings-dialog-body.config-shell .shell-tab-head strong { flex: none; white-space: nowrap; }
+.server-layout.cards.wb-off-cards { grid-template-columns: repeat(auto-fill, minmax(560px, 1fr)); }

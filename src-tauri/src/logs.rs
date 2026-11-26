@@ -143,13 +143,21 @@ fn body_of(line: &str) -> &str {
     line.rsplit_once("]: ").map(|(_, rest)| rest).unwrap_or(line)
 }
 
+/// A player name as it shows in a log: Java names, Bedrock names through Geyser (a leading dot, spaces), nothing
+/// like markup or a path, so an HTML or JSON line that starts with `<` isn't read as chat.
+fn is_player_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.chars().count() <= 32
+        && name.chars().all(|c| c.is_alphanumeric() || matches!(c, '_' | '.' | '*' | '-' | ' '))
+}
+
 pub fn classify(line: &str) -> Option<TimelineEvent> {
     let body = body_of(line).trim();
     let time = time_of(line);
     let lower = body.to_ascii_lowercase();
 
     if let Some(rest) = body.strip_prefix('<') {
-        if let Some((name, text)) = rest.split_once("> ") {
+        if let Some((name, text)) = rest.split_once("> ").filter(|(name, _)| is_player_name(name)) {
             return Some(TimelineEvent {
                 time,
                 kind: "Chat".into(),
@@ -158,7 +166,7 @@ pub fn classify(line: &str) -> Option<TimelineEvent> {
             });
         }
     }
-    if let Some(name) = body.strip_suffix(" joined the game") {
+    if let Some(name) = body.strip_suffix(" joined the game").filter(|name| is_player_name(name)) {
         return Some(TimelineEvent {
             time,
             kind: "Join".into(),
@@ -166,7 +174,7 @@ pub fn classify(line: &str) -> Option<TimelineEvent> {
             text: "joined the server.".into(),
         });
     }
-    if let Some(name) = body.strip_suffix(" left the game") {
+    if let Some(name) = body.strip_suffix(" left the game").filter(|name| is_player_name(name)) {
         return Some(TimelineEvent {
             time,
             kind: "Leave".into(),
@@ -174,7 +182,7 @@ pub fn classify(line: &str) -> Option<TimelineEvent> {
             text: "left the server.".into(),
         });
     }
-    if let Some((name, rest)) = body.split_once(" issued server command: ") {
+    if let Some((name, rest)) = body.split_once(" issued server command: ").filter(|(name, _)| is_player_name(name)) {
         return Some(TimelineEvent {
             time,
             kind: "Command".into(),
@@ -445,6 +453,7 @@ mod tests {
             "[13:47:00] [Server thread/INFO]: Alex joined the game".to_string(),
             "[13:48:00] [Server thread/INFO]: Steve was slain by Zombie".to_string(),
             "[13:49:00] [Server thread/ERROR]: something exploded".to_string(),
+            "[13:49:30] [Server thread/INFO]: <span>x-azure-ref ID: </span><span> 0abc</span>".to_string(),
         ];
         let summary = summarize("2026-08-21-1.log.gz", &lines);
         assert_eq!(summary.date, "2026-08-21");

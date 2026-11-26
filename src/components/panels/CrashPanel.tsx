@@ -74,7 +74,7 @@ export function CrashPanel({
     <EmptyState
       icon="check"
       title={tr("No crash reports.")}
-      hint={tr("The server is shutting down normally. If it shuts down unexpectedly, a report is saved in crash-reports and appears here.")}
+      hint={tr("If the server stops unexpectedly, its report from crash-reports shows up here.")}
     />
   )}
 </div>

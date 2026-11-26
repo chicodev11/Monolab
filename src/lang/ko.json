@@ -4654,6 +4654,14 @@
     "Most active: {0}": "가장 활발: {0}",
     "Sort by": "정렬",
     "Whole day": "하루 전체",
-    "{0, plural, one {# player} other {# players}}": "플레이어 {0}명"
+    "{0, plural, one {# player} other {# players}}": "플레이어 {0}명",
+    "@{0} invited you as {1}. {2, plural, one {# member} other {# members}}.": "@{0}님이 {1}(으)로 초대했어요. 멤버 {2}명.",
+    "Console history size": "콘솔 기록 크기",
+    "Couldn't reach playit.gg. Check the internet connection.": "playit.gg에 연결하지 못했어요. 인터넷 연결을 확인하세요.",
+    "Deleted {0}": "{0} 삭제됨",
+    "Find a setting": "설정 찾기",
+    "If the server stops unexpectedly, its report from crash-reports shows up here.": "서버가 갑자기 멈추면 crash-reports의 보고서가 여기 나와요.",
+    "Only you": "나만",
+    "{0, plural, one {# member} other {# members}}": "멤버 {0}명"
   }
 }

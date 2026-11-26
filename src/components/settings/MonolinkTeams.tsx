@@ -910,7 +910,7 @@ function Teams({
                     <div className="mlp-invite-text">
                       <strong>{tr("Join {0}?", [preview.preview.team.name])}</strong>
                       <small>
-                        {tr("@{0} invited you as {1}. {2} members.", [preview.preview.by ?? "?", roleName(preview.preview.role), preview.preview.team.members])}
+                        {tr("@{0} invited you as {1}. {2, plural, one {# member} other {# members}}.", [preview.preview.by ?? "?", roleName(preview.preview.role), preview.preview.team.members])}
                         {preview.preview.needs_approval ? " " + tr("An admin approves before you're in.") : ""}
                       </small>
                     </div>
@@ -1220,7 +1220,7 @@ function TeamPanel({
             {switcher}
           </div>
           <small className="muted">
-            {roleName(mine)} · {tr("{0} members", [team.members.length])} · {tr("{0} servers", [servers.length])}
+            {roleName(mine)} · {tr("{0, plural, one {# member} other {# members}}", [team.members.length])} · {tr("{0, plural, one {# server} other {# servers}}", [servers.length])}
           </small>
         </div>
         <div className="mlt-view-side">
