@@ -12266,3 +12266,14 @@ body.dragging-tab, body.dragging-tab * { cursor: grabbing !important; }
 .account-pop .mlt-handle { width: 100%; }
 .account-pop .setting-row > * { flex: none; max-width: none; min-width: 0; width: auto; }
 .account-pop .setting-row > .button { align-self: flex-start; }
+
+/* An on/off with its name beside the switch, where a button used to say Enable / Disable. */
+.switch-line { display: inline-flex; align-items: center; gap: 10px; color: var(--text-2); font-size: 13.5px; cursor: pointer; }
+.dropdown-pills { flex: none; flex-wrap: nowrap; }
+.dropdown-pills .ui-tab { white-space: nowrap; }
+.account-pop .mlt-actions { width: auto; flex-wrap: wrap; }
+.account-pop .mlt-actions > * { flex: none; width: auto; min-width: max-content; }
+.about-row { align-items: flex-start; }
+.about-row > div:first-child { flex: 1 1 auto; min-width: 0; }
+.about-row small, .about-row .about-notice { display: block; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.setting-buttons > .setting-reset { width: 34px; height: 34px; align-self: center; }

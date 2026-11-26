@@ -119,6 +119,28 @@ export function Dropdown({
     };
   }, [openList]);
 
+  // Two or three short choices read better as pills, one click and all of them in view.
+  const pills = !search && options.length >= 2 && options.length <= 3 && !!current && options.reduce((sum, option) => sum + option.label.length, 0) <= 30;
+  if (pills)
+    return (
+      <div className={`ui-tabs dropdown-pills ${className}`} role="radiogroup">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={option.value === value}
+            className={`ui-tab ${option.value === value ? "on" : ""}`}
+            disabled={disabled}
+            data-tip={option.hint}
+            onClick={() => option.value !== value && onChange(option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    );
+
   return (
     <div className={`dropdown ${className} ${openList ? "open" : ""}`} ref={holder}>
       <button

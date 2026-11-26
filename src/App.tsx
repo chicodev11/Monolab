@@ -2132,6 +2132,7 @@ function App() {
     } catch {}
   }
   const NOTICE_LIFE = 10_000;
+const ERROR_LIFE = 8_000;
   const [noticeKey, setNoticeKey] = useState(0);
   const lastNoticeRef = useRef<string | null>(null);
   useEffect(() => {
@@ -2164,7 +2165,15 @@ function App() {
     }
   }, [instances]);
   useEffect(() => {
-    if (error) setErrorLeaving(false);
+    if (!error) return;
+    setErrorLeaving(false);
+    // Errors go away on their own like notices, just a little later so there is time to read them.
+    const fade = window.setTimeout(() => setErrorLeaving(true), ERROR_LIFE - 220);
+    const gone = window.setTimeout(() => setError(null), ERROR_LIFE);
+    return () => {
+      window.clearTimeout(fade);
+      window.clearTimeout(gone);
+    };
   }, [error]);
   function dismissError() {
     setErrorLeaving(true);
@@ -4131,7 +4140,7 @@ ${payload.plugin}`;
     }
     if (!(await confirmAction(
       tr("Move {0} to the trash?", [instance.name]),
-      tr("Moves the server folder and settings to the trash. Restore them later from the sidebar."),
+      tr("Moves the server folder and settings to the trash. Restore them later in Settings, Trash."),
       tr("Move to trash"),
     ))) return;
     const ok = await call(
@@ -4889,14 +4898,13 @@ ${payload.plugin}`;
               )}
               {playit?.hasSecret && (
                 <>
-                  <button
-                    className="button secondary small"
-                    disabled={playitBusy}
-                    onClick={() => void setPlayitExposed(!tunnel)}
-                  >
-                    <Icon name={tunnel ? "stop" : "cloud"} />
-                    {playitBusy ? tr("One moment…") : tunnel ? tr("Disable public access") : tr("Enable public access")}
-                  </button>
+                  <label className="switch-line">
+                    <span>{playitBusy ? tr("One moment…") : tr("Public access")}</span>
+                    <span className="switch">
+                      <input type="checkbox" aria-label={tr("Public access")} checked={!!tunnel} disabled={playitBusy} onChange={(event) => void setPlayitExposed(event.target.checked)} />
+                      <span />
+                    </span>
+                  </label>
                   <IconButton
                     className="small"
                     label={tr("Unlink playit")}
@@ -13883,10 +13891,13 @@ ${payload.plugin}`;
                         )}
                         {webOptions()}
                         <div className="web-actions">
-                          <button className="button ghost" disabled={webBusy} onClick={() => void toggleDirect(!webPanel.direct)}>
-                            <Icon name="shield" />
-                            {webPanel.direct ? tr("Turn off port-forwarding mode") : tr("Use port forwarding")}
-                          </button>
+                          <label className="switch-line">
+                            <span>{tr("Port forwarding")}</span>
+                            <span className="switch">
+                              <input type="checkbox" aria-label={tr("Port forwarding")} checked={webPanel.direct} disabled={webBusy} onChange={(event) => void toggleDirect(event.target.checked)} />
+                              <span />
+                            </span>
+                          </label>
                           <span className="live-spacer" />
                           <button className="button danger" onClick={() => void toggleWebPanel(false)}>
                             <Icon name="stop" />
@@ -14297,15 +14308,18 @@ ${payload.plugin}`;
                     </div>
                     <div className="setting-buttons">
                       <button
+                        className="icon-button setting-reset"
+                        aria-label={tr("Back to the default folder")}
+                        data-tip={tr("Back to the default folder")}
+                        onClick={() => void resetServersRoot()}
+                      >
+                        <Icon name="refresh" />
+                      </button>
+                      <button
                         className="button secondary small"
                         onClick={() => void pickServersRoot()}
                       >
                         {tr("Choose folder")}</button>
-                      <button
-                        className="button ghost small"
-                        onClick={() => void resetServersRoot()}
-                      >
-                        {tr("Restore")}</button>
                     </div>
                   </div>
                   <div className="setting-row">
@@ -14379,16 +14393,15 @@ ${payload.plugin}`;
                           : tr("Get Windows notifications when a server crashes, lags (TPS below 15 for a minute) or a task sends an alert. Windows asks for permission the first time.")}
                       </small>
                     </div>
-                    <button
-                      className={`button ${desktopAlertsEnabled ? "secondary" : "primary"} small`}
-                      onClick={() =>
-                        desktopAlertsEnabled
-                          ? disableDesktopAlerts()
-                          : void enableDesktopAlerts()
-                      }
-                    >
-                      {desktopAlertsEnabled ? tr("Disable") : tr("Enable")}
-                    </button>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        aria-label={tr("Windows notifications")}
+                        checked={desktopAlertsEnabled}
+                        onChange={(event) => (event.target.checked ? void enableDesktopAlerts() : disableDesktopAlerts())}
+                      />
+                      <span />
+                    </label>
                   </div>
                   <div className="setting-row">
                     <div>
@@ -14552,7 +14565,7 @@ ${payload.plugin}`;
                         {tr("Provided as is. This is a personal project, and the developer isn't liable for issues. Keep your own backups of the server folder, especially worlds.")}
                       </small>
                       <small className="about-notice">
-                        {tr("No usage data is sent anywhere. The internet is used only to download server files, plugins and mods from their distributors and to check for updates. The web panel and the relay connection open only when you turn them on.")}
+                        {tr("Anonymous usage counts (a random install ID, versions and your OS) are sent unless you turn them off under Privacy. Otherwise the internet is used only to download server files, plugins and mods from their distributors and to check for updates. The web panel and the relay connection open only when you turn them on.")}
                       </small>
                     </div>
                     {!onWeb && (
