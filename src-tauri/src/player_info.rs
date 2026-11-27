@@ -176,6 +176,16 @@ mod tests {
     }
 
     #[test]
+    fn reads_pumpkins_paper_style_log() {
+        let log = "[00:42:56] [tokio-rt-worker/INFO]: 5657 joined the game\n\
+                   [00:43:00] [main/INFO]: <5657> hi\n\
+                   [00:44:00] [tokio-rt-worker/INFO]: 5657 left the game";
+        let (sessions, chats, _) = read_log(log, "5657");
+        assert_eq!(sessions, vec![PlayerSession { joined: "00:42:56".into(), left: "00:44:00".into() }]);
+        assert_eq!(chats, 1);
+    }
+
+    #[test]
     fn matches_plugin_files_by_uuid_or_name() {
         let uuid = "069a79f4-44e9-4726-a5be-fca90e38aaf5";
         assert!(names_player("069a79f4-44e9-4726-a5be-fca90e38aaf5.yml", uuid, "Notch"));

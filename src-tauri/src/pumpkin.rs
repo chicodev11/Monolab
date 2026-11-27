@@ -710,6 +710,10 @@ trusted = true
         assert_eq!(level_of("[13:45:22] [Server thread/INFO]: hi"), None);
         assert_eq!(body_of("[13:45:22 INFO]: hi"), None);
         assert_eq!(body_of("Preparing spawn area"), None);
+        // The fork's Paper-style latest.log is left to the Minecraft readers.
+        assert_eq!(level_of("[00:42:56] [main/INFO]: Starting Pumpkin"), None);
+        assert_eq!(body_of("[00:42:56] [main/INFO]: Starting Pumpkin"), None);
+        assert_eq!(body_of("[main/INFO]: Starting Pumpkin"), None);
     }
 }
 

@@ -29,6 +29,9 @@ describe("readLevel reads the level from the prefix only", () => {
     ["[13:45:22 INFO]: error in chat text", null],
     ["19:33:00  WARN pumpkin::net: something odd", "warn"],
     ["19:33:00  INFO Started server; took 57ms", null],
+    ["[00:42:56] [main/WARN]: Pumpkin is currently under heavy development!", "warn"],
+    ["[00:42:56] [tokio-rt-worker/ERROR]: bad", "error"],
+    ["[main/WARN]: no timestamp", "warn"],
     ["plain line without prefix", null],
   ])("%s → %s", (line, level) => {
     expect(readLevel(line)).toBe(level);
@@ -72,6 +75,14 @@ describe("splitConsole splits time, level and text", () => {
       { time: "13:45:22", level: "INFO", body: 'Done (12.345s)! For help, type "help"' },
     ],
     ["[01:05:31] [Server thread/ERROR]: bad", { time: "01:05:31", level: "ERROR", body: "bad" }],
+    [
+      "[00:42:56] [main/INFO]: Starting Pumpkin 0.2.2+26.3-26.63",
+      { time: "00:42:56", level: "INFO", body: "Starting Pumpkin 0.2.2+26.3-26.63" },
+    ],
+    [
+      "[00:42:56] [tokio-rt-worker/DEBUG]: [MyPlugin] hi",
+      { time: "00:42:56", level: "DEBUG", body: "[MyPlugin] hi" },
+    ],
     [
       "19:33:00  INFO Started server; took 57ms",
       { time: "19:33:00", level: "INFO", body: "Started server; took 57ms" },

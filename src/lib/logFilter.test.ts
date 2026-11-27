@@ -20,6 +20,10 @@ describe("lineSource", () => {
     expect(lineSource(fabric)).toBe("fabric");
     expect(lineSource(paperPlain)).toBeNull();
     expect(lineSource(vanilla)).toBeNull();
+    // Pumpkin's latest.log: the thread is not a source, at any level.
+    expect(lineSource("[00:42:56] [tokio-rt-worker/DEBUG]: x")).toBeNull();
+    expect(lineSource("[00:42:56] [main/TRACE]: [MyPlugin] hi")).toBe("MyPlugin");
+    expect(lineSource("[00:42:56] [main/INFO]: [MyPlugin] hi")).toBe("MyPlugin");
   });
   it("lists the busiest first", () => {
     expect(sourcesIn([paper, paper, fabric, vanilla])).toEqual(["Essentials", "fabric"]);

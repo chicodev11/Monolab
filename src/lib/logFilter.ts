@@ -52,7 +52,7 @@ export function lineSource(line: string): string | null {
   const head = line.indexOf("]: ");
   if (head < 0) return null;
   const forge = line.slice(0, head + 1).match(/\]\s*\[([^\]/]+?)\/?(?:[A-Za-z.$]*)?\]$/);
-  if (forge && !/thread|\/(INFO|WARN|ERROR)/i.test(forge[0]) && !/^(INFO|WARN|WARNING|ERROR|DEBUG|FATAL)$/.test(forge[1])) {
+  if (forge && !/thread|\/(TRACE|DEBUG|INFO|WARN|ERROR)/i.test(forge[0]) && !/^(INFO|WARN|WARNING|ERROR|DEBUG|FATAL)$/.test(forge[1])) {
     return forge[1].trim() || null;
   }
   const plugin = line.slice(head + 3).match(/^\[([A-Za-z0-9_.\- ]{2,40})\]/);

@@ -386,6 +386,19 @@ mod tests {
     }
 
     #[test]
+    fn reads_pumpkins_paper_style_log() {
+        let join = classify("[00:42:56] [tokio-rt-worker/INFO]: 5657 joined the game").unwrap();
+        assert_eq!((join.time.as_str(), join.kind.as_str(), join.player.as_str()), ("00:42:56", "Join", "5657"));
+        let chat = classify("[00:43:10] [main/INFO]: <5657> hello").unwrap();
+        assert_eq!((chat.kind.as_str(), chat.text.as_str()), ("Chat", "hello"));
+        let error = classify("[00:43:20] [main/ERROR]: Failed to save level.dat").unwrap();
+        assert_eq!(error.kind, "Error");
+        let bare = classify("[main/INFO]: 5657 left the game").unwrap();
+        assert_eq!((bare.time.as_str(), bare.kind.as_str()), ("", "Leave"));
+        assert!(classify("[00:42:56] [main/WARN]: Pumpkin is currently under heavy development!").is_none());
+    }
+
+    #[test]
     fn pulls_the_date_out_of_a_rotated_file_name() {
         assert_eq!(date_of("2026-08-21-1.log.gz"), "2026-08-21");
         assert_eq!(date_of("latest.log"), "Today");
