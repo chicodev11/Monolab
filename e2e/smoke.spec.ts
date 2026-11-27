@@ -31,7 +31,8 @@ test("2. signing in shows the server list", async () => {
   await inputs.nth(0).fill(ACCOUNT.name);
   await inputs.nth(1).fill(ACCOUNT.password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByText("My servers").first()).toBeVisible();
+  // The rail shows "My servers" as an icon button; its text label only shows on hover.
+  await expect(page.getByRole("button", { name: "My servers" }).first()).toBeVisible();
   await expect(card()).toBeVisible();
   await expect(card()).toContainClass("stopped");
 });
