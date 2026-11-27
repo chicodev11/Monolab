@@ -40,7 +40,7 @@ export function TeamLog({
   const [entries, setEntries] = useState<TeamLogEntry[] | null>(() => seen.get(seenKey("", "", "", false)) ?? null);
   // "" = every server together.
   const [serverId, setServerId] = useState("");
-  const serverName = (id: string) => servers.find((one) => one.id === id)?.name ?? (id || tr("No server"));
+  const serverName = (id: string) => servers.find((one) => one.id === id)?.name ?? (id ? tr("Deleted server") : tr("No server"));
   const [who, setWho] = useState("");
   const [text, setText] = useState("");
   const [refusedOnly, setRefusedOnly] = useState(false);
