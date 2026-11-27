@@ -3902,7 +3902,7 @@
     "Pumpkin didn't load it: the plugin asked for permissions at the console, and nobody is there when Monolab starts the server. It asked for: {0}. Allowing writes this to pumpkin.toml; it loads on the next start.": "플러그인이 콘솔에서 권한을 요청했지만 Monolab이 서버를 시작할 때 콘솔에 응답할 사람이 없어 Pumpkin이 로드하지 않았어요. 요청한 권한: {0}. 허용하면 pumpkin.toml에 저장되고 다음 시작 때 로드돼요.",
     "Pumpkin didn't load {0} on {1}: it asked for permissions and nobody could answer at the console.": "{1}에서 {0}을(를) 로드하지 못했어요. 권한을 요청했지만 콘솔에서 응답할 수 없었어요.",
     "Pumpkin loads the plugin only with this. Saved to pumpkin.toml": "이 권한이 있어야 Pumpkin이 플러그인을 로드해요. pumpkin.toml에 저장했어요.",
-    "PumpkinMC fork (built in)": "내장 PumpkinMC 포크",
+    "PumpkinMC fork": "PumpkinMC 포크",
     "Push": "푸시",
     "Pushed.": "푸시했어요.",
     "Pushing…": "푸시 중…",

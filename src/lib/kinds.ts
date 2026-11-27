@@ -55,7 +55,7 @@ export const addonKind = (core: string): "mod" | "plugin" | null => {
 export const PUMPKIN_FORK = "monolab-fork";
 
 /** A version as people read it: the bundled fork gets a name instead of its tag. */
-export const versionLabel = (version: string) => (version === PUMPKIN_FORK ? tr("PumpkinMC fork (built in)") : version);
+export const versionLabel = (version: string) => (version === PUMPKIN_FORK ? tr("PumpkinMC fork") : version);
 
 export const coreLabel = (core: string, version: string) => `${core} ${versionLabel(version)}`;
 

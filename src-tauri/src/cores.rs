@@ -22,15 +22,11 @@ pub fn list_core_versions(core: &str, snapshots: bool) -> Result<Vec<String>, St
         "Forge" => forge_versions(&client),
         "NeoForge" => neoforge_versions(&client),
         "Pumpkin" => {
-            // The bundled fork comes first; official releases follow when they can be listed.
-            let mut list = Vec::new();
-            if crate::forks::find("pumpkin").is_some() {
-                list.push(crate::forks::PUMPKIN_FORK.to_string());
-            }
-            match pumpkin_versions(&client) {
-                Ok(more) => list.extend(more),
-                Err(error) if list.is_empty() => return Err(error),
-                Err(_) => {}
+            // The fork comes first, always: a copy without it downloads it when the server is made.
+            // Official releases follow when they can be listed.
+            let mut list = vec![crate::forks::PUMPKIN_FORK.to_string()];
+            if let Ok(more) = pumpkin_versions(&client) {
+                list.extend(more);
             }
             Ok(list)
         }
@@ -839,7 +835,13 @@ pub(crate) fn download_server_jar(
             .map_err(|error| error.to_string())?;
         let _ = app.emit("server-download", serde_json::json!({ "stage": "resolving", "core": core, "version": version }));
         if core == "Pumpkin" && version == crate::forks::PUMPKIN_FORK {
-            let bundled = crate::forks::find("pumpkin").ok_or("This copy of Monolab doesn't include the PumpkinMC fork.")?;
+            let bundled = match crate::forks::find("pumpkin") {
+                Some(found) => found,
+                None => {
+                    let _ = app.emit("server-download", serde_json::json!({ "stage": "downloading", "core": core, "version": version }));
+                    tauri::async_runtime::block_on(crate::updates::fetch_fork(app))?
+                }
+            };
             let destination = folder.join(PUMPKIN_EXE);
             fs::copy(&bundled, &destination).map_err(|error| format!("Could not copy the PumpkinMC fork: {error}"))?;
             let _ = app.emit("server-download", serde_json::json!({ "stage": "complete", "core": core, "version": version }));

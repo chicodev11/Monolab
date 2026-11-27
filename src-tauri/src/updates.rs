@@ -512,6 +512,37 @@ pub fn before_pumpkin_start(app: &AppHandle, server: &Path, server_jar: Option<&
 
 static CHECKING: AtomicBool = AtomicBool::new(false);
 
+/// For a new server on the fork when this PC has none yet (an installer built without it): downloads
+/// the newest listed build for this platform from the signed manifest and puts it in place. Waits for
+/// a running check so the two never write `pumpkin.exe.new` at once.
+pub async fn fetch_fork(app: &AppHandle) -> Result<PathBuf, String> {
+    while CHECKING.swap(true, Ordering::SeqCst) {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+    let result = fetch_fork_once(app).await;
+    CHECKING.store(false, Ordering::SeqCst);
+    result
+}
+
+async fn fetch_fork_once(app: &AppHandle) -> Result<PathBuf, String> {
+    // A check that just finished may have brought it.
+    if let Some(found) = crate::forks::find("pumpkin") {
+        return Ok(found);
+    }
+    let unpublished = || "No PumpkinMC fork build has been published yet.".to_string();
+    let manifest = fetch_manifest().await.map_err(|error| format!("{} ({error})", unpublished()))?;
+    let fork = manifest.fork.as_ref().ok_or_else(unpublished)?;
+    if !app_fits(&fork.min_app, app_version()) {
+        return Err(format!("The PumpkinMC fork needs Monolab {} or newer. Update the app first.", fork.min_app));
+    }
+    let file = fork.files.get(&platform()).ok_or_else(|| format!("No PumpkinMC fork build is published for {}.", platform()))?;
+    let dir = forks_dir().ok_or("Monolab's data folder isn't ready.")?;
+    download_fork(&dir, fork, file).await?;
+    let handle = app.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || swap_fork(&handle)).await;
+    crate::forks::find("pumpkin").ok_or_else(|| "The PumpkinMC fork was downloaded but could not be put in place.".to_string())
+}
+
 /// Reads the signed manifest and downloads what's newer and fits this app. One at a time.
 pub async fn check(app: &AppHandle) -> Result<(), String> {
     if CHECKING.swap(true, Ordering::SeqCst) {
