@@ -1,14 +1,13 @@
 # Push a tag like fork-v3 (or run it by hand with the build number and a fork ref) → builds the PumpkinMC fork
-# (chicodev11/PumpkinMC, private) for Windows, Linux and macOS with scripts/forks.mjs (cargo build --release --locked
+# (chicodev11/PumpkinMC-fork, public) for Windows, Linux and macOS with scripts/forks.mjs (cargo build --release --locked
 # -p pumpkin, the same as the copy bundled in the installer), publishes the GitHub Release fork-3 with
 # pumpkin-windows-x86_64.exe, pumpkin-linux-x86_64, pumpkin-linux-aarch64, pumpkin-macos-aarch64 and
 # pumpkin-macos-x86_64, and rewrites the fork section of the signed update list (scripts/updates-manifest.mjs →
 # updates.json + updates.json.sig on the release tagged `updates`). The app downloads the new fork without a new app
 # release and swaps it in when no server runs on it (docs/updates-and-stats.md §1, §2, §6).
-# Build numbers only go up (the manifest script refuses a lower one). A tag push builds the fork's main branch.
+# Build numbers only go up (the manifest script refuses a lower one). A tag push builds the fork's dev branch.
 # fork-<build> is created with --latest=false so releases/latest (the app updater's latest.json) keeps pointing at the app.
-# Secrets: FORKS_TOKEN (fine-grained token with read access to chicodev11/PumpkinMC's contents),
-# TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD (the app updater's key; signs the list).
+# Secrets: TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD (the app updater's key; signs the list).
 # The binaries come out of an artifact zip without the executable bit; the app sets it when it installs them.
 name: Fork release
 
@@ -23,7 +22,7 @@ on:
       ref:
         description: "PumpkinMC branch, tag or commit to build"
         required: false
-        default: main
+        default: dev
       min_app:
         description: "Oldest app version that may use it (empty: package.json version)"
         required: false
@@ -50,18 +49,13 @@ jobs:
         env:
           INPUT_BUILD: ${{ inputs.build }}
           INPUT_REF: ${{ inputs.ref }}
-          FORKS_TOKEN: ${{ secrets.FORKS_TOKEN }}
         run: |
-          if [ -z "$FORKS_TOKEN" ]; then
-            echo "::error::FORKS_TOKEN is not set; chicodev11/PumpkinMC is private."
-            exit 1
-          fi
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             build="$INPUT_BUILD"
-            ref="${INPUT_REF:-main}"
+            ref="${INPUT_REF:-dev}"
           else
             build="${GITHUB_REF_NAME#fork-v}"
-            ref=main
+            ref=dev
           fi
           if ! [[ "$build" =~ ^[0-9]+$ ]]; then
             echo "::error::The fork build must be a whole number (tag fork-v3 or input 3), got '$build'."
@@ -95,8 +89,7 @@ jobs:
       - name: Check out the PumpkinMC fork
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: chicodev11/PumpkinMC
-          token: ${{ secrets.FORKS_TOKEN }}
+          repository: chicodev11/PumpkinMC-fork
           ref: ${{ needs.prepare.outputs.ref }}
           path: forks-src/PumpkinMC
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
@@ -142,8 +135,7 @@ jobs:
       - name: Fetch the fork licence
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: chicodev11/PumpkinMC
-          token: ${{ secrets.FORKS_TOKEN }}
+          repository: chicodev11/PumpkinMC-fork
           ref: ${{ needs.prepare.outputs.ref }}
           path: forks-src/PumpkinMC
           sparse-checkout: LICENSE
@@ -158,7 +150,7 @@ jobs:
           cp forks-src/PumpkinMC/LICENSE fork-dist/PumpkinMC-LICENSE.txt
           ls -l fork-dist
           tag="fork-$BUILD"
-          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --latest=false --target "$GITHUB_SHA" --title "PumpkinMC fork build $BUILD" --notes "PumpkinMC fork build $BUILD (chicodev11/PumpkinMC at $REF). The app downloads it on its own."
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --latest=false --target "$GITHUB_SHA" --title "PumpkinMC fork build $BUILD" --notes "PumpkinMC fork build $BUILD (chicodev11/PumpkinMC-fork at $REF). The app downloads it on its own."
           gh release upload "$tag" fork-dist/* --clobber
       - name: Update the signed list (updates.json)
         shell: bash

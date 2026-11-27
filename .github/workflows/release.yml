@@ -2,8 +2,9 @@
 # reads it from releases/latest/download/latest.json). Needs the repository secret TAURI_SIGNING_PRIVATE_KEY.
 # The repository must stay public: the in-app updater (which doesn't sign in) downloads latest.json and the
 # installer from the release, and checks 4 s after start and every 10 minutes.
-# The bundled Rust forks (PumpkinMC, Horizon/Nova) are private repositories: FORKS_TOKEN is a fine-grained
-# token with read access to their contents. Without it the installer is built without the forks.
+# The PumpkinMC fork (chicodev11/PumpkinMC-fork, public; branch from the FORK_REF variable, default dev) is always
+# bundled. Horizon/Nova is private: FORKS_TOKEN is a fine-grained token with read access to its contents, and without
+# it the installer is built without Nova.
 # A tag with a dash (v2.1.0-beta.1) is a pre-release: its latest.json is also copied to the release tagged
 # `beta`, which the Beta update channel reads. The repository variable DISCORD_CLIENT_ID turns on the
 # Discord status (Settings); without it the switch says this build has none.
@@ -49,11 +50,10 @@ jobs:
           save-if: false
       - run: npm ci
       - name: Check out the PumpkinMC fork
-        if: env.FORKS_TOKEN != ''
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: chicodev11/PumpkinMC
-          token: ${{ secrets.FORKS_TOKEN }}
+          repository: chicodev11/PumpkinMC-fork
+          ref: ${{ vars.FORK_REF || 'dev' }}
           path: forks-src/PumpkinMC
       - name: Check out the Horizon fork (Nova)
         if: env.FORKS_TOKEN != ''
@@ -63,13 +63,13 @@ jobs:
           token: ${{ secrets.FORKS_TOKEN }}
           path: forks-src/Horizon
       - name: Build the forks into src-tauri/forks
-        if: env.FORKS_TOKEN != ''
-        run: node scripts/forks.mjs --pumpkin forks-src/PumpkinMC --nova forks-src/Horizon
+        shell: bash
+        run: node scripts/forks.mjs --pumpkin forks-src/PumpkinMC ${{ env.FORKS_TOKEN != '' && '--nova forks-src/Horizon' || '' }}
       - name: Pick the build config (forks, code signing)
         id: config
         shell: bash
         run: |
-          node scripts/release-config.mjs ${{ env.FORKS_TOKEN != '' && '--forks' || '' }} ${{ env.WINDOWS_CERTIFICATE != '' && '--sign' || '' }} >> "$GITHUB_OUTPUT"
+          node scripts/release-config.mjs --forks ${{ env.WINDOWS_CERTIFICATE != '' && '--sign' || '' }} >> "$GITHUB_OUTPUT"
       - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
