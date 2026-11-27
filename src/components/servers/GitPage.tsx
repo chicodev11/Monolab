@@ -66,6 +66,7 @@ export function GitPage({
   confirm: Confirm;
 }) {
   const [state, setState] = useState<GitState | null>(null);
+  const [loadError, setLoadError] = useState("");
   const [log, setLog] = useState<GitCommit[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState("");
@@ -77,10 +78,11 @@ export function GitPage({
   const [buildLog, setBuildLog] = useState<{ repo: string; ok: boolean; text: string } | null>(null);
 
   const load = useCallback(() => {
-    void commands.gitState(serverId).then(setState, (cause) => onError(String(cause)));
+    setLoadError("");
+    void commands.gitState(serverId).then(setState, (cause) => setLoadError(String(cause)));
     void commands.gitLog(serverId, 50).then(setLog, () => setLog([]));
     void commands.devRepos(serverId).then(setRepos, () => setRepos([]));
-  }, [serverId, onError]);
+  }, [serverId]);
   useEffect(load, [load]);
 
   async function work<T>(label: string, job: () => Promise<T>, done?: (value: T) => void) {
@@ -155,6 +157,18 @@ export function GitPage({
       setDiff(null);
     });
   }
+
+  if (!state && loadError)
+    return (
+      <div className="page-body git-page">
+        <EmptyState
+          icon="git"
+          title={tr("Couldn't read this server's history")}
+          hint={loadError}
+          action={<Button icon="refresh" onClick={load}>{tr("Try again")}</Button>}
+        />
+      </div>
+    );
 
   if (!state)
     return (

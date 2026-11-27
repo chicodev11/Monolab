@@ -3544,7 +3544,11 @@ ${payload.plugin}`;
     setTool(next);
     setToolLoading(true);
     try {
-      if (next === "properties") {
+      if (next === "properties" && instance.unreachable && instance.remoteHost) {
+        // Reading over SSH would only wait out the timeout; the page says the server can't be reached.
+        setProperties([]);
+        setSavedProperties([]);
+      } else if (next === "properties") {
         const read = await commands.readServerProperties(instance.id);
         setProperties(read);
         setSavedProperties(read);
@@ -3713,6 +3717,29 @@ ${payload.plugin}`;
       /* private window */
     }
   }, [serverTabs]);
+  // When a remote server comes back, load the page that was waiting for it.
+  const selectedUnreachable = !!selected?.unreachable;
+  const wasUnreachable = useRef(selectedUnreachable);
+  useEffect(() => {
+    if (wasUnreachable.current && !selectedUnreachable && page === "instance" && ["properties", "rewind", "git"].includes(tool)) void loadTool(tool);
+    wasUnreachable.current = selectedUnreachable;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUnreachable]);
+  /** A remote server's page while its machine can't be reached. */
+  function unreachableState() {
+    if (!selected?.unreachable || !selected.remoteHost) return null;
+    const host = selected.remoteHost;
+    return (
+      <div className="tool-content">
+        <EmptyState
+          icon="power-off"
+          title={tr("Can't reach this server")}
+          hint={tr("Monolab can't connect to the machine this server runs on. Check that it's on and online, then try again.")}
+          action={<Button icon="refresh" onClick={() => void retrySsh(host)}>{tr("Retry connection")}</Button>}
+        />
+      </div>
+    );
+  }
   async function retrySsh(host: string) {
     await commands.retrySshHost(host).catch(() => {});
     setNotice(tr("Trying to connect again…"));
@@ -8966,6 +8993,8 @@ ${payload.plugin}`;
         </div>
       )}
       {!toolLoading && tool === "properties" && (() => {
+        const away = unreachableState();
+        if (away) return away;
         const locked = false;
         const running = selected.status !== "stopped";
         const changed = new Set(
@@ -10435,6 +10464,8 @@ ${payload.plugin}`;
       )}
       {!toolLoading && (tool === "rewind" || tool === "git") && (() => {
         // History: automatic saves (Rewind, this PC only) and Git (app only: it runs programs; SSH servers too).
+        const away = unreachableState();
+        if (away) return away;
         const canAuto = !selected.remoteHost;
         const canGit = !onWeb;
         const view = !canAuto ? "git" : !canGit ? "auto" : historyView;

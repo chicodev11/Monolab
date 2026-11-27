@@ -159,13 +159,16 @@ impl Place {
 
     /// Runs a shell command on the SSH server.
     fn shell(app: &AppHandle, host: &str, command: &str, long: bool) -> Result<crate::remote::Output, String> {
-        tauri::async_runtime::block_on(async {
-            let conn = crate::remote::connect(app, host).await?;
-            if long {
-                conn.run_long(command).await
-            } else {
-                conn.run(command).await
-            }
+        // The git commands run on a runtime thread; blocking on SSH there panics, so wait on a plain thread.
+        crate::off_runtime(|| {
+            tauri::async_runtime::block_on(async {
+                let conn = crate::remote::connect(app, host).await?;
+                if long {
+                    conn.run_long(command).await
+                } else {
+                    conn.run(command).await
+                }
+            })
         })
     }
 
